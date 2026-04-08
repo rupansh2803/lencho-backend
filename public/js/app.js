@@ -352,7 +352,7 @@ async function renderHome() {
         <div class="cat-content"><div class="cat-name">Toe Rings</div><button class="cat-btn">Shop Now</button></div>
       </div>
       <div class="cat-card reveal-right" onclick="navigate('/products?category=payal')" style="animation-delay:.2s">
-        <img class="cat-img" src="/images/payal.png" alt="Payal" onerror="this.src='https://images.unsplash.com/photo-1610931215444-24dddcbc7221?auto=format&fit=crop&w=400&q=80'"/>
+        <img class="cat-img" src="/images/payal.png" alt="Payal" onerror="this.src='https://images.unsplash.com/photo-1599643477877-530eb83abc8e?auto=format&fit=crop&w=400&q=80'"/>
         <div class="cat-overlay"></div>
         <div class="cat-content"><div class="cat-name">Payal</div><button class="cat-btn">Shop Now</button></div>
       </div>
@@ -370,12 +370,17 @@ async function renderHome() {
       </p>
       <span class="see-more-btn" onclick="toggleDesc(this)" style="color:var(--gold-light);">See More</span>
     </div>
-    <div class="video-container" style="background:#000; overflow:hidden; position:relative; min-height:400px; display:flex; align-items:center; justify-content:center; flex-direction:column;">
-      <div style="position:absolute;inset:0;background:url('/images/hero.png') center/cover;opacity:0.6;animation:pulseZoom 15s infinite alternate;border-radius:24px;"></div>
-      <div style="position:relative;z-index:2;color:#fff;text-align:center;">
-        <i class="fas fa-play-circle" style="font-size:4rem;color:var(--gold-light);margin-bottom:1rem;opacity:0.8;"></i>
-        <h3 style="font-family:'Playfair Display',serif;font-size:1.8rem;margin:bottom:0;">Coming Soon</h3>
-        <p style="font-size:.9rem;color:rgba(255,255,255,.7);">Our craftmanship video processing...</p>
+    <div class="video-container" style="background:#000; overflow:hidden; position:relative; min-height:450px;">
+      <video autoplay muted loop playsinline style="width:100%; height:100%; object-fit:cover; position:absolute; inset:0; opacity:0.8;">
+        <source src="https://player.vimeo.com/external/494163966.sd.mp4?s=43c3933ae37d113426742533cdaefc9b46571588&profile_id=165" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+      <div style="position:relative;z-index:2;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);text-align:center;">
+        <div class="reveal">
+          <i class="fas fa-play-circle" style="font-size:4rem;color:var(--gold-light);margin-bottom:1rem;opacity:0.9;cursor:pointer;"></i>
+          <h3 style="font-family:'Playfair Display',serif;font-size:2rem;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,0.5);">Handcrafted Excellence</h3>
+          <p style="color:rgba(255,255,255,0.9);max-width:400px;margin:0 auto;font-size:.9rem;">Watch how we blend tradition with modern design.</p>
+        </div>
       </div>
     </div>
     <div style="margin-top:2.5rem;display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;position:relative;z-index:10;">
