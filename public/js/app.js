@@ -412,10 +412,18 @@ function createParticles() {
 }
 
 async function loadFeaturedProducts() {
-  const r = await api('/api/products?featured=true');
   const grid = document.getElementById('featured-grid');
   if (!grid) return;
-  grid.innerHTML = r.map ? r.map(productCardHTML).join('') : '<p>No products found</p>';
+  try {
+    const r = await api('/api/products?featured=true');
+    if (r && r.length > 0) {
+      grid.innerHTML = r.map(productCardHTML).join('');
+    } else {
+      grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:3rem; color:var(--gray);">No featured products available. Explore all products below. ✦</div>';
+    }
+  } catch (e) {
+    grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:3rem; color:var(--rose);">Unable to load products. Please check your connection. ✦</div>';
+  }
   initScrollReveal();
 }
 
