@@ -883,6 +883,6 @@ const PORT = process.env.PORT || 3005;
 
 app.listen(PORT, () => {
   console.log(`\n🌟 Lencho API → http://localhost:${PORT}`);
-  console.log(`   Admin: rupanshsaini17@gmail.com / Isha@12345@@@@`);
+  console.log(`   Admin Panel → /admin`);
   console.log(`   MongoDB: ${useDB ? '✅ Connected' : '⚠️  Using JSON fallback'}\n`);
 });
