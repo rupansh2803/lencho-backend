@@ -41,7 +41,7 @@ async function renderProductDetail(id) {
           <button class="btn-gold" onclick="buyNow('${p.id}')" ${p.stock===0?'disabled':''}>
             <i class="fas fa-bolt"></i> Buy Now
           </button>
-          <button class="btn-primary" onclick="toggleWishlist('${p.id}',this)" style="background:transparent;border:2px solid var(--border);color:var(--gray);">
+          <button class="btn-wishlist" onclick="toggleWishlist('${p.id}',this)">
             <i class="fas fa-heart"></i> Add to Wishlist
           </button>
         </div>

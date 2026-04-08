@@ -19,11 +19,8 @@ function showAdminLogin() {
         <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;margin-bottom:.4rem;">Admin Login</h2>
         <p style="color:var(--gray);font-size:.875rem;">Enter admin credentials to continue</p>
       </div>
-      <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:.75rem 1rem;margin-bottom:1.25rem;font-size:.8rem;color:#92400e;">
-        <b>🔑 Default:</b> admin@lenchoindia.com / admin123
-      </div>
-      <div class="form-group"><label>Email Address</label><input type="email" id="adm-email" placeholder="admin@lenchoindia.com" value="admin@lenchoindia.com"/></div>
-      <div class="form-group"><label>Password</label><input type="password" id="adm-pass" placeholder="Password" value="admin123" onkeydown="if(event.key==='Enter')adminLogin()"/></div>
+      <div class="form-group"><label>Email Address</label><input type="email" id="adm-email" placeholder="admin@example.com"/></div>
+      <div class="form-group"><label>Password</label><input type="password" id="adm-pass" placeholder="Password" onkeydown="if(event.key==='Enter')adminLogin()"/></div>
       <div id="adm-err" style="color:#ef4444;font-size:.8rem;margin-bottom:.75rem;min-height:20px;"></div>
       <button class="btn-primary full-width" onclick="adminLogin()">
         <i class="fas fa-shield-alt"></i> Login to Admin Panel
