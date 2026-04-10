@@ -196,19 +196,21 @@ async function seedCategories() {
 async function seedAdmin() {
   const email = 'rupanshsaini17@gmail.com';
   const pass = 'Isha@1234@';
+  const phone = '7404217625';
 
   if (useDB) {
     let admin = await User.findOne({ role: 'admin' });
     if (admin) {
       admin.email = email;
       admin.password = await bcrypt.hash(pass, 10);
+      admin.phone = phone;
       admin.securityQuestion = 'Birthplace';
       admin.securityAnswer = 'Admin';
       await admin.save();
       console.log(`✅ Admin credentials force-updated to: ${email}`);
     } else {
       const hashedPass = await bcrypt.hash(pass, 10);
-      await User.create({ name: 'Admin', email, password: hashedPass, role: 'admin', isVerified: true, securityQuestion: 'Birthplace', securityAnswer: 'Admin' });
+      await User.create({ name: 'Admin', email, password: hashedPass, role: 'admin', phone, isVerified: true, securityQuestion: 'Birthplace', securityAnswer: 'Admin' });
       console.log(`✅ Admin created: ${email}`);
     }
   }
