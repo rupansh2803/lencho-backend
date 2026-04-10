@@ -98,6 +98,9 @@ async function showAdminLogin() {
       </div>
 
       <div id="adm-err" style="color:#ef4444;font-size:.8rem;margin-bottom:.75rem;min-height:20px;"></div>
+      <button class="btn-primary full-width" onclick="adminLogin()">
+        <i class="fas fa-shield-alt"></i> Authorize Login
+      </button>
     </div>
   </div>`;
 }
