@@ -202,11 +202,13 @@ async function seedAdmin() {
     if (admin) {
       admin.email = email;
       admin.password = await bcrypt.hash(pass, 10);
+      admin.securityQuestion = 'Birthplace';
+      admin.securityAnswer = 'Admin';
       await admin.save();
       console.log(`✅ Admin credentials force-updated to: ${email}`);
     } else {
       const hashedPass = await bcrypt.hash(pass, 10);
-      await User.create({ name: 'Admin', email, password: hashedPass, role: 'admin', isVerified: true });
+      await User.create({ name: 'Admin', email, password: hashedPass, role: 'admin', isVerified: true, securityQuestion: 'Birthplace', securityAnswer: 'Admin' });
       console.log(`✅ Admin created: ${email}`);
     }
   }
@@ -229,8 +231,13 @@ async function seedSettings() {
       { key: 'storeEmail', value: 'hello@lencho.in', label: 'Store Email' },
       { key: 'storePhone', value: '+91 9876543210', label: 'Store Phone' },
       { key: 'gstin', value: '27XXXXX1234X1ZX', label: 'GSTIN Number' },
+      { key: 'saleEndDate', value: new Date(Date.now() + 86400000).toISOString(), label: 'Sale End Date (ISO)' }
     ]);
     console.log('✅ Default settings seeded');
+  } else {
+    // Add missing keys
+    const exist = await Settings.findOne({ key: 'saleEndDate' });
+    if (!exist) await Settings.create({ key: 'saleEndDate', value: new Date(Date.now() + 86400000).toISOString(), label: 'Sale End Date (ISO)' });
   }
 }
 
@@ -627,9 +634,11 @@ app.post('/api/otp/verify', async (req, res) => {
 
 
 app.get('/api/captcha', (req, res) => {
-  const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-  req.session.captcha = code;
-  res.json({ success: true, captcha: code });
+  const n1 = Math.floor(Math.random() * 10) + 1;
+  const n2 = Math.floor(Math.random() * 10) + 1;
+  const answer = n1 + n2;
+  req.session.captcha = answer;
+  res.json({ success: true, question: `${n1} + ${n2} = ?`, answer }); // answer sent for debugging, can be removed in prod
 });
 
 // ─── AUTH ROUTES ──────────────────────────────────────────────

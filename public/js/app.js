@@ -449,9 +449,17 @@ async function loadTestimonials() {
   } catch (e) { container.innerHTML = '<div style="text-align:center;color:var(--gray);">Luxury Social Proof Incoming...</div>'; }
 }
 
-function startOfferTimer() {
-  const target = new Date();
-  target.setHours(target.getHours() + 24); // 24h from now for demo
+async function startOfferTimer() {
+  let target;
+  try {
+    const s = await api('/api/settings');
+    if (s.saleEndDate) target = new Date(s.saleEndDate);
+  } catch (e) {}
+  
+  if (!target) {
+    target = new Date();
+    target.setHours(target.getHours() + 24);
+  }
 
   function update() {
     const now = new Date();

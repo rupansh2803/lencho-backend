@@ -79,18 +79,18 @@ async function adminGST() {
           const sgst = Math.round(taxableAmt * 0.09);
           const totalGst = cgst + sgst;
           const state = o.shippingAddress?.state || o.customerState || 'Unknown';
-          return \`<tr>
-            <td style="font-size:.8rem;">\${formatDate(o.createdAt)}</td>
-            <td><b style="color:var(--rose-dark);font-size:.75rem;">\${o.id.substring(0,8)}...</b></td>
-            <td>\${o.userName}</td>
-            <td><span style="background:var(--light-gray);padding:0.25rem 0.5rem;border-radius:4px;font-size:.8rem;">\${state}</span></td>
-            <td>₹\${taxableAmt.toLocaleString('en-IN')}</td>
-            <td style="color:var(--rose);">₹\${cgst.toLocaleString('en-IN')}</td>
-            <td style="color:var(--gold);">₹\${sgst.toLocaleString('en-IN')}</td>
-            <td><b>₹\${totalGst.toLocaleString('en-IN')}</b></td>
-            <td><b style="color:var(--rose-dark);">₹\${(o.grandTotal || 0).toLocaleString('en-IN')}</b></td>
-            <td><span class="order-status-badge status-\${o.status}" style="font-size:.7rem;">\${o.status.replace('_',' ')}</span></td>
-          </tr>\`;
+          return `<tr>
+            <td style="font-size:.8rem;">${formatDate(o.createdAt)}</td>
+            <td><b style="color:var(--rose-dark);font-size:.75rem;">${o.id.substring(0,8)}...</b></td>
+            <td>${o.userName}</td>
+            <td><span style="background:var(--light-gray);padding:0.25rem 0.5rem;border-radius:4px;font-size:.8rem;">${state}</span></td>
+            <td>₹${taxableAmt.toLocaleString('en-IN')}</td>
+            <td style="color:var(--rose);">₹${cgst.toLocaleString('en-IN')}</td>
+            <td style="color:var(--gold);">₹${sgst.toLocaleString('en-IN')}</td>
+            <td><b>₹${totalGst.toLocaleString('en-IN')}</b></td>
+            <td><b style="color:var(--rose-dark);">₹${(o.grandTotal || 0).toLocaleString('en-IN')}</b></td>
+            <td><span class="order-status-badge status-${o.status}" style="font-size:.7rem;">${o.status.replace('_',' ')}</span></td>
+          </tr>`;
         }).join('')}
       </tbody>
     </table>
@@ -268,6 +268,19 @@ async function adminSettings() {
         <i class="fas fa-save"></i> Save GST Settings
       </button>
     </div>
+
+    <!-- SALE PROMOTION SETTINGS -->
+    <div class="admin-form">
+      <h3>⏰ Sale Countdown Control</h3>
+      <div class="form-group">
+        <label>Sale End Date & Time</label>
+        <input type="datetime-local" id="s-sale-end" value="${s.saleEndDate ? new Date(s.saleEndDate).toISOString().slice(0, 16) : ''}"/>
+        <small style="color:var(--gray);font-size:0.75rem;">Select when the "Limited Edition" sale should end.</small>
+      </div>
+      <button class="btn-primary" onclick="saveSaleSettings()">
+        <i class="fas fa-clock"></i> Update Sale Timer
+      </button>
+    </div>
   </div>
   
   <!-- STORE CONTACT INFO -->
@@ -331,4 +344,13 @@ async function saveStoreSettings() {
   const r = await api('/api/admin/settings', { method: 'POST', body: data });
   if (r.error) toast('Error saving settings: ' + r.error, 'error');
   else toast('✅ Store settings saved successfully!', 'success');
+}
+
+async function saveSaleSettings() {
+  const val = document.getElementById('s-sale-end')?.value;
+  if(!val) return toast('Please select a date', 'warning');
+  const data = { saleEndDate: new Date(val).toISOString() };
+  const r = await api('/api/admin/settings', { method: 'POST', body: data });
+  if (r.error) toast('Error saving timer: ' + r.error, 'error');
+  else toast('✅ Sale timer updated! Homepage will sync.', 'success');
 }
