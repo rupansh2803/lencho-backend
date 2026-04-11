@@ -54,40 +54,14 @@ async function initDB() {
     if (pCount === 0) {
       console.log('Seeding initial products...');
       const sampleProducts = [
-        { 
-          name: 'Silver Oxidized Jhumka Earrings', 
-          category: 'earrings', 
-          price: 299, 
-          mrp: 599, 
-          discount: 50, 
-          stock: 20, 
-          featured: true,
-          images: ['https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=600&q=80'],
-          description: 'Premium Silver Oxidized Jhumkas for everyday elegance.'
-        },
-        { 
-          name: 'American Diamond Necklace Set', 
-          category: 'necklace', 
-          price: 1299, 
-          mrp: 2499, 
-          discount: 48, 
-          stock: 15, 
-          featured: true,
-          images: ['https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=600&q=80'],
-          description: 'Stunning AD Necklace set with matching earrings.'
-        },
-        { 
-          name: 'Gold Plated Toe Rings', 
-          category: 'toe-rings', 
-          price: 199, 
-          mrp: 399, 
-          discount: 50, 
-          stock: 50, 
-          featured: true,
-          images: ['https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=600&q=80'],
-          description: 'Elegant toe rings for traditional look.'
-        }
+        { name: 'Silver Oxidized Jhumka Earrings', category: 'earrings', price: 299, mrp: 599, discount: 50, stock: 20, featured: true, images: ['https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=600&q=80'], description: 'Premium Silver Oxidized Jhumkas for everyday elegance.' },
+        { name: 'American Diamond Necklace Set', category: 'necklace', price: 1299, mrp: 2499, discount: 48, stock: 15, featured: true, images: ['https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=600&q=80'], description: 'Stunning AD Necklace set with matching earrings.' },
+        { name: 'Gold Plated Toe Rings', category: 'toe-rings', price: 199, mrp: 399, discount: 50, stock: 50, featured: true, images: ['https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=600&q=80'], description: 'Elegant toe rings for traditional look.' },
+        { name: 'Rose Gold Bracelet', category: 'bracelets', price: 599, mrp: 999, discount: 40, stock: 25, featured: true, images: ['https://images.unsplash.com/photo-1611591437281-460bfbe1220a?auto=format&fit=crop&w=600&q=80'], description: 'Trendy rose gold plated bracelet for modern outfits.' },
+        { name: 'Traditional Kundan Payal', category: 'payal', price: 899, mrp: 1499, discount: 40, stock: 10, featured: true, images: ['https://plus.unsplash.com/premium_photo-1681276170683-706111cf496e?auto=format&fit=crop&w=600&q=80'], description: 'Handcrafted Kundan Payal for a regal traditional look.' },
+        { name: 'Oxidized Silver Nose Pin', category: 'rings', price: 149, mrp: 299, discount: 50, stock: 100, featured: false, images: ['https://images.unsplash.com/photo-1601121141461-9d6647bca1ed?auto=format&fit=crop&w=600&q=80'], description: 'Minimalist oxidized silver nose pin.' }
       ];
+      await Product.deleteMany({}); // Clear old seeds if any
       await Product.insertMany(sampleProducts);
     }
 
@@ -684,12 +658,14 @@ app.post('/api/otp/send-email', async (req, res) => {
 app.post('/api/otp/verify-email', async (req, res) => {
   try {
     const { email, otp } = req.body;
-    if (!email || !otp) return res.status(400).json({ error: 'Email and OTP required' });
+    if (!email || !otp) return res.status(400).json({ email, otp, error: 'Email and OTP required' });
 
     if (useDB) {
       const log = await OTPLog.findOne({ target: email, code: otp, used: false, expiresAt: { $gt: new Date() } });
       if (!log) return res.status(400).json({ error: 'Invalid or expired OTP' });
       log.used = true; await log.save();
+      // Update User verification status
+      await User.findOneAndUpdate({ email }, { isVerified: true, isPhoneVerified: true });
     } else {
       const pending = req.session.pendingEmailOTP;
       if (!pending || pending.email !== email || pending.code !== otp) return res.status(400).json({ error: 'Invalid OTP' });
@@ -1209,10 +1185,11 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
 // ─── INQUIRY ROUTES ───────────────────────────────────────────
 app.post('/api/contact', async (req, res) => {
   try {
-    const { name, email, message } = req.body;
+    const { name, email, phone, message } = req.body;
+    fs.appendFileSync('inquiry_debug.log', `${new Date().toISOString()} - Received inquiry from ${email} (${phone || 'No Phone'})\n`);
     if (!name || !email || !message) return res.status(400).json({ error: 'All fields are required' });
     
-    if (useDB) await Inquiry.create({ name, email, message });
+    if (useDB) await Inquiry.create({ name, email, phone, message });
     else console.log('Contact Inquiry (Fallback):', { name, email, message });
 
     // Notify Admin via Email
@@ -1236,6 +1213,7 @@ app.post('/api/contact', async (req, res) => {
             <div style="font-family:sans-serif;padding:2rem;border:1px solid #eee;border-radius:12px;">
               <h2 style="color:#c9748f;">New Message Recieved</h2>
               <p><b>From:</b> ${name} (${email})</p>
+              <p><b>Phone:</b> ${phone || 'Not provided'}</p>
               <p><b>Message:</b></p>
               <div style="background:#f9f9f9;padding:1rem;border-radius:8px;">${message}</div>
               <p style="margin-top:1.5rem;"><a href="${req.headers.origin}/admin" style="color:#c9748f;font-weight:700;text-decoration:none;">View in Admin Panel →</a></p>
@@ -1463,7 +1441,27 @@ app.get('/debug', (req, res) => {
 const PORT = process.env.PORT || 30054;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-app.listen(PORT, () => {
+// ── PUBLIC SETTINGS ─────────────────────────────────────────
+app.get('/api/settings', async (req, res) => {
+  try {
+    const s = await Settings.findOne() || {};
+    res.json({
+      storeName: s.storeName,
+      storeEmail: s.storeEmail,
+      storePhone: s.storePhone,
+      storeAddress: s.storeAddress,
+      whatsappNumber: s.whatsappNumber,
+      facebookLink: s.facebookLink,
+      instagramLink: s.instagramLink,
+      twitterLink: s.twitterLink,
+      whatsappLink: s.whatsappLink,
+      saleEndDate: s.saleEndDate,
+      shippingNote: s.shippingNote
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🌟 Lencho API → Running on port ${PORT}`);
   console.log(`📌 Environment: ${NODE_ENV}`);
   console.log(`🔗 CORS: Enabled for ${NODE_ENV === 'production' ? 'Production' : 'Development'}`);

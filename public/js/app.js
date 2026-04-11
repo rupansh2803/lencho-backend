@@ -723,16 +723,32 @@ async function loadPublicSettings() {
   } catch (e) { }
 }
 
+// ── SOCIAL SYNC ───────────────────────────────────────────
+async function syncSocialLinks() {
+  const s = await api('/api/settings');
+  if (s.error) return;
+  
+  const fb = document.querySelector('.social-icon i.fa-facebook-f')?.parentElement;
+  const insta = document.querySelector('.social-icon i.fa-instagram')?.parentElement;
+  const tw = document.querySelector('.social-icon i.fa-twitter')?.parentElement;
+  const wa = document.querySelector('.social-icon i.fa-whatsapp')?.parentElement;
+
+  if (s.facebookLink && fb) fb.href = s.facebookLink;
+  if (s.instagramLink && insta) insta.href = s.instagramLink;
+  if (s.twitterLink && tw) tw.href = s.twitterLink;
+  if (s.whatsappLink && wa) wa.href = s.whatsappLink;
+  else if (s.whatsappNumber && wa) wa.href = `https://wa.me/${s.whatsappNumber}`;
+}
+
 // ── INIT ──────────────────────────────────────────────────
-async function init() {
-  await loadUser();
-  updateCartCount();
+window.onload = () => {
+  loadUser();
+  syncCartCount();
+  syncSocialLinks();
   initHeader();
   loadPublicSettings();
   navigate(location.pathname + location.search, false);
   setTimeout(() => {
     document.getElementById('loading-screen').classList.add('hidden');
   }, 2000);
-}
-
-init();
+};

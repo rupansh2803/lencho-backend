@@ -597,13 +597,15 @@ function renderContact() {
 }
 
 async function submitContact() {
+  console.log('✦ Inquiry Submitted');
   const n = document.getElementById('contact-name').value;
   const e = document.getElementById('contact-email').value;
+  const p = document.getElementById('contact-phone').value;
   const m = document.getElementById('contact-message').value;
   if(!n || !e || !m) { toast('Please fill in name, email and message.', 'error'); return; }
   
   const b = document.querySelector('.track-page button') || { disabled: false, textContent: '' };
-  const resp = await api('/api/contact', { method: 'POST', body: { name: n, email: e, message: m } });
+  const resp = await api('/api/contact', { method: 'POST', body: { name: n, email: e, phone: p, message: m } });
   
   if (resp.error) {
     toast(resp.error, 'error');
@@ -613,8 +615,7 @@ async function submitContact() {
     document.getElementById('contact-name').value = '';
     document.getElementById('contact-email').value = '';
     document.getElementById('contact-message').value = '';
-    const phone = document.getElementById('contact-phone');
-    if (phone) phone.value = '';
+    document.getElementById('contact-phone').value = '';
   }
 }
 

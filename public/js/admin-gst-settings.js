@@ -304,6 +304,12 @@ async function adminSettings() {
         <textarea id="s-address" placeholder="197 Sarakpur, Barara, Ambala" style="resize:vertical;height:80px;">${s.storeAddress || ''}</textarea>
       </div>
     </div>
+    <div style="margin-top:1.5rem;display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+      <div class="form-group"><label><i class="fab fa-facebook"></i> Facebook Link</label><input type="url" id="s-fb" value="${s.facebookLink || ''}" placeholder="https://facebook.com/..."/></div>
+      <div class="form-group"><label><i class="fab fa-instagram"></i> Instagram Link</label><input type="url" id="s-insta" value="${s.instagramLink || ''}" placeholder="https://instagram.com/..."/></div>
+      <div class="form-group"><label><i class="fab fa-twitter"></i> Twitter/X Link</label><input type="url" id="s-twitter" value="${s.twitterLink || ''}" placeholder="https://twitter.com/..."/></div>
+      <div class="form-group"><label><i class="fab fa-whatsapp"></i> WhatsApp Custom Link</label><input type="url" id="s-whatsapp-link" value="${s.whatsappLink || ''}" placeholder="https://wa.me/..."/></div>
+    </div>
     <button class="btn-primary" onclick="saveStoreSettings()">
       <i class="fas fa-save"></i> Save Store Settings
     </button>
@@ -393,11 +399,15 @@ async function saveStoreSettings() {
     storeEmail: document.getElementById('s-email')?.value || '',
     storePhone: document.getElementById('s-phone')?.value || '',
     whatsappNumber: document.getElementById('s-whatsapp')?.value || '',
-    storeAddress: document.getElementById('s-address')?.value || ''
+    storeAddress: document.getElementById('s-address')?.value || '',
+    facebookLink: document.getElementById('s-fb')?.value || '',
+    instagramLink: document.getElementById('s-insta')?.value || '',
+    twitterLink: document.getElementById('s-twitter')?.value || '',
+    whatsappLink: document.getElementById('s-whatsapp-link')?.value || ''
   };
   const r = await api('/api/admin/settings', { method: 'POST', body: data });
   if (r.error) toast('Error saving settings: ' + r.error, 'error');
-  else toast('✅ Store settings saved successfully!', 'success');
+  else toast('✅ Store & Social settings saved successfully!', 'success');
 }
 
 async function saveSaleSettings() {

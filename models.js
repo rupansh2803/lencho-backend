@@ -116,6 +116,7 @@ const categorySchema = new mongoose.Schema({
 const inquirySchema = new mongoose.Schema({
   name:    { type: String, required: true },
   email:   { type: String, required: true },
+  phone:   { type: String, default: '' },
   message: { type: String, required: true },
   status:  { type: String, enum: ['new', 'read', 'replied'], default: 'new' },
 }, { timestamps: true });

@@ -207,6 +207,7 @@ async function adminInquiries() {
             <td style="min-width:180px;">
               <div style="font-weight:700;">${iq.name}</div>
               <div style="font-size:.7rem;color:var(--gray);">${iq.email}</div>
+              <div style="font-size:.7rem;color:var(--rose-dark);font-weight:600;">${iq.phone || 'No Phone'}</div>
             </td>
             <td><div style="font-size:.85rem;max-width:400px;line-height:1.4;">${iq.message}</div></td>
             <td style="white-space:nowrap;font-size:.75rem;">${new Date(iq.createdAt).toLocaleString()}</td>
