@@ -741,14 +741,20 @@ async function syncSocialLinks() {
 }
 
 // ── INIT ──────────────────────────────────────────────────
-window.onload = () => {
-  loadUser();
-  syncCartCount();
-  syncSocialLinks();
-  loadPublicSettings();
-  navigate(location.pathname + location.search, false);
-  setTimeout(() => {
-    const ls = document.getElementById('loading-screen');
-    if (ls) ls.classList.add('hidden');
-  }, 1000);
+window.onload = async () => {
+  try {
+    await loadUser();
+    await updateCartCount();
+    await syncSocialLinks();
+    await loadPublicSettings();
+    if (typeof initHeader === 'function') initHeader();
+  } catch (e) {
+    console.error('Init Error:', e);
+  } finally {
+    navigate(location.pathname + location.search, false);
+    setTimeout(() => {
+      const ls = document.getElementById('loading-screen');
+      if (ls) ls.classList.add('hidden');
+    }, 1000);
+  }
 };
