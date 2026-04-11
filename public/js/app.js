@@ -47,11 +47,21 @@ async function api(url, opts = {}) {
       ...opts, 
       body: opts.body ? JSON.stringify(opts.body) : undefined 
     });
+    
+    // Check for non-JSON or error responses
+    if (!res.ok) {
+      const text = await res.text();
+      let errData;
+      try { errData = JSON.parse(text); } catch(e) {}
+      console.error(`API Error [${res.status}]:`, text);
+      return { error: (errData && errData.error) || `Server Error: ${res.status}` };
+    }
+    
     const data = await res.json();
     return data;
   } catch (e) {
-    console.error('API Error:', e);
-    return { error: 'Server connection issue. Please ensure the backend is running.' };
+    console.error('Fetch Error:', e);
+    return { error: 'Connection lost. Please restart your local server (npm start).' };
   }
 }
 // ── TOAST ─────────────────────────────────────────────────
@@ -251,14 +261,26 @@ function closePopup() {
   sessionStorage.setItem('popupShown', '1');
 }
 async function claimDiscount() {
-  const email = document.getElementById('popup-email').value;
+  const email = document.getElementById('popup-email')?.value;
   if (!email) { toast('Please enter your email', 'error'); return; }
   const btn = document.querySelector('.popup-form .btn-primary');
+  const form = document.querySelector('.popup-form');
+  
   btn.textContent = 'Claiming...'; btn.disabled = true;
   const r = await api('/api/discount/email', { method: 'POST', body: { email } });
-  if (r.error) { toast(r.error, 'error'); btn.textContent = 'Claim My Discount 🎁'; btn.disabled = false; return; }
-  document.getElementById('popup-result').innerHTML = `🎉 Thank you! Your code: <strong style="color:var(--rose-dark);font-size:1.1rem">WELCOME10</strong> — 10% OFF applied!`;
-  setTimeout(closePopup, 4000);
+  
+  if (r.error) { 
+    toast(r.error, 'error'); 
+    btn.textContent = 'Claim My Discount 🎁'; 
+    btn.disabled = false; 
+    return; 
+  }
+  
+  // Hide form and show result
+  if (form) form.style.display = 'none';
+  const result = document.getElementById('popup-result');
+  result.innerHTML = `<div style="text-align:center;padding:1rem;">🎉 Thank you! Your code:<br/><strong style="color:var(--rose-dark);font-size:1.6rem;display:block;margin:10px 0;">WELCOME10</strong> — 10% OFF applied!</div>`;
+  setTimeout(closePopup, 5000);
 }
 
 // ── HEADER SCROLL ─────────────────────────────────────────
