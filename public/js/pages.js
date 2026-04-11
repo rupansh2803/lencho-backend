@@ -596,17 +596,26 @@ function renderContact() {
   initScrollReveal();
 }
 
-function submitContact() {
+async function submitContact() {
   const n = document.getElementById('contact-name').value;
   const e = document.getElementById('contact-email').value;
   const m = document.getElementById('contact-message').value;
   if(!n || !e || !m) { toast('Please fill in name, email and message.', 'error'); return; }
-  toast('Your message has been sent successfully! We will get back to you soon. 💌', 'success');
-  // Clear form
-  document.getElementById('contact-name').value = '';
-  document.getElementById('contact-email').value = '';
-  document.getElementById('contact-message').value = '';
-  document.getElementById('contact-phone').value = '';
+  
+  const b = document.querySelector('.track-page button') || { disabled: false, textContent: '' };
+  const resp = await api('/api/contact', { method: 'POST', body: { name: n, email: e, message: m } });
+  
+  if (resp.error) {
+    toast(resp.error, 'error');
+  } else {
+    toast('Your message has been sent successfully! We will get back to you soon. 💌', 'success');
+    // Clear form
+    document.getElementById('contact-name').value = '';
+    document.getElementById('contact-email').value = '';
+    document.getElementById('contact-message').value = '';
+    const phone = document.getElementById('contact-phone');
+    if (phone) phone.value = '';
+  }
 }
 
 
