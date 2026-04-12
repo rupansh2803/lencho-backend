@@ -115,7 +115,9 @@ img[loading="lazy"] {
   box-shadow:0 20px 50px rgba(201,106,138,.2) !important;
 }
 .product-img{height:280px;object-fit:cover;transition:transform .5s ease !important}
-.product-card:hover .product-img{transform:scale(1.07) !important}
+.product-card:hover .product-img-wrap img.product-img { transform: scale(1.08) !important; }
+.product-card:hover .product-img-wrap img.img-hover { opacity: 1 !important; }
+.product-card:hover { transform: translateY(-8px) !important; box-shadow: 0 16px 40px rgba(201,106,138,.18) !important; background: #fff !important; }
 
 /* ── PREMIUM MODAL ──────────────────────────────────────────── */
 .modal-card{
@@ -318,8 +320,7 @@ ul{list-style:none}
 /* ── MODAL ───────────────────────────────────────────────── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:6000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
 .modal-card{background:#fff;border-radius:24px;padding:2.5rem;max-width:420px;width:90%;position:relative;animation:popIn .4s cubic-bezier(.175,.885,.32,1.275);max-height:90vh;overflow-y:auto}
-.modal-close{position:absolute;top:16px;right:20px;font-size:1.6rem;color:var(--gray);transition:var(--transition)}
-.modal-close:hover{color:var(--rose)}
+/* .modal-close is defined with full !important overrides below in the file */
 .modal-logo {
   text-align: center; margin-bottom: 1rem;
 }
@@ -1336,25 +1337,10 @@ tr:hover td{background:var(--beige)}
   font-weight: 500;
 }
 
-/* ── PRODUCT CARD HOVER — lift up, NOT white ── */
-.product-card {
-  transition: transform .3s ease, box-shadow .3s ease !important;
-  cursor: pointer;
-}
-.product-card:hover {
-  transform: translateY(-8px) !important;
-  box-shadow: 0 20px 40px rgba(201,106,138,.18) !important;
-}
-/* Image fade on hover */
-.product-card .product-img-wrap .img-hover {
-  opacity: 0;
-  transition: opacity .45s ease !important;
-}
-.product-card:hover .product-img-wrap .img-hover {
-  opacity: 1 !important;
-}
-.product-card:hover .product-img-wrap .product-img:not(.img-hover) {
-  opacity: 0;
+/* FIX: Hover Stability on Desktop */
+@media (min-width: 1024px) {
+  .product-img-wrap { pointer-events: none; }
+  .product-card { pointer-events: auto; }
 }
 
 /* ── CENTERED HERO STYLES ───────────────────────────────── */
