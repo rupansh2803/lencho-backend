@@ -391,10 +391,19 @@ async function adminAddProduct(product = null) {
       <select id="p-featured"><option value="false" ${!product?.featured?'selected':''}>No</option><option value="true" ${product?.featured?'selected':''}>Yes – Show on Homepage</option></select>
     </div>
     <div class="form-group">
-      <label>Product Images (max 5)</label>
-      <input type="file" id="p-images" accept="image/*" multiple onchange="previewImages(this)"/>
-      <div class="img-preview-grid" id="img-preview">
-        ${product?.images?.map(img=>`<img class="img-preview" src="${img}" alt=""/>`).join('')||''}
+      <label>Product Images (Image 1 = Main Display Image)</label>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;" id="img-upload-grid">
+        ${[1,2,3,4,5].map(n => {
+          const existingImg = product?.images?.[n-1] || '';
+          return `<div style="border:2px dashed var(--border);border-radius:12px;aspect-ratio:1;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;cursor:pointer;background:#fafafa;" onclick="document.getElementById('p-img-${n}').click()">
+            <input type="file" id="p-img-${n}" accept="image/*" style="display:none" onchange="previewSingleImage(this,${n})">
+            <img id="p-img-preview-${n}" src="${existingImg}" style="width:100%;height:100%;object-fit:cover;display:${existingImg?'block':'none'};" />
+            <div id="p-img-label-${n}" style="text-align:center;color:var(--gray);font-size:.75rem;display:${existingImg?'none':'block'};">
+              <i class="fas fa-plus" style="font-size:1.2rem;display:block;margin-bottom:4px;"></i>
+              ${n===1?'Main':'Image '+n}
+            </div>
+          </div>`;
+        }).join('')}
       </div>
     </div>
     <div style="display:flex;gap:1rem;">
@@ -404,15 +413,14 @@ async function adminAddProduct(product = null) {
   </div>`;
 }
 
-function previewImages(input) {
-  const preview = document.getElementById('img-preview');
-  preview.innerHTML = '';
-  Array.from(input.files).slice(0,5).forEach(f => {
-    const img = document.createElement('img');
-    img.className = 'img-preview';
-    img.src = URL.createObjectURL(f);
-    preview.appendChild(img);
-  });
+function previewSingleImage(input, n) {
+  const preview = document.getElementById('p-img-preview-' + n);
+  const label = document.getElementById('p-img-label-' + n);
+  if (input.files && input.files[0]) {
+    preview.src = URL.createObjectURL(input.files[0]);
+    preview.style.display = 'block';
+    if (label) label.style.display = 'none';
+  }
 }
 
 async function saveNewProduct() {
@@ -427,8 +435,10 @@ async function saveNewProduct() {
   fd.append('hsn', document.getElementById('p-hsn').value);
   fd.append('description', document.getElementById('p-desc').value);
   fd.append('featured', document.getElementById('p-featured').value);
-  const files = document.getElementById('p-images').files;
-  Array.from(files).forEach(f => fd.append('images', f));
+  for (let i = 1; i <= 5; i++) {
+    const inp = document.getElementById('p-img-' + i);
+    if (inp && inp.files && inp.files[0]) fd.append('images', inp.files[0]);
+  }
   const res = await fetch('/api/products', { method: 'POST', body: fd });
   const r = await res.json();
   if (r.error) { toast(r.error, 'error'); return; }
@@ -458,8 +468,10 @@ async function saveEditProduct(id) {
   fd.append('hsn', document.getElementById('p-hsn').value);
   fd.append('description', document.getElementById('p-desc').value);
   fd.append('featured', document.getElementById('p-featured').value);
-  const files = document.getElementById('p-images').files;
-  Array.from(files).forEach(f => fd.append('images', f));
+  for (let i = 1; i <= 5; i++) {
+    const inp = document.getElementById('p-img-' + i);
+    if (inp && inp.files && inp.files[0]) fd.append('images', inp.files[0]);
+  }
   const res = await fetch('/api/products/' + id, { method: 'PUT', body: fd });
   const r = await res.json();
   if (r.error) { toast(r.error, 'error'); return; }

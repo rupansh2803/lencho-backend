@@ -550,53 +550,25 @@ async function loadTestimonials() {
   } catch (e) { container.innerHTML = '<div style="text-align:center;color:var(--gray);">Luxury Social Proof Incoming...</div>'; }
 }
 
-async function startOfferTimer() {
-  let target;
+async function loadHomeCategories() {
+  const container = document.getElementById('home-categories-grid');
+  if (!container) return;
   try {
-    const s = await api('/api/settings');
-    if (s.saleEndDate) target = new Date(s.saleEndDate);
-  } catch (e) {}
-  
-  if (!target) {
-    target = new Date();
-    target.setHours(target.getHours() + 24);
-  }
-
-  function update() {
-    const now = new Date();
-    const diff = target - now;
-    if (diff <= 0) return;
-    const h = Math.floor(diff / (1000 * 60 * 60));
-    const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const s = Math.floor((diff % (1000 * 60)) / 1000);
-    const set = (id, val) => {
-      const el = document.getElementById(id);
-      if (el) el.innerText = val.toString().padStart(2, '0');
-    };
-    set('t-hours', h); set('t-mins', m); set('t-secs', s);
-  }
-  update();
-  setInterval(update, 1000);
-}
-
-async function loadFeaturedProducts() {
-  const grid = document.getElementById('featured-grid');
-  if (!grid) return;
-  try {
-    const r = await api('/api/products?featured=true');
-    console.log('Featured products response:', r);
-    if (r && Array.isArray(r) && r.length > 0) {
-      grid.innerHTML = r.map(productCardHTML).join('');
-      initScrollReveal();
-    } else if (Array.isArray(r) && r.length === 0) {
-      grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:3rem; color:var(--gray);">No featured products available. Explore all products below. ✦</div>';
-    } else {
-      console.error('Invalid response format:', r);
-      grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:3rem; color:var(--rose);">Unable to load products. Please refresh the page. ✦</div>';
+    const cats = await api('/api/categories');
+    if (!cats || cats.length === 0) {
+      container.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--gray);">No collections available yet.</div>';
+      return;
     }
+    container.innerHTML = cats.map((c, i) => `
+      <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
+        <img class="cat-img" src="${c.image}" alt="${c.name}" onerror="this.src='/images/hero.png'"/>
+        <div class="cat-overlay"></div>
+        <div class="cat-content"><div class="cat-name">${c.name}</div><button class="cat-btn">Shop Now</button></div>
+      </div>
+    `).join('');
+    initScrollReveal();
   } catch (e) {
-    console.error('Featured products error:', e);
-    grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:3rem; color:var(--rose);">Unable to load products. Please check your connection. ✦</div>';
+    container.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--gray);">Unable to load collections.</div>';
   }
 }
 
