@@ -107,6 +107,7 @@ function handleUserClick() {
 async function openAuthModal() {
   document.getElementById('auth-modal').style.display = 'flex';
   document.body.style.overflow = 'hidden';
+  document.documentElement.style.overflow = 'hidden';
   // Load CAPTCHA
   const r = await api('/api/captcha');
   if (r.q) {
@@ -117,6 +118,7 @@ async function openAuthModal() {
 function closeAuthModal() {
   document.getElementById('auth-modal').style.display = 'none';
   document.body.style.overflow = '';
+  document.documentElement.style.overflow = '';
 }
 function switchToSignup() {
   document.getElementById('auth-login-form').style.display = 'none';
@@ -265,6 +267,7 @@ async function buyNow(productId) {
 function closePopup() {
   document.getElementById('discount-popup').style.display = 'none';
   document.body.style.overflow = '';
+  document.documentElement.style.overflow = '';
   sessionStorage.setItem('popupShown', '1');
 }
 async function claimDiscount() {
@@ -527,6 +530,7 @@ async function renderHome() {
     if (!sessionStorage.getItem('popupShown')) {
       document.getElementById('discount-popup').style.display = 'flex';
       document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
     }
   }, 5000);
 }
@@ -537,6 +541,11 @@ async function loadTestimonials() {
   if (!container) return;
   try {
     let t = await api('/api/testimonials');
+    if (t && t.hidden) {
+      const parentSection = container.closest('.testimonials');
+      if (parentSection) parentSection.style.display = 'none';
+      return;
+    }
     if (!t || t.length === 0) {
       t = [
         { name: 'Anjali Sharma', city: 'Delhi', rating: 5, comment: 'The jewelry is absolutely stunning! The finish and quality are even better than in the photos. Highly recommended! ✦' },

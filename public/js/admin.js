@@ -650,11 +650,23 @@ async function adminDiscounts() {
 
 // ── TESTIMONIALS MANAGEMENT ─────────────────────────────────
 async function adminTestimonials() {
+  const settings = await api('/api/settings');
+  const showTestimonials = settings.showTestimonials !== false; // defaults to true
+  
   document.getElementById('admin-content').innerHTML = `
-    <div class="admin-header"><h1 class="admin-page-title">Manage Testimonials</h1><button class="btn-primary" onclick="showAddTestimonial()">+ Add Review</button></div>
+    <div class="admin-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
+      <h1 class="admin-page-title">Manage Testimonials</h1>
+      <div style="display:flex;gap:1.5rem;align-items:center;">
+        <label class="switch" style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+          <span style="font-size:0.9rem;font-weight:600;">Show on Website:</span>
+          <input type="checkbox" id="toggle-testi-vis" ${showTestimonials ? 'checked' : ''} onchange="toggleTestimonialVisibility(this.checked)" style="width:18px;height:18px;cursor:pointer;">
+        </label>
+        <button class="btn-primary" onclick="showAddTestimonial()">+ Add Review</button>
+      </div>
+    </div>
     <div id="testi-list-container" class="admin-table-wrap">Loading...</div>
   `;
-  const t = await api('/api/testimonials');
+  const t = await api('/api/admin/testimonials');
   const grid = document.getElementById('testi-list-container');
   grid.innerHTML = `
     <table>
@@ -670,6 +682,15 @@ async function adminTestimonials() {
       `).join('')}</tbody>
     </table>
   `;
+}
+
+async function toggleTestimonialVisibility(state) {
+  const r = await api('/api/admin/settings', { method: 'POST', body: { showTestimonials: state } });
+  if (r.success) {
+    toast('Visibility updated!', 'success');
+  } else {
+    toast(r.error || 'Failed to update visibility', 'error');
+  }
 }
 
 function showAddTestimonial() {

@@ -201,6 +201,7 @@ async function seedSettings() {
       { key: 'storeEmail', value: 'hello@lencho.in', label: 'Store Email' },
       { key: 'storePhone', value: '+91 9876543210', label: 'Store Phone' },
       { key: 'gstin', value: '27XXXXX1234X1ZX', label: 'GSTIN Number' },
+      { key: 'showTestimonials', value: true, label: 'Show Testimonials Section' },
       { key: 'saleEndDate', value: new Date(Date.now() + 86400000).toISOString(), label: 'Sale End Date (ISO)' },
       { key: 'smtpHost', value: 'smtp.gmail.com', label: 'SMTP Host' },
       { key: 'smtpPort', value: 465, label: 'SMTP Port' },
@@ -385,7 +386,20 @@ app.get('/api/admin/gst-data', requireAdmin, async (req, res) => {
 // ── TESTIMONIALS ──────────────────────────────────────────────
 app.get('/api/testimonials', async (req, res) => {
   try {
+    const showTesti = await Settings.findOne({ key: 'showTestimonials' });
+    if (showTesti && showTesti.value === false) {
+      return res.json({ hidden: true });
+    }
     const t = await Testimonial.find({ approved: true }).sort('-createdAt');
+    res.json(t);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/testimonials', requireAdmin, async (req, res) => {
+  try {
+    const t = await Testimonial.find().sort('-createdAt');
     res.json(t);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -397,6 +411,24 @@ app.post('/api/admin/testimonials', requireAdmin, async (req, res) => {
     const t = new Testimonial(req.body);
     await t.save();
     res.json({ message: 'Testimonial added', testimonial: t });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/testimonials/:id', requireAdmin, async (req, res) => {
+  try {
+    const t = await Testimonial.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    res.json({ message: 'Testimonial updated', testimonial: t });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/testimonials/:id', requireAdmin, async (req, res) => {
+  try {
+    await Testimonial.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Testimonial deleted' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
