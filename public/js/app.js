@@ -798,18 +798,19 @@ window.onload = async () => {
 
 // ── GOOGLE OAUTH ─────────────────────────────────────────────
 const GOOGLE_CLIENT_ID = '1074667694021-1b9v8blpaq6l6ik0na3fq6c8prg9hm3q.apps.googleusercontent.com';
-let _googleClickedBtn = null; // track which button was clicked
+let _googleClickedBtn = null;
 
 function signInWithGoogle(event) {
-  // Track the button that triggered this call
   _googleClickedBtn = event && event.currentTarget ? event.currentTarget : null;
   if (_googleClickedBtn) { _googleClickedBtn.disabled = true; _googleClickedBtn.textContent = '⏳ Connecting...'; }
   
-  // Load Google Identity Services library on first use
+  console.log('[Google Auth] Starting sign-in flow...');
+  
   if (!window.google || !window.google.accounts) {
+    console.log('[Google Auth] Loading GIS library...');
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
-    script.onload = () => openGooglePopup();
+    script.onload = () => { console.log('[Google Auth] GIS library loaded'); openGooglePopup(); };
     script.onerror = () => { toast('Could not load Google SDK. Check connection.', 'error'); resetGoogleBtns(); };
     document.head.appendChild(script);
   } else {
@@ -818,42 +819,62 @@ function signInWithGoogle(event) {
 }
 
 function openGooglePopup() {
-  // Use OAuth2 Token Client — opens a proper popup like account chooser
-  const client = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: 'openid email profile',
-    callback: async (tokenResponse) => {
-      if (tokenResponse.error) {
-        // Only show toast for real errors, not just closing the popup
-        if (tokenResponse.error !== 'popup_closed_by_user' && tokenResponse.error !== 'popup_closed') {
-          toast('Google sign-in failed', 'error');
+  console.log('[Google Auth] Opening popup with client ID:', GOOGLE_CLIENT_ID.substring(0, 20) + '...');
+  
+  try {
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: 'openid email profile',
+      callback: async (tokenResponse) => {
+        console.log('[Google Auth] Token callback received:', JSON.stringify(tokenResponse).substring(0, 200));
+        
+        if (tokenResponse.error) {
+          console.error('[Google Auth] Token error:', tokenResponse.error, tokenResponse.error_description);
+          if (tokenResponse.error !== 'popup_closed_by_user' && tokenResponse.error !== 'popup_closed') {
+            toast('Google error: ' + (tokenResponse.error_description || tokenResponse.error), 'error');
+          }
+          resetGoogleBtns();
+          return;
+        }
+        
+        if (!tokenResponse.access_token) {
+          console.error('[Google Auth] No access_token received');
+          toast('Google login failed — no token received', 'error');
+          resetGoogleBtns();
+          return;
+        }
+        
+        console.log('[Google Auth] Got access token, fetching profile...');
+        try {
+          const userInfoResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+          });
+          const profile = await userInfoResp.json();
+          console.log('[Google Auth] Profile received:', profile.email, profile.name);
+          await completeGoogleLogin(profile);
+        } catch(e) {
+          console.error('[Google Auth] Profile fetch error:', e);
+          toast('Failed to get Google profile: ' + e.message, 'error');
+          resetGoogleBtns();
+        }
+      },
+      error_callback: (err) => {
+        console.error('[Google Auth] Error callback:', JSON.stringify(err));
+        const errType = err?.type || err?.message || 'unknown';
+        if (!errType.includes('popup_closed') && !errType.includes('access_denied')) {
+          toast('Google sign-in error: ' + errType, 'error');
         }
         resetGoogleBtns();
-        return;
       }
-      // Fetch user profile using access token
-      try {
-        const userInfoResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
-        });
-        const profile = await userInfoResp.json();
-        await completeGoogleLogin(profile);
-      } catch(e) {
-        toast('Failed to get Google profile info', 'error');
-        resetGoogleBtns();
-      }
-    },
-    error_callback: (err) => {
-      // 'popup_closed_by_user' = user just closed window, not a real error
-      const errType = err?.type || err?.message || '';
-      if (!errType.includes('popup_closed') && !errType.includes('access_denied')) {
-        toast('Google sign-in failed: ' + errType, 'error');
-      }
-      resetGoogleBtns();
-    }
-  });
-  
-  client.requestAccessToken({ prompt: 'select_account' });
+    });
+    
+    client.requestAccessToken({ prompt: 'select_account' });
+    console.log('[Google Auth] Popup requested');
+  } catch (e) {
+    console.error('[Google Auth] initTokenClient failed:', e);
+    toast('Google login setup failed: ' + e.message, 'error');
+    resetGoogleBtns();
+  }
 }
 
 function resetGoogleBtns() {
@@ -868,10 +889,13 @@ async function completeGoogleLogin(profile) {
   const { email, name, picture, sub: googleId } = profile;
   if (!email) { toast('Could not get email from Google', 'error'); resetGoogleBtns(); return; }
   
+  console.log('[Google Auth] Sending to backend:', email, name);
   const result = await api('/api/auth/google', {
     method: 'POST',
     body: { email, name, picture, googleId }
   });
+  
+  console.log('[Google Auth] Backend response:', JSON.stringify(result));
   
   if (result.error) {
     toast(result.error, 'error');
@@ -885,7 +909,6 @@ async function completeGoogleLogin(profile) {
   await updateCartCount();
   toast(`🎉 Welcome, ${result.user.name}! ✦`, 'success');
   
-  // Redirect: admin → admin panel, user → dashboard
   if (currentUser.role === 'admin') {
     navigate('/admin');
   } else {
