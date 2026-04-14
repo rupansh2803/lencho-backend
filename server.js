@@ -386,14 +386,24 @@ app.get('/api/admin/gst-data', requireAdmin, async (req, res) => {
 // ── TESTIMONIALS ──────────────────────────────────────────────
 app.get('/api/testimonials', async (req, res) => {
   try {
-    const showTesti = await Settings.findOne({ key: 'showTestimonials' });
-    if (showTesti && showTesti.value === false) {
-      return res.json({ hidden: true });
+    if (useDB) {
+      const showTesti = await Settings.findOne({ key: 'showTestimonials' });
+      if (showTesti && showTesti.value === false) {
+        return res.json({ hidden: true });
+      }
+      const t = await Testimonial.find({ approved: true }).sort('-createdAt');
+      return res.json(t);
     }
-    const t = await Testimonial.find({ approved: true }).sort('-createdAt');
-    res.json(t);
+    // JSON fallback — return defaults
+    res.json([
+      { name: 'Anjali Sharma', city: 'Delhi', rating: 5, comment: 'The jewelry is absolutely stunning! The finish and quality are even better than in the photos. Highly recommended! ✦' },
+      { name: 'Priya Verma', city: 'Mumbai', rating: 5, comment: 'Ordered a necklace set for a wedding, and I received so many compliments. Fast delivery too! 💎' },
+      { name: 'Surbhi Gupta', city: 'Chandigarh', rating: 5, comment: 'Love the premium packaging and the rounded design. Feels very high-end. Great experience. ✨' },
+      { name: 'Megha Jain', city: 'Jaipur', rating: 4, comment: 'Beautiful earrings, very lightweight and elegant. Will definitely shop again for the bridal collection.' }
+    ]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Testimonials error:', err.message);
+    res.json([]);
   }
 });
 

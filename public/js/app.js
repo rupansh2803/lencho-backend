@@ -798,108 +798,116 @@ window.onload = async () => {
 
 // ── GOOGLE OAUTH ─────────────────────────────────────────────
 const GOOGLE_CLIENT_ID = '1074667694021-1b9v8blpaq6l6ik0na3fq6c8prg9hm3q.apps.googleusercontent.com';
-let _googleClickedBtn = null;
 
 function signInWithGoogle(event) {
-  _googleClickedBtn = event && event.currentTarget ? event.currentTarget : null;
-  if (_googleClickedBtn) { _googleClickedBtn.disabled = true; _googleClickedBtn.textContent = '⏳ Connecting...'; }
+  const btn = event && event.currentTarget ? event.currentTarget : null;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Connecting...'; }
   
-  console.log('[Google Auth] Starting sign-in flow...');
-  
+  // Load Google Identity Services library
   if (!window.google || !window.google.accounts) {
-    console.log('[Google Auth] Loading GIS library...');
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
-    script.onload = () => { console.log('[Google Auth] GIS library loaded'); openGooglePopup(); };
-    script.onerror = () => { toast('Could not load Google SDK. Check connection.', 'error'); resetGoogleBtns(); };
+    script.onload = () => doGoogleSignIn(btn);
+    script.onerror = () => { toast('Could not load Google. Check connection.', 'error'); resetBtn(btn); };
     document.head.appendChild(script);
   } else {
-    openGooglePopup();
+    doGoogleSignIn(btn);
   }
 }
 
-function openGooglePopup() {
-  console.log('[Google Auth] Opening popup with client ID:', GOOGLE_CLIENT_ID.substring(0, 20) + '...');
-  
+function doGoogleSignIn(btn) {
   try {
-    const client = google.accounts.oauth2.initTokenClient({
+    // Use the simpler initialize + prompt approach (One Tap)
+    google.accounts.id.initialize({
       client_id: GOOGLE_CLIENT_ID,
-      scope: 'openid email profile',
-      callback: async (tokenResponse) => {
-        console.log('[Google Auth] Token callback received:', JSON.stringify(tokenResponse).substring(0, 200));
-        
-        if (tokenResponse.error) {
-          console.error('[Google Auth] Token error:', tokenResponse.error, tokenResponse.error_description);
-          if (tokenResponse.error !== 'popup_closed_by_user' && tokenResponse.error !== 'popup_closed') {
-            toast('Google error: ' + (tokenResponse.error_description || tokenResponse.error), 'error');
-          }
-          resetGoogleBtns();
-          return;
-        }
-        
-        if (!tokenResponse.access_token) {
-          console.error('[Google Auth] No access_token received');
-          toast('Google login failed — no token received', 'error');
-          resetGoogleBtns();
-          return;
-        }
-        
-        console.log('[Google Auth] Got access token, fetching profile...');
-        try {
-          const userInfoResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
-          });
-          const profile = await userInfoResp.json();
-          console.log('[Google Auth] Profile received:', profile.email, profile.name);
-          await completeGoogleLogin(profile);
-        } catch(e) {
-          console.error('[Google Auth] Profile fetch error:', e);
-          toast('Failed to get Google profile: ' + e.message, 'error');
-          resetGoogleBtns();
-        }
-      },
-      error_callback: (err) => {
-        console.error('[Google Auth] Error callback:', JSON.stringify(err));
-        const errType = err?.type || err?.message || 'unknown';
-        if (!errType.includes('popup_closed') && !errType.includes('access_denied')) {
-          toast('Google sign-in error: ' + errType, 'error');
-        }
-        resetGoogleBtns();
-      }
+      callback: (response) => handleGoogleCredential(response, btn),
+      auto_select: false,
+      cancel_on_tap_outside: false
     });
     
-    client.requestAccessToken({ prompt: 'select_account' });
-    console.log('[Google Auth] Popup requested');
+    // Also try the token approach as fallback
+    try {
+      const tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: 'openid email profile',
+        callback: async (tokenResponse) => {
+          if (tokenResponse.error) {
+            if (tokenResponse.error !== 'popup_closed_by_user') {
+              toast('Google: ' + (tokenResponse.error_description || tokenResponse.error), 'error');
+            }
+            resetBtn(btn);
+            return;
+          }
+          try {
+            const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+            });
+            const profile = await resp.json();
+            await completeGoogleLogin(profile, btn);
+          } catch(e) {
+            toast('Failed to get Google profile', 'error');
+            resetBtn(btn);
+          }
+        },
+        error_callback: (err) => {
+          const t = err?.type || '';
+          if (!t.includes('popup_closed') && !t.includes('access_denied')) {
+            toast('Google error: ' + t, 'error');
+          }
+          resetBtn(btn);
+        }
+      });
+      tokenClient.requestAccessToken({ prompt: 'select_account' });
+    } catch(e) {
+      // If token client fails, fall back to One Tap prompt
+      google.accounts.id.prompt((notification) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          toast('Google Sign-In not available. Please use email login.', 'error');
+          resetBtn(btn);
+        }
+      });
+    }
   } catch (e) {
-    console.error('[Google Auth] initTokenClient failed:', e);
-    toast('Google login setup failed: ' + e.message, 'error');
-    resetGoogleBtns();
+    toast('Google login failed: ' + e.message, 'error');
+    resetBtn(btn);
   }
 }
 
-function resetGoogleBtns() {
-  if (_googleClickedBtn) {
-    _googleClickedBtn.disabled = false;
-    _googleClickedBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg> Continue with Google`;
-    _googleClickedBtn = null;
+function handleGoogleCredential(response, btn) {
+  // Decode the JWT credential to get user info
+  try {
+    const payload = JSON.parse(atob(response.credential.split('.')[1]));
+    completeGoogleLogin({
+      email: payload.email,
+      name: payload.name,
+      picture: payload.picture,
+      sub: payload.sub
+    }, btn);
+  } catch(e) {
+    toast('Failed to process Google credential', 'error');
+    resetBtn(btn);
   }
 }
 
-async function completeGoogleLogin(profile) {
+function resetBtn(btn) {
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg> Continue with Google`;
+  }
+}
+
+async function completeGoogleLogin(profile, btn) {
   const { email, name, picture, sub: googleId } = profile;
-  if (!email) { toast('Could not get email from Google', 'error'); resetGoogleBtns(); return; }
+  if (!email) { toast('Could not get email from Google', 'error'); resetBtn(btn); return; }
   
-  console.log('[Google Auth] Sending to backend:', email, name);
   const result = await api('/api/auth/google', {
     method: 'POST',
     body: { email, name, picture, googleId }
   });
   
-  console.log('[Google Auth] Backend response:', JSON.stringify(result));
-  
   if (result.error) {
     toast(result.error, 'error');
-    resetGoogleBtns();
+    resetBtn(btn);
     return;
   }
   
