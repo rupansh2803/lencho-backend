@@ -422,65 +422,87 @@ function productCardHTML(p) {
 // ── HOME PAGE ─────────────────────────────────────────────
 async function renderHome() {
   const app = document.getElementById('app');
+
+  // Fetch CMS settings
+  let cms = {};
+  try {
+    const settings = await api('/api/settings');
+    if (Array.isArray(settings)) settings.forEach(s => { cms[s.key] = s.value; });
+  } catch(e) {}
+
+  const g = (k, def) => cms[k] || def || '';
+  const isOn = (k) => cms[k] === true || cms[k] === 'true' || cms[k] === undefined;
+
+  // Hero media
+  const heroMediaType = g('heroMediaType', 'image');
+  const heroImage = g('heroImage', 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1920&q=100');
+  const heroVideo = g('heroVideoUrl', '');
+  const heroBackground = heroMediaType === 'video' && heroVideo
+    ? ''
+    : `background: url('${heroImage}') center/cover no-repeat;`;
+
   app.innerHTML = `
-  <section class="hero-premium" style="background: url('https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1920&q=100') center/cover no-repeat; justify-content: center; text-align: center; border-radius:0; position:relative;">
+  <section class="hero-premium" style="${heroBackground} justify-content: center; text-align: center; border-radius:0; position:relative;">
+    ${heroMediaType === 'video' && heroVideo ? `<video autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;"><source src="${heroVideo}" type="video/mp4"></video>` : ''}
     <div style="position:absolute; inset:0; background:linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.4)); z-index:1;"></div>
     
-    <div style="position:absolute;top:0;left:0;right:0;background:linear-gradient(90deg,rgba(201,149,76,.95) 0%,rgba(242,208,122,.85) 50%,rgba(201,149,76,.95) 100%);padding:12px;z-index:3;color:var(--dark);font-weight:700;font-size:.9rem;letter-spacing:.05em;text-transform:uppercase;text-align:center;">
-      🎁 LIMITED OFFER: FLAT 50% OFF ON SELECTED ITEMS + FREE DELIVERY!
-    </div>
+    ${isOn('showOfferBanner') ? `<div style="position:absolute;top:0;left:0;right:0;background:linear-gradient(90deg,rgba(201,149,76,.95) 0%,rgba(242,208,122,.85) 50%,rgba(201,149,76,.95) 100%);padding:12px;z-index:3;color:var(--dark);font-weight:700;font-size:.9rem;letter-spacing:.05em;text-transform:uppercase;text-align:center;">
+      ${g('offerBanner', '🎁 LIMITED OFFER: FLAT 50% OFF ON SELECTED ITEMS + FREE DELIVERY!')}
+    </div>` : ''}
     
     <div class="hero-p-centered reveal" style="position:relative; z-index:2; padding: 60px 5% 0; margin-top:20px;">
-      <div class="hero-badge" style="color:var(--gold-light);background:rgba(0,0,0,0.3); border:1.5px solid rgba(201,168,76,.4);padding:12px 28px;border-radius:99px;display:inline-block;margin-bottom:1.5rem;letter-spacing:.25em;font-size:.85rem;backdrop-filter:blur(8px);font-weight:600;">✦ PREMIUM COLLECTION 2026 ✦</div>
-      <h1 class="hero-p-title" style="margin-bottom:1.5rem; font-size: clamp(2.5rem, 7vw, 5rem); line-height:1.15; text-shadow: 0 4px 20px rgba(0,0,0,0.5);">Luxury Redefined<br/><span style="color:var(--gold-light); font-family:'Playfair Display',serif; font-style:italic;">For The Modern Woman</span></h1>
-      <p class="hero-p-sub" style="max-width:700px; margin: 0 auto 1.5rem; color:#fff; font-size:1.15rem; line-height:1.7; font-weight:500; text-shadow: 0 2px 10px rgba(0,0,0,0.8);">Premium artificial jewellery starting at just ₹99. Look expensive, spend smart. 4.8⭐ trusted by 50K+ customers.</p>
+      <div class="hero-badge" style="color:var(--gold-light);background:rgba(0,0,0,0.3); border:1.5px solid rgba(201,168,76,.4);padding:12px 28px;border-radius:99px;display:inline-block;margin-bottom:1.5rem;letter-spacing:.25em;font-size:.85rem;backdrop-filter:blur(8px);font-weight:600;">${g('heroBadge', '✦ PREMIUM COLLECTION 2026 ✦')}</div>
+      <h1 class="hero-p-title" style="margin-bottom:1.5rem; font-size: clamp(2.5rem, 7vw, 5rem); line-height:1.15; text-shadow: 0 4px 20px rgba(0,0,0,0.5);">${g('heroTitle', 'Luxury Redefined')}<br/><span style="color:var(--gold-light); font-family:'Playfair Display',serif; font-style:italic;">${g('heroSubtitle', 'For The Modern Woman')}</span></h1>
+      <p class="hero-p-sub" style="max-width:700px; margin: 0 auto 1.5rem; color:#fff; font-size:1.15rem; line-height:1.7; font-weight:500; text-shadow: 0 2px 10px rgba(0,0,0,0.8);">${g('heroDescription', 'Premium artificial jewellery starting at just ₹99. Look expensive, spend smart. 4.8⭐ trusted by 50K+ customers.')}</p>
       
       <div class="hero-btns" style="display:flex; justify-content:center; gap:1rem; flex-wrap:wrap; margin-bottom:2rem;">
-        <button class="btn-gold" style="padding:18px 42px; font-size:1rem; font-weight:700;box-shadow:0 8px 25px rgba(201,149,76,.4);" onclick="navigate('/products')">🛍️ Shop Now & Save</button>
-        <button class="btn-outline" style="padding:18px 42px; font-size:1rem; color:#fff; border-color:rgba(255,255,255,.7); border-width:2px;" onclick="navigate('/products?category=earrings')">View Collections</button>
+        <button class="btn-gold" style="padding:18px 42px; font-size:1rem; font-weight:700;box-shadow:0 8px 25px rgba(201,149,76,.4);" onclick="navigate('/products')">${g('heroButton1Text', '🛍️ Shop Now & Save')}</button>
+        <button class="btn-outline" style="padding:18px 42px; font-size:1rem; color:#fff; border-color:rgba(255,255,255,.7); border-width:2px;" onclick="navigate('/products?category=earrings')">${g('heroButton2Text', 'View Collections')}</button>
       </div>
     </div>
   </section>
 
-  <!-- TRUST HUB -->
+  ${isOn('showTrustHub') ? `<!-- TRUST HUB -->
   <div class="trust-hub" style="background:linear-gradient(135deg, rgba(201,106,138,.08) 0%, rgba(201,149,76,.08) 100%);">
     <div class="trust-item"><i class="fas fa-truck-fast"></i> <span><strong>Free</strong> Delivery</span></div>
     <div class="trust-item"><i class="fas fa-wallet"></i> <span><strong>Cash on</strong> Delivery</span></div>
     <div class="trust-item"><i class="fas fa-rotate-left"></i> <span><strong>7-Day</strong> Returns</span></div>
     <div class="trust-item"><i class="fas fa-shield-check"></i> <span><strong>100%</strong> Authentic</span></div>
-  </div>
+  </div>` : ''}
 
-  <section class="promo-limited-banner">
+  ${isOn('showPromo') ? `<section class="promo-limited-banner">
     <div class="promo-content reveal-left">
       <div class="hero-badge" style="background:rgba(255,255,255,0.1); border-color:rgba(255,255,255,0.2); color:#fff; margin-bottom:1rem;">✦ LIMITED EDITION 2026 ✦</div>
-      <h2 style="font-family:'Playfair Display',serif; font-size:2.8rem; margin-bottom:1rem; line-height:1.2;">Exclusive Seasonal Drop<br/><span style="color:var(--gold-light);">Sale Ends In</span></h2>
+      <h2 style="font-family:'Playfair Display',serif; font-size:2.8rem; margin-bottom:1rem; line-height:1.2;">${g('promoTitle', 'Exclusive Seasonal Drop')}<br/><span style="color:var(--gold-light);">${g('promoSubtitle', 'Sale Ends In')}</span></h2>
       <div class="promo-timer" id="promo-timer">
         <div class="timer-box"><span class="timer-val" id="t-days">00</span><span class="timer-label">Days</span></div>
         <div class="timer-box"><span class="timer-val" id="t-hours">00</span><span class="timer-label">Hours</span></div>
         <div class="timer-box"><span class="timer-val" id="t-mins">00</span><span class="timer-label">Mins</span></div>
         <div class="timer-box"><span class="timer-val" id="t-secs">00</span><span class="timer-label">Secs</span></div>
       </div>
-      <p style="color:rgba(255,255,255,0.7); max-width:400px; margin-bottom:2rem;">Our most awaited collection is here. Limited quantities available. Grab yours before the clock strikes zero.</p>
-      <button class="btn-gold" onclick="navigate('/products')">Explore Collection <i class="fas fa-arrow-right"></i></button>
+      <p style="color:rgba(255,255,255,0.7); max-width:400px; margin-bottom:2rem;">${g('promoDescription', 'Our most awaited collection is here. Limited quantities available.')}</p>
+      <button class="btn-gold" onclick="navigate('/products')">${g('promoButtonText', 'Explore Collection')} <i class="fas fa-arrow-right"></i></button>
     </div>
     <div class="promo-image reveal-right" style="flex:1; max-width:400px; position:relative; z-index:2;">
-      <img src="https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&w=800" style="width:100%; border-radius:24px; box-shadow:0 30px 60px rgba(0,0,0,0.5); transform:rotate(2deg);" alt="Promo"/>
+      ${g('promoMediaType') === 'video' && g('promoVideoUrl') 
+        ? `<video autoplay muted loop playsinline style="width:100%; border-radius:24px; box-shadow:0 30px 60px rgba(0,0,0,0.5);"><source src="${g('promoVideoUrl')}" type="video/mp4"></video>`
+        : `<img src="${g('promoImage', 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&w=800')}" style="width:100%; border-radius:24px; box-shadow:0 30px 60px rgba(0,0,0,0.5); transform:rotate(2deg);" alt="Promo"/>`
+      }
     </div>
-  </section>
+  </section>` : ''}
 
-  <section class="categories" style="padding:4rem 5%;">
+  ${isOn('showCollections') ? `<section class="categories" style="padding:4rem 5%;">
     <div class="section-header reveal">
       <div class="section-eyebrow">Shop by Category</div>
       <h2 class="section-title">Exclusive Collections</h2>
       <div class="divider"></div>
     </div>
     <div class="categories-grid" id="home-categories-grid">
-      <!-- Loaded dynamically via loadHomeCategories() -->
       <div style="grid-column:1/-1;text-align:center;color:var(--gray);">Loading exclusive collections...</div>
     </div>
-  </section>
+  </section>` : ''}
 
-  <!-- FEATURED PRODUCTS -->
+  ${isOn('showFeaturedProducts') ? `<!-- FEATURED PRODUCTS -->
   <section style="background:var(--beige);">
     <div class="section-header reveal">
       <div class="section-eyebrow">Bestsellers</div>
@@ -489,9 +511,9 @@ async function renderHome() {
     </div>
     <div class="products-grid" id="featured-grid"></div>
     <div style="text-align:center;margin-top:3rem;"><button class="btn-outline" onclick="navigate('/products')">View All Collections <i class="fas fa-arrow-right"></i></button></div>
-  </section>
+  </section>` : ''}
 
-  <!-- TESTIMONIALS -->
+  ${isOn('showTestimonials') ? `<!-- TESTIMONIALS -->
   <section class="testimonials">
     <div class="section-header reveal">
       <div class="section-eyebrow" style="color:var(--gold-light);">Happy Customers</div>
@@ -499,15 +521,15 @@ async function renderHome() {
       <div class="divider"></div>
     </div>
     <div class="testi-grid" id="testi-grid">
-      <div style="grid-column:1/-1;text-align:center;color:var(--gray);">Luxury Social Proof Incoming...</div>
+      <div style="grid-column:1/-1;text-align:center;color:var(--gray);">Loading reviews...</div>
     </div>
-  </section>`;
+  </section>` : ''}`;
 
   createParticles();
-  loadHomeCategories();
-  loadFeaturedProducts();
-  loadTestimonials();
-  startOfferTimer();
+  if (isOn('showCollections')) loadHomeCategories();
+  if (isOn('showFeaturedProducts')) loadFeaturedProducts();
+  if (isOn('showTestimonials')) loadTestimonials();
+  if (isOn('showPromo')) startOfferTimer();
   initScrollReveal();
   setTimeout(() => {
     if (!sessionStorage.getItem('popupShown')) {

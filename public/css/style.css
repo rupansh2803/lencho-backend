@@ -3626,6 +3626,15 @@ label[for="captcha"],
     order: -1
   }
 
+  .site-logo {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .site-logo:hover img {
+    transform: scale(1.05);
+  }
+
   /* Hamburger on left */
   .main-nav {
     position: fixed;

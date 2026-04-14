@@ -148,6 +148,7 @@ function buildAdminPanel() {
         <div class="admin-menu-item" id="am-users" onclick="adminTab('users')"><i class="fas fa-users" style="width:20px;"></i> Users</div>
         <div class="admin-menu-item" id="am-gst" onclick="adminTab('gst')"><i class="fas fa-file-invoice" style="width:20px;"></i> GST Hub</div>
         <div class="admin-menu-item" id="am-testimonials" onclick="adminTab('testimonials')"><i class="fas fa-comment-dots" style="width:20px;"></i> Testimonials</div>
+        <div class="admin-menu-item" id="am-site-manager" onclick="adminTab('site-manager')"><i class="fas fa-paint-brush" style="width:20px;"></i> Site Manager</div>
         <div class="admin-menu-item" id="am-settings" onclick="adminTab('settings')"><i class="fas fa-cog" style="width:20px;"></i> Store Settings</div>
         <div style="border-top:1px solid rgba(0,0,0,.05);margin-top:1rem;padding-top:1rem;">
           <div class="admin-menu-item" onclick="exitAdmin()"><i class="fas fa-home" style="width:20px;"></i> View Site</div>
@@ -190,6 +191,7 @@ function adminTab(tab) {
   if (tab === 'users') adminUsers();
   if (tab === 'gst') adminGST();
   if (tab === 'testimonials') adminTestimonials();
+  if (tab === 'site-manager') adminSiteManager();
   if (tab === 'settings') adminSettings();
 }
 
@@ -921,4 +923,143 @@ async function handleRecovery() {
   if (r.error) { document.getElementById('rec-err').textContent = r.error; return; }
   toast('Password reset success! Please login.', 'success');
   renderAdmin();
+}
+
+// ── SITE MANAGER (CMS) ─────────────────────────────────────
+async function adminSiteManager() {
+  const settings = await api('/api/settings');
+  const g = (k) => { const s = (Array.isArray(settings) ? settings : []).find(s => s.key === k); return s ? s.value : ''; };
+  const isOn = (k) => { const v = g(k); return v === true || v === 'true'; };
+
+  document.getElementById('admin-content').innerHTML = `
+  <div class="admin-header"><h1 class="admin-page-title">🎨 Site Manager — Homepage CMS</h1><p style="color:var(--gray);margin-top:4px;">Control every section of your homepage from here. Changes appear instantly on the live site.</p></div>
+
+  <!-- SECTION TOGGLES -->
+  <div class="admin-form" style="margin-bottom:2rem;">
+    <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-toggle-on"></i> Section Visibility</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
+      ${['showOfferBanner:Offer Banner', 'showTrustHub:Trust Hub Strip', 'showCollections:Collections Grid', 'showFeaturedProducts:Trending Products', 'showPromo:Promo/Timer Section', 'showTestimonials:Testimonials'].map(item => {
+        const [key, label] = item.split(':');
+        return `<label style="display:flex;align-items:center;gap:10px;padding:12px;background:#f9f9f9;border-radius:10px;cursor:pointer;border:1px solid var(--border);">
+          <input type="checkbox" id="cms-${key}" ${isOn(key) ? 'checked' : ''} style="width:18px;height:18px;accent-color:var(--rose);"/>
+          <span style="font-size:.9rem;font-weight:500;">${label}</span>
+        </label>`;
+      }).join('')}
+    </div>
+    <button class="btn-primary" style="margin-top:1rem;" onclick="saveCmsToggles()"><i class="fas fa-save"></i> Save Toggles</button>
+  </div>
+
+  <!-- OFFER BANNER -->
+  <div class="admin-form" style="margin-bottom:2rem;">
+    <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-bullhorn"></i> Offer Banner Strip</h3>
+    <div class="form-group"><label>Banner Text</label><input id="cms-offerBanner" value="${g('offerBanner')}" placeholder="🎁 LIMITED OFFER: FLAT 50% OFF..."/></div>
+    <button class="btn-primary" onclick="saveCmsField('offerBanner')"><i class="fas fa-save"></i> Save Banner</button>
+  </div>
+
+  <!-- HERO SECTION -->
+  <div class="admin-form" style="margin-bottom:2rem;">
+    <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-image"></i> Hero Section</h3>
+    <div class="form-grid">
+      <div class="form-group"><label>Badge Text</label><input id="cms-heroBadge" value="${g('heroBadge')}" placeholder="✦ PREMIUM COLLECTION 2026 ✦"/></div>
+      <div class="form-group"><label>Media Type</label>
+        <select id="cms-heroMediaType" onchange="document.getElementById('hero-video-group').style.display=this.value==='video'?'block':'none';document.getElementById('hero-image-group').style.display=this.value==='image'?'block':'none';">
+          <option value="image" ${g('heroMediaType')!=='video'?'selected':''}>Image</option>
+          <option value="video" ${g('heroMediaType')==='video'?'selected':''}>Video (10-20 sec)</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label>Hero Title</label><input id="cms-heroTitle" value="${g('heroTitle')}" placeholder="Luxury Redefined"/></div>
+    <div class="form-group"><label>Hero Subtitle</label><input id="cms-heroSubtitle" value="${g('heroSubtitle')}" placeholder="For The Modern Woman"/></div>
+    <div class="form-group"><label>Description</label><textarea id="cms-heroDescription" rows="2" placeholder="Premium artificial jewellery...">${g('heroDescription')}</textarea></div>
+    <div id="hero-image-group" style="display:${g('heroMediaType')!=='video'?'block':'none'};">
+      <div class="form-group"><label>Background Image URL</label><input id="cms-heroImage" value="${g('heroImage')}" placeholder="https://..."/></div>
+    </div>
+    <div id="hero-video-group" style="display:${g('heroMediaType')==='video'?'block':'none'};">
+      <div class="form-group"><label>Video URL (MP4, 10-20 sec max)</label><input id="cms-heroVideoUrl" value="${g('heroVideoUrl')}" placeholder="https://...video.mp4"/></div>
+    </div>
+    <div class="form-grid">
+      <div class="form-group"><label>Button 1 Text</label><input id="cms-heroButton1Text" value="${g('heroButton1Text')}" placeholder="🛍️ Shop Now & Save"/></div>
+      <div class="form-group"><label>Button 2 Text</label><input id="cms-heroButton2Text" value="${g('heroButton2Text')}" placeholder="View Collections"/></div>
+    </div>
+    <button class="btn-primary" onclick="saveCmsHero()"><i class="fas fa-save"></i> Save Hero Section</button>
+  </div>
+
+  <!-- PROMO / TIMER SECTION -->
+  <div class="admin-form" style="margin-bottom:2rem;">
+    <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-clock"></i> Promo / Timer Section</h3>
+    <div class="form-grid">
+      <div class="form-group"><label>Promo Title</label><input id="cms-promoTitle" value="${g('promoTitle')}" placeholder="Exclusive Seasonal Drop"/></div>
+      <div class="form-group"><label>Promo Subtitle</label><input id="cms-promoSubtitle" value="${g('promoSubtitle')}" placeholder="Sale Ends In"/></div>
+    </div>
+    <div class="form-group"><label>Promo Description</label><textarea id="cms-promoDescription" rows="2" placeholder="Our most awaited collection...">${g('promoDescription')}</textarea></div>
+    <div class="form-grid">
+      <div class="form-group"><label>Media Type</label>
+        <select id="cms-promoMediaType" onchange="document.getElementById('promo-video-group').style.display=this.value==='video'?'block':'none';document.getElementById('promo-image-group').style.display=this.value==='image'?'block':'none';">
+          <option value="image" ${g('promoMediaType')!=='video'?'selected':''}>Image</option>
+          <option value="video" ${g('promoMediaType')==='video'?'selected':''}>Video (10-20 sec)</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Button Text</label><input id="cms-promoButtonText" value="${g('promoButtonText')}" placeholder="Explore Collection"/></div>
+    </div>
+    <div id="promo-image-group" style="display:${g('promoMediaType')!=='video'?'block':'none'};">
+      <div class="form-group"><label>Promo Image URL</label><input id="cms-promoImage" value="${g('promoImage')}" placeholder="https://..."/></div>
+    </div>
+    <div id="promo-video-group" style="display:${g('promoMediaType')==='video'?'block':'none'};">
+      <div class="form-group"><label>Promo Video URL (MP4, 10-20 sec)</label><input id="cms-promoVideoUrl" value="${g('promoVideoUrl')}" placeholder="https://...video.mp4"/></div>
+    </div>
+    <button class="btn-primary" onclick="saveCmsPromo()"><i class="fas fa-save"></i> Save Promo Section</button>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="admin-form" style="margin-bottom:2rem;">
+    <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-shoe-prints"></i> Footer Details</h3>
+    <div class="form-grid">
+      <div class="form-group"><label>Phone</label><input id="cms-footerPhone" value="${g('footerPhone')}" placeholder="+91 7404217625"/></div>
+      <div class="form-group"><label>Email</label><input id="cms-footerEmail" value="${g('footerEmail')}" placeholder="lencho.official01@gmail.com"/></div>
+    </div>
+    <div class="form-group"><label>Address</label><input id="cms-footerAddress" value="${g('footerAddress')}" placeholder="197 Sarakpur, Barara, Ambala"/></div>
+    <button class="btn-primary" onclick="saveCmsFooter()"><i class="fas fa-save"></i> Save Footer</button>
+  </div>`;
+}
+
+async function saveCmsToggles() {
+  const keys = ['showOfferBanner','showTrustHub','showCollections','showFeaturedProducts','showPromo','showTestimonials'];
+  for (const k of keys) {
+    const el = document.getElementById('cms-' + k);
+    await api('/api/admin/settings', { method: 'POST', body: { key: k, value: el.checked } });
+  }
+  toast('✅ Section toggles saved!', 'success');
+}
+
+async function saveCmsField(key) {
+  const val = document.getElementById('cms-' + key).value;
+  await api('/api/admin/settings', { method: 'POST', body: { key, value: val } });
+  toast('✅ Saved!', 'success');
+}
+
+async function saveCmsHero() {
+  const fields = ['heroBadge','heroTitle','heroSubtitle','heroDescription','heroImage','heroButton1Text','heroButton2Text','heroMediaType','heroVideoUrl'];
+  for (const k of fields) {
+    const el = document.getElementById('cms-' + k);
+    if (el) await api('/api/admin/settings', { method: 'POST', body: { key: k, value: el.value } });
+  }
+  toast('✅ Hero section saved!', 'success');
+}
+
+async function saveCmsPromo() {
+  const fields = ['promoTitle','promoSubtitle','promoDescription','promoImage','promoButtonText','promoMediaType','promoVideoUrl'];
+  for (const k of fields) {
+    const el = document.getElementById('cms-' + k);
+    if (el) await api('/api/admin/settings', { method: 'POST', body: { key: k, value: el.value } });
+  }
+  toast('✅ Promo section saved!', 'success');
+}
+
+async function saveCmsFooter() {
+  const fields = ['footerPhone','footerEmail','footerAddress'];
+  for (const k of fields) {
+    const el = document.getElementById('cms-' + k);
+    if (el) await api('/api/admin/settings', { method: 'POST', body: { key: k, value: el.value } });
+  }
+  toast('✅ Footer details saved!', 'success');
 }

@@ -208,20 +208,71 @@ async function seedSettings() {
       { key: 'smtpUser', value: '', label: 'SMTP User (Gmail)' },
       { key: 'smtpPass', value: '', label: 'SMTP Pass (App Password)' },
       { key: 'otpSubject', value: '✦ Your LENCHO Verification Code: {{otp}} ✦', label: 'OTP Email Subject' },
-      { key: 'otpBody', value: '<div style="font-family:sans-serif;max-width:400px;margin:auto;padding:2rem;border:1px solid #eee;border-radius:12px;"><h2 style="color:#c9748f;text-align:center;">✦ LENCHO ✦</h2><p>Hello,</p><p>Your verification code is <b style="font-size:1.5rem;color:#c9748f;">{{otp}}</b></p><p style="color:gray;font-size:0.8rem;">This code is valid for 5 minutes. Do not share it with anyone.</p></div>', label: 'OTP Email Body (HTML)' }
+      { key: 'otpBody', value: '<div style="font-family:sans-serif;max-width:400px;margin:auto;padding:2rem;border:1px solid #eee;border-radius:12px;"><h2 style="color:#c9748f;text-align:center;">✦ LENCHO ✦</h2><p>Hello,</p><p>Your verification code is <b style="font-size:1.5rem;color:#c9748f;">{{otp}}</b></p><p style="color:gray;font-size:0.8rem;">This code is valid for 5 minutes. Do not share it with anyone.</p></div>', label: 'OTP Email Body (HTML)' },
+      // ── CMS SETTINGS ──
+      { key: 'heroTitle', value: 'Luxury Redefined', label: 'Hero Title' },
+      { key: 'heroSubtitle', value: 'For The Modern Woman', label: 'Hero Subtitle' },
+      { key: 'heroDescription', value: 'Premium artificial jewellery starting at just ₹99. Look expensive, spend smart. 4.8⭐ trusted by 50K+ customers.', label: 'Hero Description' },
+      { key: 'heroImage', value: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1920&q=100', label: 'Hero Background Image URL' },
+      { key: 'heroBadge', value: '✦ PREMIUM COLLECTION 2026 ✦', label: 'Hero Badge Text' },
+      { key: 'heroButton1Text', value: '🛍️ Shop Now & Save', label: 'Hero Button 1' },
+      { key: 'heroButton2Text', value: 'View Collections', label: 'Hero Button 2' },
+      { key: 'heroMediaType', value: 'image', label: 'Hero Media Type (image/video)' },
+      { key: 'heroVideoUrl', value: '', label: 'Hero Video URL' },
+      { key: 'offerBanner', value: '🎁 LIMITED OFFER: FLAT 50% OFF ON SELECTED ITEMS + FREE DELIVERY!', label: 'Offer Banner Text' },
+      { key: 'promoTitle', value: 'Exclusive Seasonal Drop', label: 'Promo Title' },
+      { key: 'promoSubtitle', value: 'Sale Ends In', label: 'Promo Subtitle' },
+      { key: 'promoDescription', value: 'Our most awaited collection is here. Limited quantities available. Grab yours before the clock strikes zero.', label: 'Promo Description' },
+      { key: 'promoImage', value: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&w=800', label: 'Promo Image URL' },
+      { key: 'promoButtonText', value: 'Explore Collection', label: 'Promo Button Text' },
+      { key: 'promoMediaType', value: 'image', label: 'Promo Media Type (image/video)' },
+      { key: 'promoVideoUrl', value: '', label: 'Promo Video URL' },
+      { key: 'showCollections', value: true, label: 'Show Collections Section' },
+      { key: 'showFeaturedProducts', value: true, label: 'Show Featured Products' },
+      { key: 'showPromo', value: true, label: 'Show Promo/Timer Section' },
+      { key: 'showTrustHub', value: true, label: 'Show Trust Hub Strip' },
+      { key: 'showOfferBanner', value: true, label: 'Show Offer Banner' },
+      { key: 'footerAddress', value: '197 Sarakpur, Barara, Ambala, Haryana', label: 'Footer Address' },
+      { key: 'footerPhone', value: '+91 7404217625', label: 'Footer Phone' },
+      { key: 'footerEmail', value: 'lencho.official01@gmail.com', label: 'Footer Email' },
     ]);
     console.log('✅ Default settings seeded');
   } else {
-    // Add missing keys
-    const exist = await Settings.findOne({ key: 'saleEndDate' });
-    if (!exist) await Settings.create({ key: 'saleEndDate', value: new Date(Date.now() + 86400000).toISOString(), label: 'Sale End Date (ISO)' });
-    
-    // Support OTP Template updates
-    const otpExist = await Settings.findOne({ key: 'otpSubject' });
-    if (!otpExist) {
-       await Settings.create({ key: 'otpSubject', value: '✦ Your LENCHO Verification Code: {{otp}} ✦', label: 'OTP Email Subject' });
-       await Settings.create({ key: 'otpBody', value: '<div style="font-family:sans-serif;max-width:400px;margin:auto;padding:2rem;border:1px solid #eee;border-radius:12px;"><h2 style="color:#c9748f;text-align:center;">✦ LENCHO ✦</h2><p>Hello,</p><p>Your verification code is <b style="font-size:1.5rem;color:#c9748f;">{{otp}}</b></p><p style="color:gray;font-size:0.8rem;">This code is valid for 5 minutes. Do not share it with anyone.</p></div>', label: 'OTP Email Body (HTML)' });
+    // Add missing CMS keys to existing DB
+    const cmsDefaults = [
+      { key: 'heroTitle', value: 'Luxury Redefined', label: 'Hero Title' },
+      { key: 'heroSubtitle', value: 'For The Modern Woman', label: 'Hero Subtitle' },
+      { key: 'heroDescription', value: 'Premium artificial jewellery starting at just ₹99. Look expensive, spend smart. 4.8⭐ trusted by 50K+ customers.', label: 'Hero Description' },
+      { key: 'heroImage', value: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1920&q=100', label: 'Hero Background Image URL' },
+      { key: 'heroBadge', value: '✦ PREMIUM COLLECTION 2026 ✦', label: 'Hero Badge Text' },
+      { key: 'heroButton1Text', value: '🛍️ Shop Now & Save', label: 'Hero Button 1' },
+      { key: 'heroButton2Text', value: 'View Collections', label: 'Hero Button 2' },
+      { key: 'heroMediaType', value: 'image', label: 'Hero Media Type (image/video)' },
+      { key: 'heroVideoUrl', value: '', label: 'Hero Video URL' },
+      { key: 'offerBanner', value: '🎁 LIMITED OFFER: FLAT 50% OFF ON SELECTED ITEMS + FREE DELIVERY!', label: 'Offer Banner Text' },
+      { key: 'promoTitle', value: 'Exclusive Seasonal Drop', label: 'Promo Title' },
+      { key: 'promoSubtitle', value: 'Sale Ends In', label: 'Promo Subtitle' },
+      { key: 'promoDescription', value: 'Our most awaited collection is here. Limited quantities available.', label: 'Promo Description' },
+      { key: 'promoImage', value: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&w=800', label: 'Promo Image URL' },
+      { key: 'promoButtonText', value: 'Explore Collection', label: 'Promo Button Text' },
+      { key: 'promoMediaType', value: 'image', label: 'Promo Media Type (image/video)' },
+      { key: 'promoVideoUrl', value: '', label: 'Promo Video URL' },
+      { key: 'showCollections', value: true, label: 'Show Collections Section' },
+      { key: 'showFeaturedProducts', value: true, label: 'Show Featured Products' },
+      { key: 'showPromo', value: true, label: 'Show Promo/Timer Section' },
+      { key: 'showTrustHub', value: true, label: 'Show Trust Hub Strip' },
+      { key: 'showOfferBanner', value: true, label: 'Show Offer Banner' },
+      { key: 'footerAddress', value: '197 Sarakpur, Barara, Ambala, Haryana', label: 'Footer Address' },
+      { key: 'footerPhone', value: '+91 7404217625', label: 'Footer Phone' },
+      { key: 'footerEmail', value: 'lencho.official01@gmail.com', label: 'Footer Email' },
+      { key: 'saleEndDate', value: new Date(Date.now() + 86400000).toISOString(), label: 'Sale End Date (ISO)' },
+      { key: 'otpSubject', value: '✦ Your LENCHO Verification Code: {{otp}} ✦', label: 'OTP Email Subject' },
+      { key: 'otpBody', value: '<div style="font-family:sans-serif;max-width:400px;margin:auto;padding:2rem;"><h2 style="color:#c9748f;">✦ LENCHO ✦</h2><p>Your code: <b style="font-size:1.5rem;color:#c9748f;">{{otp}}</b></p></div>', label: 'OTP Email Body (HTML)' },
+    ];
+    for (const d of cmsDefaults) {
+      await Settings.updateOne({ key: d.key }, { $setOnInsert: d }, { upsert: true });
     }
+    console.log('✅ CMS settings synced');
   }
 }
 
