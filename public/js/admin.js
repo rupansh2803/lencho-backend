@@ -34,8 +34,6 @@ async function renderAdmin() {
   }
 }
 
-let pendingAdminOtpEmail = '';
-
 function showAdminSetup() {
   document.getElementById('app').innerHTML = `
   <div style="min-height:100vh;background:var(--dark);display:flex;align-items:center;justify-content:center;padding:2rem;">
@@ -80,7 +78,6 @@ async function handleAdminSetup() {
 
 async function showAdminLogin() {
   const captcha = await api('/api/captcha');
-  pendingAdminOtpEmail = '';
   document.getElementById('app').innerHTML = `
   <div style="min-height:100vh;background:var(--dark);display:flex;align-items:center;justify-content:center;padding:2rem;">
     <div style="background:#fff;border-radius:24px;padding:2.5rem;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);">
@@ -110,15 +107,8 @@ async function showAdminLogin() {
 
       <div id="adm-err" style="color:#ef4444;font-size:.8rem;margin-bottom:.75rem;min-height:20px;"></div>
       <button class="btn-primary full-width" onclick="adminLogin()">
-        <i class="fas fa-envelope-open-text"></i> Send Admin OTP
+        <i class="fas fa-shield-alt"></i> Authorize Login
       </button>
-
-      <div id="adm-otp-wrap" style="display:none;margin-top:1rem;">
-        <div class="form-group"><label>Email OTP (valid 5 min)</label><input type="text" id="adm-otp" placeholder="Enter 6-digit OTP" maxlength="6"/></div>
-        <button class="btn-primary full-width" onclick="adminVerifyOtpLogin()">
-          <i class="fas fa-check-circle"></i> Verify OTP & Login
-        </button>
-      </div>
 
       <button class="btn-outline full-width" style="margin-top:10px;" onclick="showRecovery()">
         Recover Admin Account
@@ -137,35 +127,14 @@ async function adminLogin() {
   
   if (!email || !pass || !captcha) { err.textContent = 'Please fill all fields'; return; }
   
-  const r = await api('/api/admin/login/request-otp', { method: 'POST', body: { email, password: pass, captchaAnswer: captcha } });
+  const r = await api('/api/login', { method: 'POST', body: { email, password: pass, captchaAnswer: captcha } });
   if (r.error) { 
     err.textContent = r.error; 
     showAdminLogin(); // Refresh captcha
     return; 
   }
-  pendingAdminOtpEmail = email;
-  err.style.color = '#166534';
-  err.textContent = r.message || 'OTP sent to admin email.';
-  const otpWrap = document.getElementById('adm-otp-wrap');
-  if (otpWrap) otpWrap.style.display = 'block';
-}
-
-async function adminVerifyOtpLogin() {
-  const email = pendingAdminOtpEmail || document.getElementById('adm-email')?.value;
-  const otp = document.getElementById('adm-otp')?.value;
-  const err = document.getElementById('adm-err');
-  if (!email || !otp) { err.style.color = '#ef4444'; err.textContent = 'Enter OTP to continue'; return; }
-
-  const r = await api('/api/admin/login/verify-otp', { method: 'POST', body: { email, otp } });
-  if (r.error) {
-    err.style.color = '#ef4444';
-    err.textContent = r.error;
-    return;
-  }
-
   currentUser = r.user;
   updateHeader();
-  pendingAdminOtpEmail = '';
   toast('Admin Authorization Granted! ✦', 'success');
   buildAdminPanel();
 }
