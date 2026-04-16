@@ -1212,6 +1212,7 @@ async function adminDeliveryManager() {
       </div>
       <div class="form-group"><label>API Key / Token</label><input id="dm-api-key" value="${cfg.apiKey || ''}" placeholder="Bearer token or API key"/></div>
       <div class="form-group"><label>Webhook / Order Push URL</label><input id="dm-webhook" value="${cfg.webhookUrl || ''}" placeholder="https://api.partner.com/orders"/></div>
+      <div class="form-group"><label>Tracking URL Template (use {{id}})</label><input id="dm-track-template" value="${cfg.trackingUrlTemplate || ''}" placeholder="https://partner.com/track/{{id}}"/></div>
       <div class="form-group"><label>Internal Notes</label><textarea id="dm-notes" rows="3" placeholder="pickup SLA, partner contact, etc">${cfg.notes || ''}</textarea></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <button class="btn-primary" onclick="saveDeliveryManagerSettings()"><i class="fas fa-save"></i> Save Delivery Config</button>
@@ -1228,6 +1229,7 @@ async function saveDeliveryManagerSettings() {
     apiBaseUrl: (document.getElementById('dm-api-base')?.value || '').trim(),
     apiKey: (document.getElementById('dm-api-key')?.value || '').trim(),
     webhookUrl: (document.getElementById('dm-webhook')?.value || '').trim(),
+    trackingUrlTemplate: (document.getElementById('dm-track-template')?.value || '').trim(),
     notes: (document.getElementById('dm-notes')?.value || '').trim()
   };
   if (payload.enabled && !payload.webhookUrl && !payload.apiBaseUrl) {
@@ -1246,6 +1248,7 @@ async function testDeliveryManagerWebhook() {
     apiBaseUrl: (document.getElementById('dm-api-base')?.value || '').trim(),
     apiKey: (document.getElementById('dm-api-key')?.value || '').trim(),
     webhookUrl: (document.getElementById('dm-webhook')?.value || '').trim(),
+    trackingUrlTemplate: (document.getElementById('dm-track-template')?.value || '').trim(),
     paymentMethod: 'prepaid',
     amount: 999
   };

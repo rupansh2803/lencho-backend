@@ -2,6 +2,10 @@
 let currentUser = null;
 let cartCount = 0;
 
+function getHeaderOffset() {
+  return window.innerWidth <= 768 ? '110px' : '72px';
+}
+
 // ── ROUTER ────────────────────────────────────────────────
 async function navigate(path, pushState = true) {
   if (pushState) history.pushState({}, '', path);
@@ -13,7 +17,7 @@ async function navigate(path, pushState = true) {
   const params = new URLSearchParams(query || '');
   footer.style.display = '';
   header.style.display = '';
-  app.style.paddingTop = '72px';  // Ensure everything avoids header overlap
+  app.style.paddingTop = getHeaderOffset();  // Ensure everything avoids header overlap
 
   try {
     if (route === '/' || route === '') { app.style.paddingTop = '0'; renderHome(); }
@@ -737,6 +741,14 @@ function renderTrack() {
     </div>
     <div id="track-result"></div>
   </div>`;
+
+  const qs = new URLSearchParams(location.search);
+  const orderId = qs.get('orderId') || qs.get('id') || '';
+  if (orderId) {
+    const input = document.getElementById('track-input');
+    if (input) input.value = orderId;
+    trackOrder();
+  }
 }
 
 async function trackOrder() {
@@ -746,11 +758,29 @@ async function trackOrder() {
   const el = document.getElementById('track-result');
   if (order.error) { el.innerHTML = `<div style="color:#ef4444;padding:1.5rem;background:#fee2e2;border-radius:var(--radius);margin-top:1rem;">${order.error}</div>`; return; }
   const statusLabels = { placed:'Order Placed', confirmed:'Confirmed', shipped:'Shipped', out_for_delivery:'Out for Delivery', delivered:'Delivered ✓', cancelled:'Cancelled' };
+  const trackingId = order.awbCode || order.trackingNumber || order.shiprocketShipmentId || '';
+  let trackingLink = '';
+  try {
+    const cfg = await api('/api/delivery/tracking-config');
+    if (!cfg.error && trackingId) {
+      const tpl = cfg.trackingUrlTemplate || '';
+      if (tpl && tpl.includes('{{id}}')) {
+        trackingLink = tpl.replace('{{id}}', encodeURIComponent(trackingId));
+      } else if ((cfg.provider || '').toLowerCase() === 'shiprocket') {
+        trackingLink = `https://shiprocket.co/tracking/${encodeURIComponent(trackingId)}`;
+      } else if ((cfg.provider || '').toLowerCase() === 'delhivery') {
+        trackingLink = `https://www.delhivery.com/track-v2/package/${encodeURIComponent(trackingId)}`;
+      }
+    }
+  } catch (e) {}
+
   el.innerHTML = `
   <div class="order-status-card animate-pop-in">
     <div class="order-id-display">ORDER ID: ${order.id}</div>
     <span class="product-badge" style="position:static;display:inline-block;margin-bottom:1rem;">${statusLabels[order.status] || order.status}</span>
     <p style="font-size:.875rem;color:var(--gray);">Estimated Delivery: <strong>${formatDate(order.estimatedDelivery)}</strong></p>
+    ${trackingId ? `<p style="font-size:.875rem;color:var(--gray);">Tracking ID: <strong style="font-family:monospace;">${trackingId}</strong></p>` : ''}
+    ${trackingLink ? `<p style="margin:.5rem 0 1rem;"><a href="${trackingLink}" target="_blank" rel="noopener" class="btn-outline btn-sm" style="display:inline-flex;align-items:center;gap:.4rem;"><i class="fas fa-up-right-from-square"></i> Open Delivery Tracking</a></p>` : ''}
     <div class="timeline">
       ${(order.timeline||[]).map(t=>`<div class="timeline-item ${t.done?'done':''}"><div class="timeline-dot"><i class="fas fa-${t.done?'check':'circle'}" style="font-size:.65rem;"></i></div><div class="timeline-content"><div class="timeline-label">${t.label}</div><div class="timeline-date">${t.date?formatDate(t.date):''}</div></div></div>`).join('')}
     </div>

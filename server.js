@@ -526,6 +526,7 @@ async function getDeliveryManagerConfig() {
     apiBaseUrl: '',
     apiKey: '',
     webhookUrl: '',
+    trackingUrlTemplate: '',
     notes: ''
   };
 
@@ -633,10 +634,21 @@ app.post('/api/admin/delivery-manager', requireAdmin, async (req, res) => {
       apiBaseUrl: String(incoming.apiBaseUrl || '').trim(),
       apiKey: String(incoming.apiKey || '').trim(),
       webhookUrl: String(incoming.webhookUrl || '').trim(),
+      trackingUrlTemplate: String(incoming.trackingUrlTemplate || '').trim(),
       notes: String(incoming.notes || '').trim()
     };
     await saveDeliveryManagerConfig(next);
     res.json({ success: true, config: next });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/delivery/tracking-config', async (req, res) => {
+  try {
+    const cfg = await getDeliveryManagerConfig();
+    res.json({
+      provider: cfg.provider || 'custom',
+      trackingUrlTemplate: cfg.trackingUrlTemplate || ''
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

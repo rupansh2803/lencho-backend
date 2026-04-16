@@ -12,6 +12,60 @@
   --radius: 18px !important;
 }
 
+/* Hide accidental caret browsing on static text while keeping input cursor intact */
+*:not(input):not(textarea):not([contenteditable="true"]) {
+  caret-color: transparent;
+}
+
+@media (max-width: 768px) {
+  #site-header {
+    padding: 0 4%;
+  }
+
+  .header-inner {
+    height: auto;
+    min-height: 72px;
+    flex-wrap: wrap;
+    row-gap: 8px;
+    padding: 8px 0 10px;
+    justify-content: space-between;
+  }
+
+  .hamburger {
+    display: flex;
+    order: 1;
+  }
+
+  .site-logo {
+    position: static;
+    transform: none;
+    order: 2;
+    flex: 1;
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .site-logo img {
+    height: 44px;
+  }
+
+  .header-actions {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    gap: .7rem;
+  }
+
+  .icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .hero-premium {
+    padding-top: 110px;
+  }
+}
+
 body {
   font-family: 'Jost', sans-serif !important;
   -webkit-font-smoothing: antialiased;
