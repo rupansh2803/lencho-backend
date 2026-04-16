@@ -420,6 +420,17 @@ function productCardHTML(p) {
 }
 
 // ── HOME PAGE ─────────────────────────────────────────────
+function normalizeSettings(settings) {
+  if (Array.isArray(settings)) {
+    const normalized = {};
+    settings.forEach(item => {
+      if (item && item.key !== undefined) normalized[item.key] = item.value;
+    });
+    return normalized;
+  }
+  return settings && typeof settings === 'object' ? settings : {};
+}
+
 async function renderHome() {
   const app = document.getElementById('app');
 
@@ -427,7 +438,7 @@ async function renderHome() {
   let cms = {};
   try {
     const settings = await api('/api/settings');
-    if (Array.isArray(settings)) settings.forEach(s => { cms[s.key] = s.value; });
+    cms = normalizeSettings(settings);
   } catch(e) {}
 
   const g = (k, def) => cms[k] || def || '';
@@ -577,11 +588,29 @@ async function loadHomeCategories() {
   if (!container) return;
   try {
     const cats = await api('/api/categories');
-    if (!cats || cats.length === 0) {
+    let categories = Array.isArray(cats) ? cats : [];
+
+    if (categories.length === 0) {
+      const products = await api('/api/products');
+      const byCategory = new Map();
+      if (Array.isArray(products)) {
+        products.forEach(product => {
+          if (!product || !product.category || byCategory.has(product.category)) return;
+          byCategory.set(product.category, {
+            name: product.category.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
+            slug: product.category,
+            image: product.images?.[0] || '/images/hero.png'
+          });
+        });
+      }
+      categories = [...byCategory.values()];
+    }
+
+    if (categories.length === 0) {
       container.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--gray);">No collections available yet.</div>';
       return;
     }
-    container.innerHTML = cats.map((c, i) => `
+    container.innerHTML = categories.map((c, i) => `
       <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
         <img class="cat-img" src="${c.image}" alt="${c.name}" onerror="this.src='/images/hero.png'"/>
         <div class="cat-overlay"></div>
@@ -590,6 +619,30 @@ async function loadHomeCategories() {
     `).join('');
     initScrollReveal();
   } catch (e) {
+    const products = await api('/api/products');
+    if (Array.isArray(products) && products.length > 0) {
+      const byCategory = new Map();
+      products.forEach(product => {
+        if (!product || !product.category || byCategory.has(product.category)) return;
+        byCategory.set(product.category, {
+          name: product.category.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
+          slug: product.category,
+          image: product.images?.[0] || '/images/hero.png'
+        });
+      });
+      const categories = [...byCategory.values()];
+      if (categories.length > 0) {
+        container.innerHTML = categories.map((c, i) => `
+          <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
+            <img class="cat-img" src="${c.image}" alt="${c.name}" onerror="this.src='/images/hero.png'"/>
+            <div class="cat-overlay"></div>
+            <div class="cat-content"><div class="cat-name">${c.name}</div><button class="cat-btn">Shop Now</button></div>
+          </div>
+        `).join('');
+        initScrollReveal();
+        return;
+      }
+    }
     container.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--gray);">Unable to load collections.</div>';
   }
 }
@@ -680,7 +733,7 @@ async function startOfferTimer() {
   const timerEl = document.getElementById('promo-timer');
   if (!timerEl) return;
   
-  const s = await api('/api/settings');
+  const s = normalizeSettings(await api('/api/settings'));
   const end = s.saleEndDate ? new Date(s.saleEndDate) : new Date(Date.now() + 86400000);
 
   function updateTimer() {
@@ -716,6 +769,16 @@ function createParticles() {
 async function loadFeaturedProducts() {
   const grid = document.getElementById('featured-grid');
   if (!grid) return;
+  const renderFallbackProducts = async (message) => {
+    const fallback = await api('/api/products');
+    if (Array.isArray(fallback) && fallback.length > 0) {
+      grid.innerHTML = fallback.slice(0, 4).map(productCardHTML).join('');
+      initScrollReveal();
+      return;
+    }
+    grid.innerHTML = message;
+  };
+
   try {
     const r = await api('/api/products?featured=true');
     console.log('Featured products response:', r);
@@ -723,14 +786,14 @@ async function loadFeaturedProducts() {
       grid.innerHTML = r.map(productCardHTML).join('');
       initScrollReveal();
     } else if (Array.isArray(r) && r.length === 0) {
-      grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:3rem; color:var(--gray);">No featured products available. Explore all products below. ✦</div>';
+      await renderFallbackProducts('<div style="grid-column:1/-1; text-align:center; padding:3rem; color:var(--gray);">No featured products available. Explore all products below. ✦</div>');
     } else {
       console.error('Invalid response format:', r);
-      grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:3rem; color:var(--rose);">Unable to load products. Please refresh the page. ✦</div>';
+      await renderFallbackProducts('<div style="grid-column:1/-1; text-align:center; padding:3rem; color:var(--rose);">Unable to load products. Please refresh the page. ✦</div>');
     }
   } catch (e) {
     console.error('Featured products error:', e);
-    grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:3rem; color:var(--rose);">Unable to load products. Please check your connection. ✦</div>';
+    await renderFallbackProducts('<div style="grid-column:1/-1; text-align:center; padding:3rem; color:var(--rose);">Unable to load products. Please check your connection. ✦</div>');
   }
 }
 
@@ -776,7 +839,7 @@ async function sortProducts(sort, category) {
 
 async function loadPublicSettings() {
   try {
-    const s = await api('/api/settings');
+    const s = normalizeSettings(await api('/api/settings'));
     const wb = document.getElementById('whatsapp-btn');
     if (wb && s.whatsappNumber) wb.href = 'https://wa.me/' + s.whatsappNumber + '?text=Hi%20Lencho%20India!';
   } catch (e) { }
@@ -784,7 +847,7 @@ async function loadPublicSettings() {
 
 // ── SOCIAL SYNC ───────────────────────────────────────────
 async function syncSocialLinks() {
-  const s = await api('/api/settings');
+  const s = normalizeSettings(await api('/api/settings'));
   if (s.error) return;
   
   const fb = document.querySelector('.social-icon i.fa-facebook-f')?.parentElement;

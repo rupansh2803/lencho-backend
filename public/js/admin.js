@@ -643,6 +643,17 @@ async function saveAdminCredentials() {
   else { toast('Credentials updated! Please login again.', 'success'); handleLogout(); }
 }
 
+function normalizeSettings(settings) {
+  if (Array.isArray(settings)) {
+    const normalized = {};
+    settings.forEach(item => {
+      if (item && item.key !== undefined) normalized[item.key] = item.value;
+    });
+    return normalized;
+  }
+  return settings && typeof settings === 'object' ? settings : {};
+}
+
 
 async function adminDiscounts() {
   const items = await api('/api/admin/discounts');
@@ -665,7 +676,7 @@ async function adminDiscounts() {
 
 // ── TESTIMONIALS MANAGEMENT ─────────────────────────────────
 async function adminTestimonials() {
-  const settings = await api('/api/settings');
+  const settings = normalizeSettings(await api('/api/settings'));
   const showTestimonials = settings.showTestimonials !== false; // defaults to true
   
   document.getElementById('admin-content').innerHTML = `
@@ -927,9 +938,9 @@ async function handleRecovery() {
 
 // ── SITE MANAGER (CMS) ─────────────────────────────────────
 async function adminSiteManager() {
-  const settings = await api('/api/settings');
-  const g = (k) => { const s = (Array.isArray(settings) ? settings : []).find(s => s.key === k); return s ? s.value : ''; };
-  const isOn = (k) => { const v = g(k); return v === true || v === 'true'; };
+  const settings = normalizeSettings(await api('/api/settings'));
+  const g = (k) => settings[k] ?? '';
+  const isOn = (k) => settings[k] === true || settings[k] === 'true';
 
   document.getElementById('admin-content').innerHTML = `
   <div class="admin-header"><h1 class="admin-page-title">🎨 Site Manager — Homepage CMS</h1><p style="color:var(--gray);margin-top:4px;">Control every section of your homepage from here. Changes appear instantly on the live site.</p></div>
