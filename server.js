@@ -775,7 +775,7 @@ app.get('/api/captcha', (req, res) => {
   const n2 = Math.floor(Math.random() * 10) + 1;
   const answer = n1 + n2;
   req.session.captcha = answer;
-  res.json({ success: true, question: `${n1} + ${n2} = ?`, answer }); // answer sent for debugging, can be removed in prod
+  res.json({ success: true, question: `${n1} + ${n2} = ?` });
 });
 
 // ─── AUTH ROUTES ──────────────────────────────────────────────
