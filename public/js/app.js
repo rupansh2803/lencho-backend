@@ -301,6 +301,31 @@ async function claimDiscount() {
 // ── HEADER SCROLL ─────────────────────────────────────────
 function initHeader() {
   const h = document.getElementById('site-header');
+  const headerInner = document.querySelector('.header-inner');
+  const mainNav = document.getElementById('main-nav');
+  const headerActions = document.querySelector('.header-actions');
+  const navClose = document.getElementById('nav-close-btn');
+
+  function syncMobileHeaderLayout() {
+    if (!headerInner || !mainNav || !headerActions || !navClose) return;
+    const isMobile = window.innerWidth <= 768;
+
+    if (isMobile) {
+      if (!mainNav.contains(headerActions)) {
+        headerActions.classList.add('mobile-nav-actions');
+        navClose.insertAdjacentElement('afterend', headerActions);
+      }
+    } else {
+      if (!headerInner.contains(headerActions)) {
+        headerActions.classList.remove('mobile-nav-actions');
+        headerInner.appendChild(headerActions);
+      }
+    }
+  }
+
+  syncMobileHeaderLayout();
+  window.addEventListener('resize', syncMobileHeaderLayout, { passive: true });
+
   window.addEventListener('scroll', () => {
     h.classList.toggle('scrolled', window.scrollY > 50);
   }, { passive: true });

@@ -127,6 +127,7 @@ const FILES = {
   orders: path.join(DATA_DIR, 'orders.json'),
   carts: path.join(DATA_DIR, 'carts.json'),
   wishlists: path.join(DATA_DIR, 'wishlists.json'),
+  inquiries: path.join(DATA_DIR, 'inquiries.json'),
   settings: path.join(DATA_DIR, 'settings.json'),
   discounts: path.join(DATA_DIR, 'discounts.json'),
   loginLogs: path.join(DATA_DIR, 'login_logs.json'),
@@ -1765,8 +1766,21 @@ app.post('/api/contact', async (req, res) => {
     fs.appendFileSync('inquiry_debug.log', `${new Date().toISOString()} - Received inquiry from ${email} (${phone || 'No Phone'})\n`);
     if (!name || !email || !message) return res.status(400).json({ error: 'All fields are required' });
     
-    if (useDB) await Inquiry.create({ name, email, phone, message });
-    else console.log('Contact Inquiry (Fallback):', { name, email, message });
+    if (useDB) {
+      await Inquiry.create({ name, email, phone, message });
+    } else {
+      const inquiries = readJson(FILES.inquiries);
+      inquiries.unshift({
+        _id: uuidv4(),
+        name,
+        email,
+        phone: phone || '',
+        message,
+        status: 'new',
+        createdAt: new Date().toISOString(),
+      });
+      writeJson(FILES.inquiries, inquiries);
+    }
 
     // Notify Admin via Email
     try {
@@ -1805,7 +1819,9 @@ app.post('/api/contact', async (req, res) => {
 
 app.get('/api/admin/inquiries', requireAdmin, async (req, res) => {
   try {
-    const inquiries = useDB ? await Inquiry.find().sort({ createdAt: -1 }) : [];
+    const inquiries = useDB
+      ? await Inquiry.find().sort({ createdAt: -1 })
+      : readJson(FILES.inquiries).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     res.json(inquiries);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1813,6 +1829,10 @@ app.get('/api/admin/inquiries', requireAdmin, async (req, res) => {
 app.delete('/api/admin/inquiries/:id', requireAdmin, async (req, res) => {
   try {
     if (useDB) await Inquiry.findByIdAndDelete(req.params.id);
+    else {
+      const inquiries = readJson(FILES.inquiries).filter(i => String(i._id) !== String(req.params.id));
+      writeJson(FILES.inquiries, inquiries);
+    }
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

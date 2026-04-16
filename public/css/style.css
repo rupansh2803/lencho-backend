@@ -25,9 +25,9 @@
   .header-inner {
     height: auto;
     min-height: 72px;
-    flex-wrap: wrap;
-    row-gap: 8px;
-    padding: 8px 0 10px;
+    flex-wrap: nowrap;
+    row-gap: 0;
+    padding: 8px 0;
     justify-content: space-between;
   }
 
@@ -39,26 +39,39 @@
   .site-logo {
     position: static;
     transform: none;
-    order: 2;
-    flex: 1;
-    justify-content: center;
-    min-width: 0;
+    order: 3;
+    margin-left: auto;
+    justify-content: flex-end;
+    min-width: 96px;
   }
 
   .site-logo img {
-    height: 44px;
+    height: 40px;
   }
 
   .header-actions {
-    order: 3;
-    width: 100%;
-    justify-content: center;
-    gap: .7rem;
+    order: 2;
+    width: auto;
+    justify-content: flex-start;
+    gap: .6rem;
   }
 
   .icon-btn {
     width: 40px;
     height: 40px;
+  }
+
+  .header-actions.mobile-nav-actions {
+    width: 100%;
+    margin-top: .75rem;
+    padding-top: .75rem;
+    border-top: 1px solid var(--border);
+    justify-content: flex-start;
+  }
+
+  .main-nav .header-actions.mobile-nav-actions .icon-btn {
+    width: 42px;
+    height: 42px;
   }
 
   .hero-premium {
