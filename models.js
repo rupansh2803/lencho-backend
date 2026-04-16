@@ -121,6 +121,17 @@ const inquirySchema = new mongoose.Schema({
   status:  { type: String, enum: ['new', 'read', 'replied'], default: 'new' },
 }, { timestamps: true });
 
+// ── LOGIN EVENT (AUDIT LOG) ──────────────────────────────────
+const loginEventSchema = new mongoose.Schema({
+  email:     { type: String, default: '' },
+  name:      { type: String, default: '' },
+  method:    { type: String, default: 'password' }, // password | google
+  status:    { type: String, default: 'success' }, // success | failed
+  role:      { type: String, default: 'user' },
+  ip:        { type: String, default: '' },
+  userAgent: { type: String, default: '' },
+}, { timestamps: true });
+
 module.exports = {
   User:     mongoose.model('User',     userSchema),
   Category: mongoose.model('Category', categorySchema),
@@ -132,4 +143,5 @@ module.exports = {
   OTPLog:   mongoose.model('OTPLog',   otpSchema),
   Testimonial: mongoose.model('Testimonial', testimonialSchema),
   Inquiry:  mongoose.model('Inquiry',  inquirySchema),
+  LoginEvent: mongoose.model('LoginEvent', loginEventSchema),
 };

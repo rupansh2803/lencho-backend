@@ -90,10 +90,10 @@ async function showAdminLogin() {
       <div class="form-group"><label>Password</label><input type="password" id="adm-pass" placeholder="Password"/></div>
       
       <div style="background:var(--beige);padding:1rem;border-radius:12px;margin-bottom:1.5rem;">
-        <label style="font-size:.7rem;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:5px;">Hacker Shield: Solve Math</label>
+        <label style="font-size:.7rem;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:5px;">Security Code: Enter Text</label>
         <div style="display:flex;align-items:center;gap:1rem;">
           <div style="font-weight:700;font-size:1.2rem;color:var(--rose-dark);background:#fff;padding:5px 15px;border-radius:8px;border:1px solid #eee;">${captcha.question}</div>
-          <input type="number" id="adm-captcha" style="width:70px;text-align:center;" placeholder="?"/>
+          <input type="text" id="adm-captcha" style="width:130px;text-align:center;text-transform:uppercase;" placeholder="Code"/>
         </div>
       </div>
 
@@ -148,8 +148,10 @@ function buildAdminPanel() {
         <div class="admin-menu-item" id="am-users" onclick="adminTab('users')"><i class="fas fa-users" style="width:20px;"></i> Users</div>
         <div class="admin-menu-item" id="am-gst" onclick="adminTab('gst')"><i class="fas fa-file-invoice" style="width:20px;"></i> GST Hub</div>
         <div class="admin-menu-item" id="am-testimonials" onclick="adminTab('testimonials')"><i class="fas fa-comment-dots" style="width:20px;"></i> Testimonials</div>
+        <div class="admin-menu-item" id="am-login-logs" onclick="adminTab('login-logs')"><i class="fas fa-user-clock" style="width:20px;"></i> Login Logs</div>
         <div class="admin-menu-item" id="am-site-manager" onclick="adminTab('site-manager')"><i class="fas fa-paint-brush" style="width:20px;"></i> Site Manager</div>
-        <div class="admin-menu-item" id="am-settings" onclick="adminTab('settings')"><i class="fas fa-cog" style="width:20px;"></i> Store Settings</div>
+        <div class="admin-menu-item" id="am-settings" onclick="adminTab('settings')"><i class="fas fa-cog" style="width:20px;"></i> Business Settings</div>
+        <div class="admin-menu-item" id="am-account" onclick="adminTab('account')"><i class="fas fa-user-shield" style="width:20px;"></i> Account Security</div>
         <div style="border-top:1px solid rgba(0,0,0,.05);margin-top:1rem;padding-top:1rem;">
           <div class="admin-menu-item" onclick="exitAdmin()"><i class="fas fa-home" style="width:20px;"></i> View Site</div>
           <div class="admin-menu-item" style="color:#ef4444;" onclick="handleLogout()"><i class="fas fa-sign-out-alt" style="width:20px;"></i> Logout</div>
@@ -191,8 +193,40 @@ function adminTab(tab) {
   if (tab === 'users') adminUsers();
   if (tab === 'gst') adminGST();
   if (tab === 'testimonials') adminTestimonials();
+  if (tab === 'login-logs') adminLoginLogs();
   if (tab === 'site-manager') adminSiteManager();
-  if (tab === 'settings') adminSettings();
+  if (tab === 'settings') {
+    if (typeof adminStoreSettings === 'function') adminStoreSettings();
+    else adminSettings();
+  }
+  if (tab === 'account') adminSettings();
+}
+
+async function adminLoginLogs() {
+  const logs = await api('/api/admin/login-logs');
+  document.getElementById('admin-content').innerHTML = `
+    <div class="admin-header">
+      <h1 class="admin-page-title">Login Activity (${Array.isArray(logs) ? logs.length : 0})</h1>
+      <button class="btn-outline" onclick="adminTab('login-logs')"><i class="fas fa-sync"></i> Refresh</button>
+    </div>
+    <div class="admin-table-wrap">
+      <table>
+        <thead><tr><th>User</th><th>Method</th><th>Status</th><th>Role</th><th>IP</th><th>Time</th></tr></thead>
+        <tbody>${(Array.isArray(logs) ? logs : []).map(log => `
+          <tr>
+            <td>
+              <div style="font-weight:700;">${log.name || 'User'}</div>
+              <div style="font-size:.75rem;color:var(--gray);">${log.email || '-'}</div>
+            </td>
+            <td>${(log.method || 'password').toUpperCase()}</td>
+            <td><span style="padding:4px 10px;border-radius:999px;font-size:.75rem;background:${log.status === 'success' ? '#dcfce7' : '#fee2e2'};color:${log.status === 'success' ? '#166534' : '#991b1b'};font-weight:700;">${log.status || 'unknown'}</span></td>
+            <td>${log.role || 'user'}</td>
+            <td style="font-family:monospace;font-size:.75rem;">${log.ip || '-'}</td>
+            <td>${log.createdAt ? new Date(log.createdAt).toLocaleString('en-IN') : '-'}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--gray);">No login activity yet.</td></tr>'}</tbody>
+      </table>
+    </div>`;
 }
 
 async function adminInquiries() {
@@ -984,6 +1018,8 @@ async function adminSiteManager() {
     <div class="form-group"><label>Description</label><textarea id="cms-heroDescription" rows="2" placeholder="Premium artificial jewellery...">${g('heroDescription')}</textarea></div>
     <div id="hero-image-group" style="display:${g('heroMediaType')!=='video'?'block':'none'};">
       <div class="form-group"><label>Background Image URL</label><input id="cms-heroImage" value="${g('heroImage')}" placeholder="https://..."/></div>
+      <div class="form-group"><label>Upload Hero Image</label><input type="file" id="cms-heroImage-file" accept="image/*"/></div>
+      <button class="btn-outline" type="button" onclick="uploadCmsMedia('cms-heroImage-file','cms-heroImage')"><i class="fas fa-upload"></i> Upload Hero Image</button>
     </div>
     <div id="hero-video-group" style="display:${g('heroMediaType')==='video'?'block':'none'};">
       <div class="form-group"><label>Video URL (MP4, 10-20 sec max)</label><input id="cms-heroVideoUrl" value="${g('heroVideoUrl')}" placeholder="https://...video.mp4"/></div>
@@ -1014,6 +1050,8 @@ async function adminSiteManager() {
     </div>
     <div id="promo-image-group" style="display:${g('promoMediaType')!=='video'?'block':'none'};">
       <div class="form-group"><label>Promo Image URL</label><input id="cms-promoImage" value="${g('promoImage')}" placeholder="https://..."/></div>
+      <div class="form-group"><label>Upload Promo Image</label><input type="file" id="cms-promoImage-file" accept="image/*"/></div>
+      <button class="btn-outline" type="button" onclick="uploadCmsMedia('cms-promoImage-file','cms-promoImage')"><i class="fas fa-upload"></i> Upload Promo Image</button>
     </div>
     <div id="promo-video-group" style="display:${g('promoMediaType')==='video'?'block':'none'};">
       <div class="form-group"><label>Promo Video URL (MP4, 10-20 sec)</label><input id="cms-promoVideoUrl" value="${g('promoVideoUrl')}" placeholder="https://...video.mp4"/></div>
@@ -1073,4 +1111,26 @@ async function saveCmsFooter() {
     if (el) await api('/api/admin/settings', { method: 'POST', body: { key: k, value: el.value } });
   }
   toast('✅ Footer details saved!', 'success');
+}
+
+async function uploadCmsMedia(fileInputId, targetInputId) {
+  const fileInput = document.getElementById(fileInputId);
+  const targetInput = document.getElementById(targetInputId);
+  if (!fileInput || !targetInput || !fileInput.files || !fileInput.files[0]) {
+    toast('Please select a file first', 'error');
+    return;
+  }
+
+  const fd = new FormData();
+  fd.append('media', fileInput.files[0]);
+
+  const resp = await fetch('/api/admin/upload-media', { method: 'POST', body: fd });
+  const data = await resp.json();
+  if (!resp.ok || data.error) {
+    toast(data.error || 'Upload failed', 'error');
+    return;
+  }
+
+  targetInput.value = data.url;
+  toast('Media uploaded. Save section to apply.', 'success');
 }

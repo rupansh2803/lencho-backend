@@ -14,7 +14,7 @@ const mongoose = require('mongoose');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
-const { User, Product, Order, Cart, Wishlist, Settings, OTPLog, Testimonial, Category, Inquiry } = require('./models');
+const { User, Product, Order, Cart, Wishlist, Settings, OTPLog, Testimonial, Category, Inquiry, LoginEvent } = require('./models');
 
 const rzp = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_6oE5E0WwH6wX9z', 
@@ -127,6 +127,50 @@ const FILES = {
   wishlists: path.join(DATA_DIR, 'wishlists.json'),
   settings: path.join(DATA_DIR, 'settings.json'),
   discounts: path.join(DATA_DIR, 'discounts.json'),
+  loginLogs: path.join(DATA_DIR, 'login_logs.json'),
+};
+
+const DEFAULT_FALLBACK_SETTINGS = {
+  globalDiscount: 0,
+  freeShippingMin: 999,
+  shippingCharge: 49,
+  deliveryDays: 3,
+  shippingNote: 'Standard delivery in 3-5 days',
+  whatsappNumber: '919999999999',
+  gstRate: 18,
+  gstin: '27XXXXX1234X1ZX',
+  hsn: '7117',
+  storeName: 'Lencho',
+  storeEmail: 'lencho.official01@gmail.com',
+  storePhone: '+91 7404217625',
+  storeAddress: '197 Sarakpur, Barara, Ambala, Haryana',
+  heroTitle: 'Luxury Redefined',
+  heroSubtitle: 'For The Modern Woman',
+  heroDescription: 'Premium artificial jewellery starting at just ₹99. Look expensive, spend smart.',
+  heroImage: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1920&q=100',
+  heroMediaType: 'image',
+  heroVideoUrl: '',
+  promoTitle: 'Exclusive Seasonal Drop',
+  promoSubtitle: 'Sale Ends In',
+  promoDescription: 'Our most awaited collection is here. Limited quantities available.',
+  promoImage: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&w=800',
+  promoMediaType: 'image',
+  promoVideoUrl: '',
+  promoButtonText: 'Explore Collection',
+  offerBanner: '🎁 LIMITED OFFER: FLAT 50% OFF ON SELECTED ITEMS + FREE DELIVERY!',
+  showOfferBanner: true,
+  showTrustHub: true,
+  showCollections: true,
+  showFeaturedProducts: true,
+  showPromo: true,
+  showTestimonials: true,
+  saleEndDate: new Date(Date.now() + 86400000).toISOString(),
+  smtpHost: 'smtp.gmail.com',
+  smtpPort: 465,
+  smtpUser: '',
+  smtpPass: '',
+  otpSubject: '✦ Your LENCHO Verification Code: {{otp}} ✦',
+  otpBody: '<div style="font-family:sans-serif;max-width:400px;margin:auto;padding:2rem;border:1px solid #eee;border-radius:12px;"><h2 style="color:#c9748f;text-align:center;">✦ LENCHO ✦</h2><p>Hello,</p><p>Your verification code is <b style="font-size:1.5rem;color:#c9748f;">{{otp}}</b></p><p style="color:gray;font-size:0.8rem;">This code is valid for 5 minutes. Do not share it with anyone.</p></div>'
 };
 
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; } };
@@ -150,6 +194,49 @@ function getJsonCategoriesFromProducts(products) {
     });
   }
   return categories;
+}
+
+function getFallbackSettingsObject() {
+  const fileSettings = readJson(FILES.settings);
+  if (Array.isArray(fileSettings)) {
+    const obj = {};
+    for (const entry of fileSettings) {
+      if (entry && entry.key !== undefined) obj[entry.key] = entry.value;
+    }
+    return { ...DEFAULT_FALLBACK_SETTINGS, ...obj };
+  }
+  if (fileSettings && typeof fileSettings === 'object') {
+    return { ...DEFAULT_FALLBACK_SETTINGS, ...fileSettings };
+  }
+  return { ...DEFAULT_FALLBACK_SETTINGS };
+}
+
+function saveFallbackSettingsObject(obj) {
+  writeJson(FILES.settings, { ...DEFAULT_FALLBACK_SETTINGS, ...(obj || {}) });
+}
+
+async function recordLoginActivity(payload) {
+  const event = {
+    email: payload.email || '',
+    name: payload.name || '',
+    method: payload.method || 'password',
+    status: payload.status || 'success',
+    role: payload.role || 'user',
+    ip: payload.ip || '',
+    userAgent: payload.userAgent || '',
+    createdAt: new Date().toISOString()
+  };
+
+  if (useDB && LoginEvent) {
+    try {
+      await LoginEvent.create(event);
+      return;
+    } catch (e) {}
+  }
+
+  const logs = readJson(FILES.loginLogs);
+  logs.unshift(event);
+  writeJson(FILES.loginLogs, logs.slice(0, 500));
 }
 
 function syncFallbackAdmins() {
@@ -193,6 +280,7 @@ function initFallback() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
   Object.values(FILES).forEach(f => { if (!fs.existsSync(f)) writeJson(f, []); });
   syncFallbackAdmins();
+  saveFallbackSettingsObject(getFallbackSettingsObject());
   const prods = readJson(FILES.products);
   if (!prods.length) seedProductsJSON();
 }
@@ -357,10 +445,18 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1d', etag: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), { maxAge: '30d' }));
+app.set('trust proxy', 1);
+
+const isProduction = (process.env.NODE_ENV || 'development') === 'production';
 app.use(session({
   secret: process.env.SESSION_SECRET || 'lencho-secret',
   resave: false, saveUninitialized: false,
-  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000, httpOnly: true }
+  cookie: {
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    httpOnly: true,
+    sameSite: isProduction ? 'none' : 'lax',
+    secure: isProduction
+  }
 }));
 
 if (!fs.existsSync(path.join(__dirname, 'uploads'))) fs.mkdirSync(path.join(__dirname, 'uploads'));
@@ -376,9 +472,10 @@ const requireAdmin = (req, res, next) => { if (!req.session.userId || req.sessio
 
 // ─── SECURITY HELPERS ─────────────────────────────────────────
 function generateCaptcha() {
-  const a = Math.floor(Math.random() * 9) + 1;
-  const b = Math.floor(Math.random() * 9) + 1;
-  return { q: `${a} + ${b} = ?`, a: a + b };
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let challenge = '';
+  for (let i = 0; i < 5; i++) challenge += chars[Math.floor(Math.random() * chars.length)];
+  return { q: `Type this code: ${challenge}`, a: challenge };
 }
 
 // ─── HELPER: get setting ──────────────────────────────────────
@@ -404,7 +501,7 @@ app.get('/api/settings/public', async (req, res) => {
 
 app.get('/api/admin/settings', requireAdmin, async (req, res) => {
   try {
-    if (!useDB) return res.json([]);
+    if (!useDB) return res.json(getFallbackSettingsObject());
     const settings = await Settings.find({});
     res.json(settings);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -413,11 +510,37 @@ app.get('/api/admin/settings', requireAdmin, async (req, res) => {
 app.put('/api/admin/settings', requireAdmin, async (req, res) => {
   try {
     const { settings } = req.body; // array of {key, value}
-    if (!useDB) return res.json({ success: true });
+    if (!useDB) {
+      const nextSettings = getFallbackSettingsObject();
+      for (const s of settings || []) {
+        if (s && s.key) nextSettings[s.key] = s.value;
+      }
+      saveFallbackSettingsObject(nextSettings);
+      return res.json({ success: true });
+    }
     for (const s of settings) {
       await Settings.findOneAndUpdate({ key: s.key }, { value: s.value }, { upsert: true });
     }
     res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/upload-media', requireAdmin, upload.single('media'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Media file required' });
+    const mediaUrl = '/uploads/' + req.file.filename;
+    res.json({ success: true, url: mediaUrl });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/login-logs', requireAdmin, async (req, res) => {
+  try {
+    if (useDB && LoginEvent) {
+      const logs = await LoginEvent.find({}).sort({ createdAt: -1 }).limit(300).lean();
+      return res.json(logs.map(l => ({ ...l, id: l._id })));
+    }
+    const logs = readJson(FILES.loginLogs);
+    res.json(Array.isArray(logs) ? logs.slice(0, 300) : []);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -822,9 +945,9 @@ app.post('/api/otp/verify-email', async (req, res) => {
 app.get('/api/captcha', (req, res) => {
   const n1 = Math.floor(Math.random() * 10) + 1;
   const n2 = Math.floor(Math.random() * 10) + 1;
-  const answer = n1 + n2;
-  req.session.captcha = answer;
-  res.json({ success: true, question: `${n1} + ${n2} = ?` });
+  const { q, a } = generateCaptcha();
+  req.session.captcha = a;
+  res.json({ success: true, question: q });
 });
 
 // ─── AUTH ROUTES ──────────────────────────────────────────────
@@ -854,26 +977,48 @@ app.post('/api/signup', async (req, res) => {
 app.post('/api/login', async (req, res) => {
   try {
     const { email, password, captchaAnswer } = req.body;
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    const userAgent = req.headers['user-agent'] || '';
     if (useDB) {
       const user = await User.findOne({ email });
-      if (!user) return res.status(400).json({ error: 'Invalid email or password' });
+      if (!user) {
+        await recordLoginActivity({ email, status: 'failed', method: 'password', role: 'user', ip, userAgent });
+        return res.status(400).json({ error: 'Invalid email or password' });
+      }
       
       // CAPTCHA check for admins
       if (user.role === 'admin') {
-        if (!captchaAnswer || parseInt(captchaAnswer) !== req.session.captcha) {
+        if (!captchaAnswer || String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
+          await recordLoginActivity({ email, name: user.name, status: 'failed', method: 'password', role: user.role, ip, userAgent });
           return res.status(400).json({ error: 'Invalid or missing CAPTCHA answer' });
         }
       }
 
-      if (!await bcrypt.compare(password, user.password)) return res.status(400).json({ error: 'Invalid email or password' });
+      if (!await bcrypt.compare(password, user.password)) {
+        await recordLoginActivity({ email, name: user.name, status: 'failed', method: 'password', role: user.role, ip, userAgent });
+        return res.status(400).json({ error: 'Invalid email or password' });
+      }
       req.session.userId = user._id.toString(); req.session.role = user.role; req.session.name = user.name;
+      await recordLoginActivity({ email, name: user.name, status: 'success', method: 'password', role: user.role, ip, userAgent });
       const { password: _, ...safe } = user.toObject();
       return res.json({ success: true, user: { id: user._id, ...safe } });
     }
     const users = readJson(FILES.users);
     const user = users.find(u => u.email === email);
-    if (!user || !await bcrypt.compare(password, user.password)) return res.status(400).json({ error: 'Invalid email or password' });
+    if (!user || !await bcrypt.compare(password, user.password)) {
+      await recordLoginActivity({ email, status: 'failed', method: 'password', role: user?.role || 'user', ip, userAgent });
+      return res.status(400).json({ error: 'Invalid email or password' });
+    }
+
+    if (user.role === 'admin') {
+      if (!captchaAnswer || String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
+        await recordLoginActivity({ email, name: user.name, status: 'failed', method: 'password', role: user.role, ip, userAgent });
+        return res.status(400).json({ error: 'Invalid or missing CAPTCHA answer' });
+      }
+    }
+
     req.session.userId = user.id; req.session.role = user.role; req.session.name = user.name;
+    await recordLoginActivity({ email, name: user.name, status: 'success', method: 'password', role: user.role, ip, userAgent });
     res.json({ success: true, user: { id: user.id, name: user.name, email, role: user.role } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1017,6 +1162,9 @@ app.post('/api/products', requireAdmin, upload.array('images', 5), async (req, r
     const images = req.files?.length ? req.files.map(f => '/uploads/' + f.filename) : ['/images/p1.png'];
     if (useDB) {
       const p = await Product.create({ name, category, price: +price, mrp: +mrp, discount: +(discount || 0), stock: +stock, description, images, gstRate: +(gstRate || 18), hsn: hsn || '7117', featured: featured === 'true' });
+      const products = readJson(FILES.products);
+      products.push({ ...p.toObject(), id: p._id.toString() });
+      writeJson(FILES.products, products);
       return res.json({ success: true, product: { ...p.toObject(), id: p._id } });
     }
     const products = readJson(FILES.products);
@@ -1036,6 +1184,12 @@ app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req
     if (useDB) {
       const p = await Product.findByIdAndUpdate(req.params.id, updates, { new: true });
       if (!p) return res.status(404).json({ error: 'Not found' });
+      const products = readJson(FILES.products);
+      const idx = products.findIndex(item => item.id === req.params.id || item._id === req.params.id);
+      const next = { ...p.toObject(), id: p._id.toString() };
+      if (idx >= 0) products[idx] = { ...products[idx], ...next };
+      else products.push(next);
+      writeJson(FILES.products, products);
       return res.json({ success: true, product: { ...p.toObject(), id: p._id } });
     }
     const products = readJson(FILES.products);
@@ -1049,7 +1203,12 @@ app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req
 
 app.delete('/api/products/:id', requireAdmin, async (req, res) => {
   try {
-    if (useDB) { await Product.findByIdAndDelete(req.params.id); return res.json({ success: true }); }
+    if (useDB) {
+      await Product.findByIdAndDelete(req.params.id);
+      const products = readJson(FILES.products).filter(p => p.id !== req.params.id && p._id !== req.params.id);
+      writeJson(FILES.products, products);
+      return res.json({ success: true });
+    }
     const products = readJson(FILES.products).filter(p => p.id !== req.params.id);
     writeJson(FILES.products, products); res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1525,10 +1684,15 @@ app.put('/api/admin/change-credentials', requireAdmin, async (req, res) => {
     }
     const users = readJson(FILES.users), idx = users.findIndex(u => u.id === req.session.userId);
     if (idx === -1 || !await bcrypt.compare(currentPassword, users[idx].password)) return res.status(400).json({ error: 'Current password galat hai' });
-    if (newEmail) users[idx].email = newEmail;
+    if (newEmail && newEmail !== users[idx].email) {
+      const dup = users.find(u => u.email === newEmail);
+      if (dup) return res.status(400).json({ error: 'Email in use' });
+      users[idx].email = newEmail;
+    }
     if (name) users[idx].name = name;
     if (newPassword && newPassword.length >= 6) users[idx].password = await bcrypt.hash(newPassword, 10);
     writeJson(FILES.users, users);
+    req.session.name = users[idx].name;
     const { password, ...safe } = users[idx];
     res.json({ success: true, user: safe });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1585,6 +1749,8 @@ app.get('/api/ai/trending', async (req, res) => {
 app.post('/api/auth/google', async (req, res) => {
   try {
     const { email, name, picture, googleId } = req.body;
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    const userAgent = req.headers['user-agent'] || '';
     if (!email) return res.status(400).json({ error: 'Email is required from Google' });
     
     let user;
@@ -1623,6 +1789,7 @@ app.post('/api/auth/google', async (req, res) => {
     
     req.session.userId = user._id?.toString() || user.id;
     req.session.role = user.role || 'user';
+    await recordLoginActivity({ email, name: user.name, status: 'success', method: 'google', role: user.role || 'user', ip, userAgent });
     
     res.json({ 
       success: true, 
@@ -1636,6 +1803,7 @@ app.post('/api/auth/google', async (req, res) => {
     });
   } catch (e) { 
     console.error('Google Auth Error:', e.message);
+    await recordLoginActivity({ email: req.body?.email || '', status: 'failed', method: 'google', role: 'user', ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress || '', userAgent: req.headers['user-agent'] || '' });
     res.status(500).json({ error: 'Google login failed: ' + e.message }); 
   }
 });
@@ -1649,13 +1817,19 @@ app.get('/api/settings', async (req, res) => {
       rows.forEach(r => obj[r.key] = r.value);
       return res.json(obj);
     }
-    res.json({ storeName: 'Lencho', storeEmail: 'hello@lencho.in' });
+    res.json(getFallbackSettingsObject());
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/admin/settings', requireAdmin, async (req, res) => {
   try {
-    if (!useDB) return res.status(400).json({ error: 'Database not connected' });
+    if (!useDB) {
+      const nextSettings = getFallbackSettingsObject();
+      const updates = req.body || {};
+      for (const key of Object.keys(updates)) nextSettings[key] = updates[key];
+      saveFallbackSettingsObject(nextSettings);
+      return res.json({ success: true, message: 'Settings saved!' });
+    }
     const updates = req.body;
     const keys = Object.keys(updates);
     for (const key of keys) {

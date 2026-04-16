@@ -211,8 +211,19 @@ function exportGSTExcel() {
 }
 
 /* ── ADMIN SETTINGS ──────────────────────────────────────────── */
-async function adminSettings() {
-  const s = await api('/api/admin/settings');
+function normalizeAdminSettings(settings) {
+  if (Array.isArray(settings)) {
+    const normalized = {};
+    settings.forEach(item => {
+      if (item && item.key !== undefined) normalized[item.key] = item.value;
+    });
+    return normalized;
+  }
+  return settings && typeof settings === 'object' ? settings : {};
+}
+
+async function adminStoreSettings() {
+  const s = normalizeAdminSettings(await api('/api/admin/settings'));
   
   document.getElementById('admin-content').innerHTML = `
   <div class="admin-header">
