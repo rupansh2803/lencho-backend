@@ -104,7 +104,7 @@ async function showAdminLogin() {
           </button>
         </div>
         <div class="form-group" style="margin-top:12px;margin-bottom:0;">
-          <input type="text" id="adm-captcha" inputmode="text" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="5" placeholder="Enter security code" style="text-align:center;letter-spacing:.35em;font-weight:700;text-transform:uppercase;"/>
+          <input type="text" id="adm-captcha" inputmode="text" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="5" pattern="[A-Za-z0-9]{5}" placeholder="Enter security code" style="appearance:none;-webkit-appearance:none;-moz-appearance:textfield;text-align:center;letter-spacing:.35em;font-weight:700;text-transform:uppercase;" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,5)"/>
         </div>
       </div>
 
