@@ -11,6 +11,8 @@ const compression = require('compression');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const mongoose = require('mongoose');
+const axios = require('axios');
+const nodemailer = require('nodemailer');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
@@ -480,9 +482,78 @@ function generateCaptcha() {
 
 // ─── HELPER: get setting ──────────────────────────────────────
 async function getSetting(key, fallback) {
-  if (!useDB) return fallback;
+  if (!useDB) {
+    const fallbackSettings = getFallbackSettingsObject();
+    return fallbackSettings[key] !== undefined ? fallbackSettings[key] : fallback;
+  }
   const s = await Settings.findOne({ key });
   return s ? s.value : fallback;
+}
+
+async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
+  const host = await getSetting('smtpHost', 'smtp.gmail.com');
+  const port = await getSetting('smtpPort', 465);
+  const user = await getSetting('smtpUser', '');
+  const pass = await getSetting('smtpPass', '');
+  const subjectTpl = await getSetting('otpSubject', 'Your Verification Code: {{otp}}');
+  const bodyTpl = await getSetting('otpBody', 'Your OTP is {{otp}}');
+
+  if (!user || !pass) {
+    throw new Error('SMTP not configured in admin settings');
+  }
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port: +port,
+    secure: +port === 465,
+    auth: { user, pass }
+  });
+
+  await transporter.sendMail({
+    from: `"Lencho Secure" <${user}>`,
+    to: targetEmail,
+    subject: subjectTpl.replace('{{otp}}', otp),
+    html: bodyTpl.replace('{{otp}}', otp)
+  });
+
+  return { sent: true, type };
+}
+
+async function getDeliveryManagerConfig() {
+  const defaults = {
+    enabled: false,
+    provider: 'custom',
+    apiBaseUrl: '',
+    apiKey: '',
+    webhookUrl: '',
+    notes: ''
+  };
+
+  if (!useDB) {
+    const fallbackSettings = getFallbackSettingsObject();
+    const stored = fallbackSettings.deliveryManagerConfig;
+    return { ...defaults, ...(stored && typeof stored === 'object' ? stored : {}) };
+  }
+
+  const row = await Settings.findOne({ key: 'deliveryManagerConfig' });
+  const stored = row && row.value && typeof row.value === 'object' ? row.value : {};
+  return { ...defaults, ...stored };
+}
+
+async function saveDeliveryManagerConfig(nextConfig) {
+  if (!useDB) {
+    const fallbackSettings = getFallbackSettingsObject();
+    fallbackSettings.deliveryManagerConfig = nextConfig;
+    saveFallbackSettingsObject(fallbackSettings);
+    return nextConfig;
+  }
+
+  await Settings.findOneAndUpdate(
+    { key: 'deliveryManagerConfig' },
+    { value: nextConfig, label: 'Delivery Manager Config' },
+    { upsert: true }
+  );
+  return nextConfig;
 }
 
 // ─── SETTINGS API ─────────────────────────────────────────────
@@ -542,6 +613,66 @@ app.get('/api/admin/login-logs', requireAdmin, async (req, res) => {
     const logs = readJson(FILES.loginLogs);
     res.json(Array.isArray(logs) ? logs.slice(0, 300) : []);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/delivery-manager', requireAdmin, async (req, res) => {
+  try {
+    const cfg = await getDeliveryManagerConfig();
+    res.json(cfg);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/delivery-manager', requireAdmin, async (req, res) => {
+  try {
+    const incoming = req.body || {};
+    const current = await getDeliveryManagerConfig();
+    const next = {
+      ...current,
+      enabled: incoming.enabled === true || incoming.enabled === 'true',
+      provider: String(incoming.provider || current.provider || 'custom').trim(),
+      apiBaseUrl: String(incoming.apiBaseUrl || '').trim(),
+      apiKey: String(incoming.apiKey || '').trim(),
+      webhookUrl: String(incoming.webhookUrl || '').trim(),
+      notes: String(incoming.notes || '').trim()
+    };
+    await saveDeliveryManagerConfig(next);
+    res.json({ success: true, config: next });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/delivery-manager/test', requireAdmin, async (req, res) => {
+  try {
+    const cfg = await getDeliveryManagerConfig();
+    if (!cfg.webhookUrl) return res.status(400).json({ error: 'Please add Delivery API/Webhook URL first' });
+
+    const payload = {
+      source: 'lencho-admin',
+      event: 'delivery_manager_test',
+      sentAt: new Date().toISOString(),
+      order: {
+        id: req.body?.orderId || `TEST-${Date.now()}`,
+        amount: req.body?.amount || 999,
+        paymentMethod: req.body?.paymentMethod || 'prepaid'
+      }
+    };
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
+
+    const upstream = await axios.post(cfg.webhookUrl, payload, { headers, timeout: 15000 });
+    res.json({
+      success: true,
+      upstreamStatus: upstream.status,
+      upstreamData: upstream.data,
+      payload
+    });
+  } catch (e) {
+    res.status(500).json({
+      error: e.response?.data?.message || e.message,
+      upstreamStatus: e.response?.status || null,
+      upstreamData: e.response?.data || null
+    });
+  }
 });
 
 app.post('/api/discount/email', async (req, res) => {
@@ -941,15 +1072,118 @@ app.post('/api/otp/verify-email', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/api/admin/login/request-otp', async (req, res) => {
+  try {
+    const { email, password, captchaAnswer } = req.body || {};
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    const userAgent = req.headers['user-agent'] || '';
+    if (!email || !password || !captchaAnswer) return res.status(400).json({ error: 'Email, password and CAPTCHA are required' });
 
-app.get('/api/captcha', (req, res) => {
-  const n1 = Math.floor(Math.random() * 10) + 1;
-  const n2 = Math.floor(Math.random() * 10) + 1;
-  const { q, a } = generateCaptcha();
-  req.session.captcha = a;
-  res.json({ success: true, question: q });
+    if (String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
+      await recordLoginActivity({ email, status: 'failed', method: 'admin_otp', role: 'admin', ip, userAgent });
+      return res.status(400).json({ error: 'Invalid CAPTCHA' });
+    }
+
+    let adminUser = null;
+    if (useDB) {
+      adminUser = await User.findOne({ email });
+      if (!adminUser || adminUser.role !== 'admin' || !await bcrypt.compare(password, adminUser.password)) {
+        await recordLoginActivity({ email, name: adminUser?.name || '', status: 'failed', method: 'admin_otp', role: adminUser?.role || 'user', ip, userAgent });
+        return res.status(400).json({ error: 'Invalid admin credentials' });
+      }
+    } else {
+      const users = readJson(FILES.users);
+      adminUser = users.find(u => u.email === email && u.role === 'admin');
+      if (!adminUser || !await bcrypt.compare(password, adminUser.password)) {
+        await recordLoginActivity({ email, name: adminUser?.name || '', status: 'failed', method: 'admin_otp', role: adminUser?.role || 'user', ip, userAgent });
+        return res.status(400).json({ error: 'Invalid admin credentials' });
+      }
+    }
+
+    const otp = generateOTP();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    if (useDB) {
+      await OTPLog.deleteMany({ target: email, type: 'admin_login', used: false });
+      await OTPLog.create({ target: email, code: otp, type: 'admin_login', expiresAt });
+    } else {
+      req.session.pendingAdminOTP = { email, code: otp, expiresAt: expiresAt.toISOString() };
+    }
+
+    req.session.pendingAdminLogin = {
+      email,
+      userId: adminUser._id?.toString() || adminUser.id,
+      expiresAt: expiresAt.toISOString()
+    };
+    delete req.session.captcha;
+
+    await sendConfiguredEmailOTP(email, otp, 'admin_login');
+
+    res.json({ success: true, message: 'OTP sent to admin email. Valid for 5 minutes.' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/api/admin/login/verify-otp', async (req, res) => {
+  try {
+    const { email, otp } = req.body || {};
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    const userAgent = req.headers['user-agent'] || '';
+    if (!email || !otp) return res.status(400).json({ error: 'Email and OTP are required' });
+
+    const pending = req.session.pendingAdminLogin;
+    if (!pending || pending.email !== email) return res.status(400).json({ error: 'Please request OTP again' });
+    if (new Date(pending.expiresAt) < new Date()) {
+      delete req.session.pendingAdminLogin;
+      delete req.session.pendingAdminOTP;
+      return res.status(400).json({ error: 'OTP expired. Please request again.' });
+    }
+
+    if (useDB) {
+      const log = await OTPLog.findOne({
+        target: email,
+        type: 'admin_login',
+        code: String(otp).trim(),
+        used: false,
+        expiresAt: { $gt: new Date() }
+      });
+      if (!log) {
+        await recordLoginActivity({ email, status: 'failed', method: 'admin_otp', role: 'admin', ip, userAgent });
+        return res.status(400).json({ error: 'Invalid or expired OTP' });
+      }
+      log.used = true;
+      await log.save();
+    } else {
+      const mem = req.session.pendingAdminOTP;
+      if (!mem || mem.email !== email || String(mem.code) !== String(otp).trim()) return res.status(400).json({ error: 'Invalid OTP' });
+      if (new Date(mem.expiresAt) < new Date()) return res.status(400).json({ error: 'OTP expired. Please request again.' });
+    }
+
+    let user;
+    if (useDB) {
+      user = await User.findById(pending.userId);
+      if (!user || user.role !== 'admin') return res.status(403).json({ error: 'Admin account not found' });
+      req.session.userId = user._id.toString();
+      req.session.role = user.role;
+      req.session.name = user.name;
+      delete req.session.pendingAdminLogin;
+      delete req.session.pendingAdminOTP;
+      await recordLoginActivity({ email, name: user.name, status: 'success', method: 'admin_otp', role: user.role, ip, userAgent });
+      const { password: _, ...safe } = user.toObject();
+      return res.json({ success: true, user: { id: user._id, ...safe } });
+    }
+
+    const users = readJson(FILES.users);
+    user = users.find(u => u.id === pending.userId || u.email === email);
+    if (!user || user.role !== 'admin') return res.status(403).json({ error: 'Admin account not found' });
+    req.session.userId = user.id;
+    req.session.role = user.role;
+    req.session.name = user.name;
+    delete req.session.pendingAdminLogin;
+    delete req.session.pendingAdminOTP;
+    await recordLoginActivity({ email, name: user.name, status: 'success', method: 'admin_otp', role: user.role, ip, userAgent });
+    res.json({ success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 // ─── AUTH ROUTES ──────────────────────────────────────────────
 app.post('/api/signup', async (req, res) => {
   try {

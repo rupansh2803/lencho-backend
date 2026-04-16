@@ -47,6 +47,7 @@ async function api(url, opts = {}) {
   try {
     const res = await fetch(url, { 
       headers: { 'Content-Type': 'application/json' }, 
+      credentials: 'include',
       ...opts, 
       body: opts.body ? JSON.stringify(opts.body) : undefined 
     });
@@ -1003,6 +1004,9 @@ async function completeGoogleLogin(profile, btn) {
   }
   
   currentUser = result.user;
+  const sessionUser = await api('/api/me');
+  if (sessionUser && sessionUser.user) currentUser = sessionUser.user;
+  googleAuthInFlight = false;
   updateHeader();
   closeAuthModal();
   await updateCartCount();
