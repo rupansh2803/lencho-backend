@@ -420,6 +420,61 @@ function productCardHTML(p) {
   </div>`;
 }
 
+function shuffleArray(items) {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function renderFallbackCollectionCards(container) {
+  const fallbackCollections = shuffleArray([
+    { name: 'Earrings', slug: 'earrings', image: 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=900&q=80' },
+    { name: 'Necklace Sets', slug: 'necklace', image: 'https://images.unsplash.com/photo-1617038220319-9c7b6f4f59ff?auto=format&fit=crop&w=900&q=80' },
+    { name: 'Rings', slug: 'rings', image: 'https://images.unsplash.com/photo-1611652022419-a9419f74343d?auto=format&fit=crop&w=900&q=80' },
+    { name: 'Bridal Sets', slug: 'sets', image: 'https://images.unsplash.com/photo-1617038220319-33d1c2d2c5b8?auto=format&fit=crop&w=900&q=80' },
+    { name: 'Bangles', slug: 'bangles', image: 'https://images.unsplash.com/photo-1617038220319-3f6e0adf8c5e?auto=format&fit=crop&w=900&q=80' },
+    { name: 'Bracelets', slug: 'bracelets', image: 'https://images.unsplash.com/photo-1611652022419-8a3f7f0de1c7?auto=format&fit=crop&w=900&q=80' },
+  ]);
+
+  container.innerHTML = fallbackCollections.map((c, i) => `
+    <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
+      <img class="cat-img" src="${c.image}" alt="${c.name}" onerror="this.src='/images/hero.png'"/>
+      <div class="cat-overlay"></div>
+      <div class="cat-content"><div class="cat-name">${c.name}</div><button class="cat-btn">Shop Now</button></div>
+    </div>
+  `).join('');
+  initScrollReveal();
+}
+
+function renderFallbackFeaturedCards(container) {
+  const fallbackFeatured = shuffleArray([
+    { title: 'Rose Glow Earrings', slug: 'earrings', image: 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=900&q=80' },
+    { title: 'Royal Necklace Set', slug: 'necklace', image: 'https://images.unsplash.com/photo-1617038220319-9c7b6f4f59ff?auto=format&fit=crop&w=900&q=80' },
+    { title: 'Bridal Ring Collection', slug: 'rings', image: 'https://images.unsplash.com/photo-1611652022419-a9419f74343d?auto=format&fit=crop&w=900&q=80' },
+    { title: 'Statement Bangles', slug: 'bangles', image: 'https://images.unsplash.com/photo-1617038220319-3f6e0adf8c5e?auto=format&fit=crop&w=900&q=80' },
+  ]);
+
+  container.innerHTML = fallbackFeatured.map((item, i) => `
+    <div class="product-card reveal" style="border-radius:16px !important;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08) !important;transition:transform .3s ease,box-shadow .3s ease !important;background:#fff;border:1px solid rgba(201,106,138,.08);" onclick="navigate('/products?category=${item.slug}')">
+      <div class="product-img-wrap" style="position:relative;overflow:hidden;aspect-ratio:1/1.15;cursor:pointer;">
+        <img class="product-img" src="${item.image}" alt="${item.title}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;display:block;"/>
+        <span class="product-badge" style="position:absolute;top:12px;left:12px;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;padding:6px 12px;border-radius:8px;font-weight:700;font-size:.75rem;z-index:2;">✦ Featured ✦</span>
+      </div>
+      <div class="product-body" style="padding:1rem 1rem 1.2rem;">
+        <div class="product-name" style="font-weight:600;font-size:.95rem;color:var(--dark);line-height:1.3;margin-bottom:.5rem;">${item.title}</div>
+        <div class="product-price" style="margin-bottom:.75rem;">
+          <span class="price-current" style="font-size:1.2rem;font-weight:700;color:var(--rose);">Explore Collection</span>
+        </div>
+        <button class="btn-primary btn-sm" style="width:100%;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;font-weight:600;cursor:pointer;">View Collection</button>
+      </div>
+    </div>
+  `).join('');
+  initScrollReveal();
+}
+
 // ── HOME PAGE ─────────────────────────────────────────────
 function normalizeSettings(settings) {
   if (Array.isArray(settings)) {
@@ -629,10 +684,10 @@ async function loadHomeCategories() {
     }
 
     if (categories.length === 0) {
-      container.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--gray);">No collections available yet.</div>';
+      renderFallbackCollectionCards(container);
       return;
     }
-    container.innerHTML = categories.map((c, i) => `
+    container.innerHTML = shuffleArray(categories).map((c, i) => `
       <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
         <img class="cat-img" src="${c.image}" alt="${c.name}" onerror="this.src='/images/hero.png'"/>
         <div class="cat-overlay"></div>
@@ -654,7 +709,7 @@ async function loadHomeCategories() {
       });
       const categories = [...byCategory.values()];
       if (categories.length > 0) {
-        container.innerHTML = categories.map((c, i) => `
+        container.innerHTML = shuffleArray(categories).map((c, i) => `
           <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
             <img class="cat-img" src="${c.image}" alt="${c.name}" onerror="this.src='/images/hero.png'"/>
             <div class="cat-overlay"></div>
@@ -665,7 +720,7 @@ async function loadHomeCategories() {
         return;
       }
     }
-    container.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--gray);">Unable to load collections.</div>';
+    renderFallbackCollectionCards(container);
   }
 }
 
@@ -794,28 +849,28 @@ async function loadFeaturedProducts() {
   const renderFallbackProducts = async (message) => {
     const fallback = await api('/api/products');
     if (Array.isArray(fallback) && fallback.length > 0) {
-      grid.innerHTML = fallback.slice(0, 4).map(productCardHTML).join('');
+      grid.innerHTML = shuffleArray(fallback).slice(0, 4).map(productCardHTML).join('');
       initScrollReveal();
       return;
     }
-    grid.innerHTML = message;
+    renderFallbackFeaturedCards(grid);
   };
 
   try {
     const r = await api('/api/products?featured=true');
     console.log('Featured products response:', r);
     if (r && Array.isArray(r) && r.length > 0) {
-      grid.innerHTML = r.map(productCardHTML).join('');
+      grid.innerHTML = shuffleArray(r).map(productCardHTML).join('');
       initScrollReveal();
     } else if (Array.isArray(r) && r.length === 0) {
-      await renderFallbackProducts('<div style="grid-column:1/-1; text-align:center; padding:3rem; color:var(--gray);">No featured products available. Explore all products below. ✦</div>');
+      await renderFallbackProducts('');
     } else {
       console.error('Invalid response format:', r);
-      await renderFallbackProducts('<div style="grid-column:1/-1; text-align:center; padding:3rem; color:var(--rose);">Unable to load products. Please refresh the page. ✦</div>');
+      await renderFallbackProducts('');
     }
   } catch (e) {
     console.error('Featured products error:', e);
-    await renderFallbackProducts('<div style="grid-column:1/-1; text-align:center; padding:3rem; color:var(--rose);">Unable to load products. Please check your connection. ✦</div>');
+    await renderFallbackProducts('');
   }
 }
 
