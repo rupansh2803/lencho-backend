@@ -975,9 +975,33 @@ async function adminSiteManager() {
   const settings = normalizeSettings(await api('/api/settings'));
   const g = (k) => settings[k] ?? '';
   const isOn = (k) => settings[k] === true || settings[k] === 'true';
+  const colorVal = (k, fallback) => {
+    const value = g(k);
+    return /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+  };
 
   document.getElementById('admin-content').innerHTML = `
   <div class="admin-header"><h1 class="admin-page-title">🎨 Site Manager — Homepage CMS</h1><p style="color:var(--gray);margin-top:4px;">Control every section of your homepage from here. Changes appear instantly on the live site.</p></div>
+
+  <div class="admin-form" style="margin-bottom:2rem;">
+    <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-palette"></i> Design System (Theme Control)</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;">
+      <div class="form-group"><label>Primary Rose</label><input type="color" id="cms-themeRose" value="${colorVal('themeRose', '#c9748f')}"/></div>
+      <div class="form-group"><label>Rose Dark</label><input type="color" id="cms-themeRoseDark" value="${colorVal('themeRoseDark', '#a85070')}"/></div>
+      <div class="form-group"><label>Rose Light</label><input type="color" id="cms-themeRoseLight" value="${colorVal('themeRoseLight', '#fbe4e9')}"/></div>
+      <div class="form-group"><label>Gold</label><input type="color" id="cms-themeGold" value="${colorVal('themeGold', '#b39031')}"/></div>
+      <div class="form-group"><label>Gold Light</label><input type="color" id="cms-themeGoldLight" value="${colorVal('themeGoldLight', '#d4af37')}"/></div>
+      <div class="form-group"><label>Background</label><input type="color" id="cms-themeBeige" value="${colorVal('themeBeige', '#fdf6f0')}"/></div>
+      <div class="form-group"><label>Dark Text</label><input type="color" id="cms-themeDark" value="${colorVal('themeDark', '#1f1f38')}"/></div>
+      <div class="form-group"><label>Card Radius</label><input id="cms-themeRadius" value="${g('themeRadius') || '16px'}" placeholder="16px"/></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:8px;">
+      <div class="form-group"><label>Collections Section Background (CSS value)</label><input id="cms-homeCollectionsBg" value="${g('homeCollectionsBg')}" placeholder="#ffffff or linear-gradient(...)"/></div>
+      <div class="form-group"><label>Featured Section Background (CSS value)</label><input id="cms-homeFeaturedBg" value="${g('homeFeaturedBg') || 'var(--beige)'}" placeholder="#fdf6f0"/></div>
+      <div class="form-group"><label>Testimonials Section Background (CSS value)</label><input id="cms-homeTestimonialsBg" value="${g('homeTestimonialsBg')}" placeholder="#fff"/></div>
+    </div>
+    <button class="btn-primary" style="margin-top:1rem;" onclick="saveCmsDesignSystem()"><i class="fas fa-save"></i> Save Design System</button>
+  </div>
 
   <!-- SECTION TOGGLES -->
   <div class="admin-form" style="margin-bottom:2rem;">
@@ -1111,6 +1135,20 @@ async function saveCmsFooter() {
     if (el) await api('/api/admin/settings', { method: 'POST', body: { key: k, value: el.value } });
   }
   toast('✅ Footer details saved!', 'success');
+}
+
+async function saveCmsDesignSystem() {
+  const keys = [
+    'themeRose','themeRoseDark','themeRoseLight','themeGold','themeGoldLight','themeBeige','themeDark','themeRadius',
+    'homeCollectionsBg','homeFeaturedBg','homeTestimonialsBg'
+  ];
+
+  for (const key of keys) {
+    const el = document.getElementById('cms-' + key);
+    if (!el) continue;
+    await api('/api/admin/settings', { method: 'POST', body: { key, value: el.value } });
+  }
+  toast('✅ Design system saved!', 'success');
 }
 
 async function uploadCmsMedia(fileInputId, targetInputId) {

@@ -431,6 +431,25 @@ function normalizeSettings(settings) {
   return settings && typeof settings === 'object' ? settings : {};
 }
 
+function applyCmsDesign(cms) {
+  const root = document.documentElement;
+  const setVar = (key, cssVar, fallback) => {
+    const value = cms[key];
+    root.style.setProperty(cssVar, value && String(value).trim() ? String(value).trim() : fallback);
+  };
+
+  setVar('themeRose', '--rose', '#c9748f');
+  setVar('themeRoseDark', '--rose-dark', '#a85070');
+  setVar('themeRoseLight', '--rose-light', '#fbe4e9');
+  setVar('themeGold', '--gold', '#b39031');
+  setVar('themeGoldLight', '--gold-light', '#d4af37');
+  setVar('themeBeige', '--beige', '#fdf6f0');
+  setVar('themeDark', '--dark', '#1f1f38');
+
+  const radius = cms.themeRadius || '16px';
+  root.style.setProperty('--radius', String(radius));
+}
+
 async function renderHome() {
   const app = document.getElementById('app');
 
@@ -440,6 +459,8 @@ async function renderHome() {
     const settings = await api('/api/settings');
     cms = normalizeSettings(settings);
   } catch(e) {}
+
+  applyCmsDesign(cms);
 
   const g = (k, def) => cms[k] || def || '';
   const isOn = (k) => cms[k] === true || cms[k] === 'true' || cms[k] === undefined;
@@ -502,7 +523,7 @@ async function renderHome() {
     </div>
   </section>` : ''}
 
-  ${isOn('showCollections') ? `<section class="categories" style="padding:4rem 5%;">
+  ${isOn('showCollections') ? `<section class="categories" style="padding:4rem 5%;${g('homeCollectionsBg') ? `background:${g('homeCollectionsBg')};` : ''}">
     <div class="section-header reveal">
       <div class="section-eyebrow">Shop by Category</div>
       <h2 class="section-title">Exclusive Collections</h2>
@@ -514,7 +535,7 @@ async function renderHome() {
   </section>` : ''}
 
   ${isOn('showFeaturedProducts') ? `<!-- FEATURED PRODUCTS -->
-  <section style="background:var(--beige);">
+  <section style="background:${g('homeFeaturedBg', 'var(--beige)')};">
     <div class="section-header reveal">
       <div class="section-eyebrow">Bestsellers</div>
       <h2 class="section-title">🔥 Trending Now</h2>
@@ -525,7 +546,7 @@ async function renderHome() {
   </section>` : ''}
 
   ${isOn('showTestimonials') ? `<!-- TESTIMONIALS -->
-  <section class="testimonials">
+  <section class="testimonials" style="${g('homeTestimonialsBg') ? `background:${g('homeTestimonialsBg')};` : ''}">
     <div class="section-header reveal">
       <div class="section-eyebrow" style="color:var(--gold-light);">Happy Customers</div>
       <h2 class="section-title">What Our Customers Say</h2>
