@@ -92,11 +92,19 @@ async function showAdminLogin() {
       <div class="form-group"><label>Email Address</label><input type="email" id="adm-email" placeholder="admin@example.com"/></div>
       <div class="form-group"><label>Password</label><input type="password" id="adm-pass" placeholder="Password"/></div>
       
-      <div style="background:var(--beige);padding:1rem;border-radius:12px;margin-bottom:1.5rem;">
-        <label style="font-size:.7rem;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:5px;">Security Code: Enter Text</label>
-        <div style="display:flex;align-items:center;gap:1rem;">
-          <div style="font-weight:700;font-size:1.2rem;color:var(--rose-dark);background:#fff;padding:5px 15px;border-radius:8px;border:1px solid #eee;">${captcha.question}</div>
-          <input type="text" id="adm-captcha" style="width:130px;text-align:center;text-transform:uppercase;" placeholder="Code"/>
+      <div style="background:var(--beige);padding:1rem;border-radius:12px;margin-bottom:1.5rem;border:1px solid rgba(0,0,0,.04);">
+        <label style="font-size:.7rem;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:8px;letter-spacing:.08em;">Security Code</label>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;">
+          <div style="min-width:180px;flex:1;background:#fff;padding:.85rem 1rem;border-radius:10px;border:1px solid #eee;display:flex;flex-direction:column;gap:.2rem;">
+            <span style="font-size:.72rem;color:var(--gray);text-transform:uppercase;letter-spacing:.08em;">Type this code exactly</span>
+            <span style="font-weight:800;font-size:1.35rem;letter-spacing:.12em;color:var(--rose-dark);">${captcha.question.replace('Type this code: ', '')}</span>
+          </div>
+          <button type="button" class="btn-outline" onclick="showAdminLogin()" style="white-space:nowrap;padding:.75rem 1rem;">
+            <i class="fas fa-rotate-right"></i> Refresh
+          </button>
+        </div>
+        <div class="form-group" style="margin-top:12px;margin-bottom:0;">
+          <input type="text" id="adm-captcha" inputmode="text" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="5" placeholder="Enter security code" style="text-align:center;letter-spacing:.35em;font-weight:700;text-transform:uppercase;"/>
         </div>
       </div>
 
@@ -117,6 +125,8 @@ async function showAdminLogin() {
       </button>
     </div>
   </div>`;
+
+  setTimeout(() => document.getElementById('adm-captcha')?.focus(), 0);
 }
 
 async function adminLogin() {
