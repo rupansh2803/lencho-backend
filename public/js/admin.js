@@ -1224,12 +1224,16 @@ async function adminDeliveryManager() {
 async function saveDeliveryManagerSettings() {
   const payload = {
     enabled: document.getElementById('dm-enabled')?.checked,
-    provider: document.getElementById('dm-provider')?.value,
-    apiBaseUrl: document.getElementById('dm-api-base')?.value,
-    apiKey: document.getElementById('dm-api-key')?.value,
-    webhookUrl: document.getElementById('dm-webhook')?.value,
-    notes: document.getElementById('dm-notes')?.value
+    provider: (document.getElementById('dm-provider')?.value || '').trim(),
+    apiBaseUrl: (document.getElementById('dm-api-base')?.value || '').trim(),
+    apiKey: (document.getElementById('dm-api-key')?.value || '').trim(),
+    webhookUrl: (document.getElementById('dm-webhook')?.value || '').trim(),
+    notes: (document.getElementById('dm-notes')?.value || '').trim()
   };
+  if (payload.enabled && !payload.webhookUrl && !payload.apiBaseUrl) {
+    toast('Enable automation requires API Base URL or Webhook URL', 'error');
+    return;
+  }
   const r = await api('/api/admin/delivery-manager', { method: 'POST', body: payload });
   if (r.error) { toast(r.error, 'error'); return; }
   toast('Delivery manager config saved', 'success');
@@ -1237,10 +1241,24 @@ async function saveDeliveryManagerSettings() {
 
 async function testDeliveryManagerWebhook() {
   const box = document.getElementById('dm-result');
+  const payload = {
+    provider: (document.getElementById('dm-provider')?.value || '').trim(),
+    apiBaseUrl: (document.getElementById('dm-api-base')?.value || '').trim(),
+    apiKey: (document.getElementById('dm-api-key')?.value || '').trim(),
+    webhookUrl: (document.getElementById('dm-webhook')?.value || '').trim(),
+    paymentMethod: 'prepaid',
+    amount: 999
+  };
+
+  if (!payload.webhookUrl && !payload.apiBaseUrl) {
+    if (box) box.innerHTML = '<span style="color:#991b1b;">Please fill Webhook URL or API Base URL first.</span>';
+    return;
+  }
+
   if (box) box.innerHTML = '<span style="color:var(--gray);">Sending test payload...</span>';
   const r = await api('/api/admin/delivery-manager/test', {
     method: 'POST',
-    body: { paymentMethod: 'prepaid', amount: 999 }
+    body: payload
   });
 
   if (r.error) {

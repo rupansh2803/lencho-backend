@@ -643,7 +643,17 @@ app.post('/api/admin/delivery-manager', requireAdmin, async (req, res) => {
 app.post('/api/admin/delivery-manager/test', requireAdmin, async (req, res) => {
   try {
     const cfg = await getDeliveryManagerConfig();
-    if (!cfg.webhookUrl) return res.status(400).json({ error: 'Please add Delivery API/Webhook URL first' });
+    const requestWebhook = String(req.body?.webhookUrl || '').trim();
+    const requestApiBase = String(req.body?.apiBaseUrl || '').trim();
+    const requestApiKey = String(req.body?.apiKey || '').trim();
+
+    let webhookUrl = requestWebhook || String(cfg.webhookUrl || '').trim();
+    if (!webhookUrl) {
+      const base = requestApiBase || String(cfg.apiBaseUrl || '').trim();
+      if (base) webhookUrl = base.replace(/\/$/, '') + '/orders';
+    }
+
+    if (!webhookUrl) return res.status(400).json({ error: 'Please add Delivery API/Webhook URL first' });
 
     const payload = {
       source: 'lencho-admin',
@@ -657,9 +667,10 @@ app.post('/api/admin/delivery-manager/test', requireAdmin, async (req, res) => {
     };
 
     const headers = { 'Content-Type': 'application/json' };
-    if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
+    const apiKey = requestApiKey || String(cfg.apiKey || '').trim();
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
-    const upstream = await axios.post(cfg.webhookUrl, payload, { headers, timeout: 15000 });
+    const upstream = await axios.post(webhookUrl, payload, { headers, timeout: 15000 });
     res.json({
       success: true,
       upstreamStatus: upstream.status,
