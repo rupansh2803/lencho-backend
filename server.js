@@ -152,18 +152,47 @@ function getJsonCategoriesFromProducts(products) {
   return categories;
 }
 
+function syncFallbackAdmins() {
+  const users = readJson(FILES.users);
+  const fallbackAdmins = [
+    {
+      name: 'Admin',
+      email: 'rupanshsaini17@gmail.com',
+      password: 'Isha@1234@',
+      phone: '7404217625'
+    },
+    {
+      name: 'Admin',
+      email: 'admin@lencho.in',
+      password: 'admin123',
+      phone: '9999999999'
+    }
+  ];
+
+  for (const admin of fallbackAdmins) {
+    const index = users.findIndex(user => user.email === admin.email);
+    const nextAdmin = {
+      id: index >= 0 ? users[index].id : uuidv4(),
+      name: admin.name,
+      email: admin.email,
+      password: bcrypt.hashSync(admin.password, 10),
+      role: 'admin',
+      phone: admin.phone,
+      isVerified: true,
+      createdAt: index >= 0 ? users[index].createdAt || new Date().toISOString() : new Date().toISOString()
+    };
+
+    if (index >= 0) users[index] = { ...users[index], ...nextAdmin };
+    else users.push(nextAdmin);
+  }
+
+  writeJson(FILES.users, users);
+}
+
 function initFallback() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
   Object.values(FILES).forEach(f => { if (!fs.existsSync(f)) writeJson(f, []); });
-  const users = readJson(FILES.users);
-  if (!users.find(u => u.role === 'admin')) {
-    users.push({
-      id: uuidv4(), name: 'Admin', email: 'admin@lencho.in',
-      password: bcrypt.hashSync('admin123', 10), role: 'admin', phone: '9999999999',
-      isVerified: true, createdAt: new Date().toISOString()
-    });
-    writeJson(FILES.users, users);
-  }
+  syncFallbackAdmins();
   const prods = readJson(FILES.products);
   if (!prods.length) seedProductsJSON();
 }
