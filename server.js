@@ -18,10 +18,34 @@ const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { User, Product, Order, Cart, Wishlist, Settings, OTPLog, Testimonial, Category, Inquiry, LoginEvent } = require('./models');
 
-const DEFAULT_SMTP_USER = process.env.SMTP_USER || 'lencho.official001@gmail.com';
-const DEFAULT_SMTP_PASS = process.env.SMTP_PASS || 'lencho';
+const DEFAULT_SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || '';
+const DEFAULT_SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://lencho.in';
 const DEFAULT_OTP_SUBJECT = 'Verify Your Lencho Account';
 const DEFAULT_OTP_BODY = '<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:24px;border:1px solid #eee;border-radius:12px;"><h2 style="margin:0 0 14px 0;color:#222;">Verify Your Lencho Account</h2><p style="margin:0 0 10px 0;color:#333;">Hi there,</p><p style="margin:0 0 12px 0;color:#333;">To continue securely, please use the One-Time Password (OTP) below:</p><p style="font-size:28px;font-weight:700;letter-spacing:4px;margin:12px 0;color:#111;">{{otp}}</p><p style="margin:0 0 12px 0;color:#333;">This code is valid for <b>5 minutes</b> and can be used only once.</p><p style="margin:0 0 12px 0;color:#333;">For your safety, never share this OTP with anyone. Lencho will never ask for your OTP via call or message.</p><p style="margin:0 0 12px 0;color:#333;">If you did not request this, please ignore this email or contact our support team immediately.</p><p style="margin:0;color:#333;">Stay secure,<br/><b>Team Lencho</b></p></div>';
+
+function isPlaceholderSMTP(value) {
+  if (value === undefined || value === null) return true;
+  const normalized = String(value).trim().toLowerCase();
+  return !normalized ||
+    normalized === 'lencho' ||
+    normalized === 'your-gmail@gmail.com' ||
+    normalized === 'your-app-password' ||
+    normalized === 'yourpassword' ||
+    normalized.includes('your_') ||
+    normalized.includes('your-');
+}
+
+function toFriendlySmtpError(err) {
+  const msg = String(err?.message || '').toLowerCase();
+  if (msg.includes('535') || msg.includes('badcredentials') || msg.includes('invalid login') || msg.includes('username and password not accepted')) {
+    return 'Email OTP temporarily unavailable. SMTP login failed. Please update SMTP credentials in Admin > SMTP Settings.';
+  }
+  if (msg.includes('smtp not configured')) {
+    return 'Email OTP is not configured yet. Please set SMTP User and App Password in Admin > SMTP Settings.';
+  }
+  return 'Unable to send OTP right now. Please try again in a minute.';
+}
 
 const rzp = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_6oE5E0WwH6wX9z', 
@@ -545,7 +569,7 @@ async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
   const subjectTpl = await getMeaningfulSetting('otpSubject', DEFAULT_OTP_SUBJECT);
   const bodyTpl = await getMeaningfulSetting('otpBody', DEFAULT_OTP_BODY);
 
-  if (!user || !pass) {
+  if (isPlaceholderSMTP(user) || isPlaceholderSMTP(pass)) {
     throw new Error('SMTP not configured in admin settings');
   }
 
@@ -556,12 +580,16 @@ async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
     auth: { user, pass }
   });
 
-  await transporter.sendMail({
-    from: `"Lencho Secure" <${user}>`,
-    to: targetEmail,
-    subject: subjectTpl.replace('{{otp}}', otp),
-    html: bodyTpl.replace('{{otp}}', otp)
-  });
+  try {
+    await transporter.sendMail({
+      from: `"Lencho Secure" <${user}>`,
+      to: targetEmail,
+      subject: subjectTpl.replace('{{otp}}', otp),
+      html: bodyTpl.replace('{{otp}}', otp)
+    });
+  } catch (err) {
+    throw new Error(toFriendlySmtpError(err));
+  }
 
   return { sent: true, type };
 }
@@ -1104,22 +1132,30 @@ app.post('/api/otp/send-email', async (req, res) => {
     const subjectTpl = await getMeaningfulSetting('otpSubject', DEFAULT_OTP_SUBJECT);
     const bodyTpl = await getMeaningfulSetting('otpBody', DEFAULT_OTP_BODY);
 
-    if (!user || !pass) return res.status(500).json({ error: 'SMTP not configured in admin settings' });
+    if (isPlaceholderSMTP(user) || isPlaceholderSMTP(pass)) {
+      return res.status(500).json({
+        error: 'Email OTP is not configured yet. Please set SMTP User and App Password in Admin > SMTP Settings.'
+      });
+    }
 
     const transporter = nodemailer.createTransport({
       host, port: +port, secure: +port === 465,
       auth: { user, pass }
     });
 
-    await transporter.sendMail({
-      from: `"Lencho Secure" <${user}>`,
-      to: email,
-      subject: subjectTpl.replace('{{otp}}', otp),
-      html: bodyTpl.replace('{{otp}}', otp)
-    });
+    try {
+      await transporter.sendMail({
+        from: `"Lencho Secure" <${user}>`,
+        to: email,
+        subject: subjectTpl.replace('{{otp}}', otp),
+        html: bodyTpl.replace('{{otp}}', otp)
+      });
+    } catch (smtpErr) {
+      return res.status(500).json({ error: toFriendlySmtpError(smtpErr) });
+    }
 
     res.json({ success: true, message: 'OTP sent! Check your inbox.' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: toFriendlySmtpError(e) }); }
 });
 
 app.post('/api/otp/verify-email', async (req, res) => {
@@ -2209,6 +2245,12 @@ app.post('/api/admin/settings', requireAdmin, async (req, res) => {
 
 // ─── PAGE ROUTES ──────────────────────────────────────────────
 const sendIndex = async (req, res) => {
+  const host = String(req.headers.host || '').toLowerCase();
+  if (process.env.NODE_ENV === 'production' && host.includes('onrender.com') && FRONTEND_URL) {
+    const target = FRONTEND_URL.replace(/\/$/, '') + (req.originalUrl || '/');
+    return res.redirect(302, target);
+  }
+
   try {
     await incrementWebsiteVisitorCount(req);
   } catch (e) {

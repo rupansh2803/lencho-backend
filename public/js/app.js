@@ -181,7 +181,15 @@ async function sendEmailOTP(email, currentFormId, errorId) {
   
   if (btn) { btn.disabled = false; btn.textContent = currentFormId === 'auth-login-form' ? 'Sign In' : 'Create Account ✦'; }
   
-  if (resp.error) { err.textContent = resp.error; return; }
+  if (resp.error) {
+    const raw = String(resp.error || '');
+    if (/535|badcredentials|invalid login|username and password not accepted/i.test(raw)) {
+      err.textContent = 'Email OTP service is not configured correctly. Please try Google login or contact support.';
+    } else {
+      err.textContent = raw;
+    }
+    return;
+  }
   
   document.getElementById(currentFormId).style.display = 'none';
   document.getElementById('otp-error').textContent = '';
