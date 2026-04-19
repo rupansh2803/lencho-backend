@@ -28,7 +28,7 @@
     flex-wrap: nowrap;
     row-gap: 0;
     padding: 8px 0;
-    justify-content: space-between;
+    justify-content: flex-start;
   }
 
   .hamburger {
@@ -37,12 +37,13 @@
   }
 
   .site-logo {
-    position: static;
-    transform: none;
-    order: 3;
-    margin-left: auto;
-    justify-content: flex-end;
-    min-width: 96px;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    order: initial;
+    margin-left: 0;
+    justify-content: center;
+    min-width: 0;
   }
 
   .site-logo img {

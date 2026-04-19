@@ -3,6 +3,8 @@ let currentUser = null;
 let cartCount = 0;
 let cachedPublicSettings = null;
 let publicSettingsPromise = null;
+const apiGetCache = new Map();
+const API_CACHE_TTL_MS = 2 * 60 * 1000;
 
 const SETTINGS_CACHE_KEY = 'lencho_public_settings_cache_v1';
 
@@ -119,6 +121,14 @@ window.addEventListener('popstate', () => navigate(location.pathname + location.
 // ── API HELPER ────────────────────────────────────────────
 async function api(url, opts = {}) {
   try {
+    const method = String(opts.method || 'GET').toUpperCase();
+    const cacheable = method === 'GET' && /^\/api\/(products|categories|testimonials|settings(\/public)?)\b/.test(url);
+
+    if (cacheable) {
+      const hit = apiGetCache.get(url);
+      if (hit && (Date.now() - hit.ts) < API_CACHE_TTL_MS) return hit.data;
+    }
+
     const res = await fetch(url, { 
       headers: { 'Content-Type': 'application/json' }, 
       credentials: 'include',
@@ -136,6 +146,9 @@ async function api(url, opts = {}) {
     }
     
     const data = await res.json();
+    if (cacheable && !data?.error) {
+      apiGetCache.set(url, { ts: Date.now(), data });
+    }
     return data;
   } catch (e) {
     console.error('Fetch Error:', e);
@@ -189,6 +202,12 @@ async function openAuthModal() {
   document.getElementById('auth-modal').style.display = 'flex';
   document.body.style.overflow = 'hidden';
   document.documentElement.style.overflow = 'hidden';
+  const otpInput = document.getElementById('auth-otp-input');
+  if (otpInput) {
+    otpInput.value = '';
+    otpInput.type = 'password';
+    otpInput.setAttribute('placeholder', 'XXXXXX');
+  }
   // Load CAPTCHA
   const r = await api('/api/captcha');
   if (r.q) {
@@ -1187,6 +1206,13 @@ async function bootstrapApp() {
     
     // Wait for background tasks to complete (non-blocking)
     await Promise.allSettled(initPromises);
+
+    // Warm common read-only endpoints for snappier next navigation.
+    Promise.allSettled([
+      api('/api/products'),
+      api('/api/categories'),
+      api('/api/testimonials')
+    ]).catch(() => {});
   } catch (e) {
     console.error('Init Error:', e);
     navigate(location.pathname + location.search, false);
