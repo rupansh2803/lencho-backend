@@ -3605,8 +3605,8 @@ tr:hover td {
 }
 
 #auth-modal .modal-close {
-  top: 16px !important;
-  right: 16px !important;
+  top: 52px !important;
+  right: 12px !important;
 }
 
 #auth-modal .modal-logo {

@@ -134,6 +134,7 @@ app.use(cors({
 }));
 
 let useDB = false;
+const REQUIRE_MONGODB = process.env.REQUIRE_MONGODB === 'true' || process.env.NODE_ENV === 'production';
 // ─── MONGODB ──────────────────────────────────────────────────
 async function initDB() {
   try {
@@ -164,6 +165,13 @@ async function initDB() {
   } catch (err) {
     console.log('⚠️ MongoDB or Seeding Error:', err.message);
     useDB = false;
+
+    if (REQUIRE_MONGODB) {
+      console.error('❌ MongoDB is required in production but connection failed. Falling back to JSON storage is disabled.');
+      process.exit(1);
+      return;
+    }
+
     initFallback();
   }
 }
