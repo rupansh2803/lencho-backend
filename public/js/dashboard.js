@@ -35,9 +35,9 @@ async function showDashTab(tab) {
       content.innerHTML = `<div class="dash-section"><h2>My Orders</h2><div class="empty-state"><div class="empty-icon">📦</div><h3>No orders yet</h3><p>Start shopping to see your orders here!</p><button class="btn-primary" onclick="navigate('/products')">Shop Now</button></div></div>`;
       return;
     }
-    const statusLabels = { placed:'Placed', confirmed:'Confirmed', shipped:'Shipped', out_for_delivery:'Out for Delivery', delivered:'Delivered', cancelled:'Cancelled' };
-    const statusColors = { placed:'#ede9fe', confirmed:'#fef3c7', shipped:'#dbeafe', out_for_delivery:'#fef9c3', delivered:'#dcfce7', cancelled:'#fee2e2' };
-    const statusTextColors = { placed:'#6d28d9', confirmed:'#92400e', shipped:'#1d4ed8', out_for_delivery:'#713f12', delivered:'#166534', cancelled:'#991b1b' };
+    const statusLabels = { hold:'On Hold', pending:'Pending', shipping:'Shipping', delivered:'Delivered', cancelled:'Cancelled', placed:'Placed', confirmed:'Confirmed', shipped:'Shipped', out_for_delivery:'Out for Delivery' };
+    const statusColors = { hold:'#fee2e2', pending:'#fff7ed', shipping:'#dbeafe', delivered:'#dcfce7', cancelled:'#fee2e2', placed:'#ede9fe', confirmed:'#fef3c7', shipped:'#dbeafe', out_for_delivery:'#fef9c3' };
+    const statusTextColors = { hold:'#9f1239', pending:'#9a3412', shipping:'#1d4ed8', delivered:'#166534', cancelled:'#991b1b', placed:'#6d28d9', confirmed:'#92400e', shipped:'#1d4ed8', out_for_delivery:'#713f12' };
     content.innerHTML = `
     <div class="dash-section">
       <h2>My Orders (${orders.length})</h2>
@@ -95,7 +95,7 @@ async function updateProfile() {
 async function viewOrderDetail(orderId) {
   const order = await api('/api/orders/' + orderId);
   if (order.error) { toast(order.error, 'error'); return; }
-  const statusLabels = { placed:'Order Placed', confirmed:'Confirmed', shipped:'Shipped', out_for_delivery:'Out for Delivery', delivered:'Delivered', cancelled:'Cancelled' };
+  const statusLabels = { hold:'On Hold', pending:'Pending', shipping:'Shipping', delivered:'Delivered', cancelled:'Cancelled', placed:'Order Placed', confirmed:'Confirmed', shipped:'Shipped', out_for_delivery:'Out for Delivery' };
   const content = document.getElementById('dash-content');
   content.innerHTML = `
   <div class="dash-section">

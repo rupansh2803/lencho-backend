@@ -134,11 +134,16 @@ app.use(cors({
 }));
 
 let useDB = false;
-const REQUIRE_MONGODB = process.env.REQUIRE_MONGODB === 'true' || process.env.NODE_ENV === 'production';
+const REQUIRE_MONGODB = process.env.REQUIRE_MONGODB === 'true';
+const MONGODB_URI = String(process.env.MONGODB_URI || '').trim();
 // ─── MONGODB ──────────────────────────────────────────────────
 async function initDB() {
   try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/lencho-db');
+    if (!MONGODB_URI) {
+      throw new Error('MONGODB_URI is not configured');
+    }
+
+    await mongoose.connect(MONGODB_URI);
     // Seed initial products if none exist
     const pCount = await Product.countDocuments();
     if (pCount === 0) {
@@ -172,6 +177,7 @@ async function initDB() {
       return;
     }
 
+    console.warn('⚠️ Starting with JSON fallback storage because MongoDB is unavailable.');
     initFallback();
   }
 }
@@ -317,13 +323,13 @@ function saveFallbackSettingsObject(obj) {
 function getFallbackVisitorStats() {
   const stats = readJson(VISITOR_STATS_FILE);
   if (!stats || Array.isArray(stats) || typeof stats !== 'object') {
-    return { totalVisitors: 0 };
+    return { totalVisitors: 0, storeVisitors: 0 };
   }
-  return { totalVisitors: Number(stats.totalVisitors) || 0 };
+  return { totalVisitors: Number(stats.totalVisitors) || 0, storeVisitors: Number(stats.storeVisitors) || 0 };
 }
 
 function saveFallbackVisitorStats(stats) {
-  writeJson(VISITOR_STATS_FILE, { totalVisitors: Number(stats?.totalVisitors) || 0 });
+  writeJson(VISITOR_STATS_FILE, { totalVisitors: Number(stats?.totalVisitors) || 0, storeVisitors: Number(stats?.storeVisitors) || 0 });
 }
 
 async function incrementWebsiteVisitorCount(req) {
@@ -343,6 +349,26 @@ async function incrementWebsiteVisitorCount(req) {
 
   const visitorStats = getFallbackVisitorStats();
   visitorStats.totalVisitors += 1;
+  saveFallbackVisitorStats(visitorStats);
+}
+
+async function incrementStoreVisitorCount(req) {
+  if (!req.session || req.session.hasCountedStoreVisit) return;
+  req.session.hasCountedStoreVisit = true;
+
+  if (useDB) {
+    try {
+      await Settings.findOneAndUpdate(
+        { key: 'storeVisitorCount' },
+        { $inc: { value: 1 }, $setOnInsert: { label: 'Store Visitor Count' } },
+        { upsert: true, new: true }
+      );
+      return;
+    } catch (e) {}
+  }
+
+  const visitorStats = getFallbackVisitorStats();
+  visitorStats.storeVisitors += 1;
   saveFallbackVisitorStats(visitorStats);
 }
 
@@ -410,7 +436,7 @@ function syncFallbackAdmins() {
 function initFallback() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
   Object.values(FILES).forEach(f => { if (!fs.existsSync(f)) writeJson(f, []); });
-  if (!fs.existsSync(VISITOR_STATS_FILE)) saveFallbackVisitorStats({ totalVisitors: 0 });
+  if (!fs.existsSync(VISITOR_STATS_FILE)) saveFallbackVisitorStats({ totalVisitors: 0, storeVisitors: 0 });
   syncFallbackAdmins();
   saveFallbackSettingsObject(getFallbackSettingsObject());
   const prods = readJson(FILES.products);
@@ -1556,6 +1582,7 @@ app.delete('/api/admin/categories/:id', requireAdmin, async (req, res) => {
 // ─── PRODUCTS ─────────────────────────────────────────────────
 app.get('/api/products', async (req, res) => {
   try {
+    await incrementStoreVisitorCount(req);
     const { category, featured, search, sort } = req.query;
     if (useDB) {
       let query = {};
@@ -1928,11 +1955,12 @@ app.post('/api/coupon/validate', (req, res) => {
 app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   try {
     if (useDB) {
-      const [orders, users, products, visitorCounter] = await Promise.all([
+      const [orders, users, products, visitorCounter, storeVisitorCounter] = await Promise.all([
         Order.find().lean(),
         User.find({ role: 'user' }).lean(),
         Product.find().lean(),
-        Settings.findOne({ key: 'siteVisitorCount' }).lean()
+        Settings.findOne({ key: 'siteVisitorCount' }).lean(),
+        Settings.findOne({ key: 'storeVisitorCount' }).lean()
       ]);
       const today = new Date().toDateString();
       const todayOrders = orders.filter(o => new Date(o.createdAt).toDateString() === today);
@@ -1943,6 +1971,7 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
         totalUsers: users.length, totalProducts: products.length,
         totalGstCollected: orders.reduce((s, o) => s + (o.gstTotal || 0), 0),
         totalVisitors: Number(visitorCounter?.value) || 0,
+        storeVisitors: Number(storeVisitorCounter?.value) || 0,
         statusCounts, recentOrders: orders.slice(-5).reverse()
       });
     }
@@ -1950,7 +1979,7 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
     const today = new Date().toDateString(), todayOrders = orders.filter(o => new Date(o.createdAt).toDateString() === today);
     const statusCounts = orders.reduce((acc, o) => { acc[o.status] = (acc[o.status] || 0) + 1; return acc; }, {});
     const visitorStats = getFallbackVisitorStats();
-    res.json({ totalOrders: orders.length, totalRevenue: orders.reduce((s, o) => s + o.grandTotal, 0), todayOrders: todayOrders.length, todayRevenue: todayOrders.reduce((s, o) => s + o.grandTotal, 0), totalUsers: users.length, totalProducts: products.length, totalGstCollected: orders.reduce((s, o) => s + (o.gstTotal || 0), 0), totalVisitors: visitorStats.totalVisitors, statusCounts, recentOrders: orders.slice(-5).reverse() });
+    res.json({ totalOrders: orders.length, totalRevenue: orders.reduce((s, o) => s + o.grandTotal, 0), todayOrders: todayOrders.length, todayRevenue: todayOrders.reduce((s, o) => s + o.grandTotal, 0), totalUsers: users.length, totalProducts: products.length, totalGstCollected: orders.reduce((s, o) => s + (o.gstTotal || 0), 0), totalVisitors: visitorStats.totalVisitors, storeVisitors: visitorStats.storeVisitors, statusCounts, recentOrders: orders.slice(-5).reverse() });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2086,24 +2115,50 @@ app.get('/api/admin/orders', requireAdmin, async (req, res) => {
 app.put('/api/admin/orders/:id/status', requireAdmin, async (req, res) => {
   try {
     const { status, deliveryPartner, trackingNumber } = req.body;
-    const statusLabels = { placed: 'Order Placed', confirmed: 'Order Confirmed', shipped: 'Shipped', out_for_delivery: 'Out for Delivery', delivered: 'Delivered', cancelled: 'Cancelled' };
-    const timelineEntry = { status, label: statusLabels[status] || status, date: new Date(), done: true };
+    const rawStatus = String(status || '').trim().toLowerCase();
+    const statusAliases = {
+      on_hold: 'hold',
+      placed: 'pending',
+      confirmed: 'pending',
+      shipped: 'shipping',
+      out_for_delivery: 'shipping',
+      shiping: 'shipping'
+    };
+    const normalizedStatus = statusAliases[rawStatus] || rawStatus;
+    const allowedStatuses = new Set(['hold', 'pending', 'shipping', 'delivered', 'cancelled']);
+    if (!allowedStatuses.has(normalizedStatus)) {
+      return res.status(400).json({ error: 'Invalid status. Allowed: hold, pending, shipping, delivered, cancelled' });
+    }
+
+    const statusLabels = {
+      hold: 'On Hold',
+      pending: 'Pending',
+      shipping: 'Shipping',
+      delivered: 'Delivered',
+      cancelled: 'Cancelled'
+    };
+    const timelineEntry = {
+      status: normalizedStatus,
+      label: statusLabels[normalizedStatus] || normalizedStatus,
+      date: new Date(),
+      done: true
+    };
     if (useDB) {
       const o = await Order.findOne({ $or: [{ id: req.params.id }, { _id: req.params.id.match(/^[a-f\d]{24}$/i) ? req.params.id : null }] });
       if (!o) return res.status(404).json({ error: 'Not found' });
-      o.status = status;
+      o.status = normalizedStatus;
       if (deliveryPartner) o.deliveryPartner = deliveryPartner;
       if (trackingNumber) o.trackingNumber = trackingNumber;
-      if (!o.timeline.find(t => t.status === status)) o.timeline.push(timelineEntry);
+      if (!o.timeline.find(t => t.status === normalizedStatus)) o.timeline.push(timelineEntry);
       await o.save();
       return res.json({ success: true, order: { ...o.toObject(), id: o.id || o._id } });
     }
     const orders = readJson(FILES.orders), idx = orders.findIndex(o => o.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Not found' });
-    orders[idx].status = status;
+    orders[idx].status = normalizedStatus;
     if (deliveryPartner) orders[idx].deliveryPartner = deliveryPartner;
     if (trackingNumber) orders[idx].trackingNumber = trackingNumber;
-    if (!orders[idx].timeline?.find(t => t.status === status)) (orders[idx].timeline = orders[idx].timeline || []).push(timelineEntry);
+    if (!orders[idx].timeline?.find(t => t.status === normalizedStatus)) (orders[idx].timeline = orders[idx].timeline || []).push(timelineEntry);
     writeJson(FILES.orders, orders); res.json({ success: true, order: orders[idx] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

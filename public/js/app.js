@@ -120,6 +120,9 @@ window.addEventListener('popstate', () => navigate(location.pathname + location.
 
 // ── API HELPER ────────────────────────────────────────────
 async function api(url, opts = {}) {
+  const timeoutMs = Number(opts.timeoutMs || 6000);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const method = String(opts.method || 'GET').toUpperCase();
     const cacheable = method === 'GET' && /^\/api\/(products|categories|testimonials|settings(\/public)?)\b/.test(url);
@@ -132,6 +135,7 @@ async function api(url, opts = {}) {
     const res = await fetch(url, { 
       headers: { 'Content-Type': 'application/json' }, 
       credentials: 'include',
+      signal: controller.signal,
       ...opts, 
       body: opts.body ? JSON.stringify(opts.body) : undefined 
     });
@@ -151,8 +155,13 @@ async function api(url, opts = {}) {
     }
     return data;
   } catch (e) {
+    if (e && e.name === 'AbortError') {
+      return { error: 'Request timed out. Please try again.' };
+    }
     console.error('Fetch Error:', e);
     return { error: 'Connection lost. Please restart your local server (npm start).' };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 // ── TOAST ─────────────────────────────────────────────────
@@ -879,11 +888,11 @@ async function loadHomeCategories() {
   const container = document.getElementById('home-categories-grid');
   if (!container) return;
   try {
-    const cats = await api('/api/categories');
+    const cats = await withTimeout(api('/api/categories'), 2500);
     let categories = Array.isArray(cats) ? cats : [];
 
     if (categories.length === 0) {
-      const products = await api('/api/products');
+      const products = await withTimeout(api('/api/products'), 2500);
       const byCategory = new Map();
       if (Array.isArray(products)) {
         products.forEach(product => {
@@ -911,7 +920,7 @@ async function loadHomeCategories() {
     `).join('');
     initScrollReveal();
   } catch (e) {
-    const products = await api('/api/products');
+    const products = await withTimeout(api('/api/products'), 2500);
     if (Array.isArray(products) && products.length > 0) {
       const byCategory = new Map();
       products.forEach(product => {
@@ -968,7 +977,7 @@ async function trackOrder() {
   const order = await api('/api/orders/track/' + id);
   const el = document.getElementById('track-result');
   if (order.error) { el.innerHTML = `<div style="color:#ef4444;padding:1.5rem;background:#fee2e2;border-radius:var(--radius);margin-top:1rem;">${order.error}</div>`; return; }
-  const statusLabels = { placed:'Order Placed', confirmed:'Confirmed', shipped:'Shipped', out_for_delivery:'Out for Delivery', delivered:'Delivered ✓', cancelled:'Cancelled' };
+  const statusLabels = { hold:'On Hold', pending:'Pending', shipping:'Shipping', delivered:'Delivered ✓', cancelled:'Cancelled', placed:'Order Placed', confirmed:'Confirmed', shipped:'Shipped', out_for_delivery:'Out for Delivery' };
   const trackingId = order.awbCode || order.trackingNumber || order.shiprocketShipmentId || '';
   let trackingLink = '';
   try {
@@ -1088,7 +1097,7 @@ async function loadFeaturedProducts() {
   const grid = document.getElementById('featured-grid');
   if (!grid) return;
   const renderFallbackProducts = async (message) => {
-    const fallback = await api('/api/products');
+    const fallback = await withTimeout(api('/api/products'), 2500);
     if (Array.isArray(fallback) && fallback.length > 0) {
       grid.innerHTML = shuffleArray(fallback).slice(0, 4).map(productCardHTML).join('');
       initScrollReveal();
@@ -1098,7 +1107,7 @@ async function loadFeaturedProducts() {
   };
 
   try {
-    const r = await api('/api/products?featured=true');
+    const r = await withTimeout(api('/api/products?featured=true'), 2500);
     console.log('Featured products response:', r);
     if (r && Array.isArray(r) && r.length > 0) {
       grid.innerHTML = shuffleArray(r).map(productCardHTML).join('');
@@ -1142,7 +1151,13 @@ async function renderProducts(params) {
     <div class="products-grid" id="products-grid"><div style="text-align:center;padding:3rem;color:var(--gray);">Loading...</div></div>
   </div>`;
   const url = '/api/products' + (category ? `?category=${category}` : '');
-  const products = await api(url);
+  let products = await api(url, { timeoutMs: 3000 });
+  if (!Array.isArray(products)) {
+    const fallback = await api('/api/products', { timeoutMs: 2500 });
+    products = Array.isArray(fallback)
+      ? (category ? fallback.filter(p => p && p.category === category) : fallback)
+      : [];
+  }
   const grid = document.getElementById('products-grid');
   if (grid) grid.innerHTML = products.length ? products.map(productCardHTML).join('') : '<div class="empty-state"><div class="empty-icon">💎</div><h3>No products found</h3><p>Check back soon for new arrivals!</p></div>';
   initScrollReveal();
@@ -1150,9 +1165,15 @@ async function renderProducts(params) {
 
 async function sortProducts(sort, category) {
   const url = '/api/products?' + new URLSearchParams({ ...(category && { category }), ...(sort && { sort }) });
-  const products = await api(url);
+  const products = await api(url, { timeoutMs: 3000 });
   const grid = document.getElementById('products-grid');
-  if (grid) { grid.innerHTML = products.map(productCardHTML).join(''); initScrollReveal(); }
+  if (!grid) return;
+  if (Array.isArray(products)) {
+    grid.innerHTML = products.map(productCardHTML).join('');
+  } else {
+    grid.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Could not load products</h3><p>Please try again in a moment.</p></div>';
+  }
+  initScrollReveal();
 }
 
 async function loadPublicSettings() {

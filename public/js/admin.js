@@ -153,6 +153,14 @@ function buildAdminPanel() {
     <button class="admin-mob-toggle" onclick="document.getElementById('admin-sidebar').classList.toggle('open')"><i class="fas fa-bars"></i></button>
     <aside class="admin-sidebar" id="admin-sidebar">
       <div class="admin-logo">✦ LENCHO<br/><span style="font-size:.7rem;opacity:.6;letter-spacing:.05em;">Admin Panel</span></div>
+      <div id="admin-visitor-counter" style="margin:0 .8rem 1rem;padding:.7rem .75rem;border-radius:12px;background:linear-gradient(135deg,rgba(201,106,138,.12),rgba(201,149,76,.12));border:1px solid rgba(201,106,138,.25);font-size:.78rem;color:var(--dark);">
+        <div style="font-weight:700;display:flex;align-items:center;gap:.4rem;"><i class="fas fa-chart-line"></i> Live Visitors</div>
+        <div style="margin-top:.2rem;font-size:1.05rem;font-weight:800;color:var(--rose-dark);" id="admin-website-visitors">Loading...</div>
+      </div>
+      <div id="admin-store-counter" style="margin:0 .8rem 1rem;padding:.7rem .75rem;border-radius:12px;background:linear-gradient(135deg,rgba(132,118,206,.12),rgba(147,112,219,.12));border:1px solid rgba(132,118,206,.25);font-size:.78rem;color:var(--dark);">
+        <div style="font-weight:700;display:flex;align-items:center;gap:.4rem;"><i class="fas fa-store"></i> Store Visitors</div>
+        <div style="margin-top:.2rem;font-size:1.05rem;font-weight:800;color:#7c3aed;" id="admin-store-visitors">Loading...</div>
+      </div>
       <nav class="admin-menu">
         <div class="admin-menu-item active" id="am-dashboard" onclick="adminTab('dashboard')"><i class="fas fa-chart-line" style="width:20px;"></i> Dashboard</div>
         <div class="admin-menu-item" id="am-orders" onclick="adminTab('orders')"><i class="fas fa-shopping-bag" style="width:20px;"></i> Orders</div>
@@ -177,10 +185,17 @@ function buildAdminPanel() {
       <div id="admin-content" style="padding:1.5rem;"></div>
     </main>
   </div>`;
+  loadAdminVisitorCounter();
+  if (window.adminVisitorCounterTimer) clearInterval(window.adminVisitorCounterTimer);
+  window.adminVisitorCounterTimer = setInterval(loadAdminVisitorCounter, 60000);
   adminTab('dashboard');
 }
 
 function exitAdmin() {
+  if (window.adminVisitorCounterTimer) {
+    clearInterval(window.adminVisitorCounterTimer);
+    window.adminVisitorCounterTimer = null;
+  }
   // Restore header/footer when leaving admin
   const siteHeader = document.getElementById('site-header');
   const siteFooter = document.getElementById('site-footer');
@@ -216,6 +231,39 @@ function adminTab(tab) {
     else adminSettings();
   }
   if (tab === 'account') adminSecuritySettings();
+}
+
+function formatAdminVisitorCount(value) {
+  const count = Number(value) || 0;
+  if (count >= 10000000) {
+    const crore = count / 10000000;
+    return `${crore % 1 === 0 ? crore.toFixed(0) : crore.toFixed(1)} crore`;
+  }
+  if (count >= 100000) {
+    const lakh = count / 100000;
+    return `${lakh % 1 === 0 ? lakh.toFixed(0) : lakh.toFixed(1)} lakh`;
+  }
+  return count.toLocaleString('en-IN');
+}
+
+async function loadAdminVisitorCounter() {
+  const websiteBox = document.getElementById('admin-visitor-counter');
+  const storeBox = document.getElementById('admin-store-counter');
+  if (!websiteBox && !storeBox) return;
+
+  const stats = await api('/api/admin/stats');
+  const websiteVisits = stats && !stats.error ? formatAdminVisitorCount(stats.totalVisitors) : '--';
+  const storeVisits = stats && !stats.error ? formatAdminVisitorCount(stats.storeVisitors || 0) : '--';
+  
+  if (websiteBox) {
+    const websiteVisitorElem = document.getElementById('admin-website-visitors');
+    if (websiteVisitorElem) websiteVisitorElem.textContent = websiteVisits;
+  }
+  
+  if (storeBox) {
+    const storeVisitorElem = document.getElementById('admin-store-visitors');
+    if (storeVisitorElem) storeVisitorElem.textContent = storeVisits;
+  }
 }
 
 async function adminLoginLogs() {
@@ -322,7 +370,23 @@ async function adminDashboard() {
 
 async function adminOrders() {
   const orders = await api('/api/admin/orders');
-  const statusOpts = ['placed','confirmed','shipped','out_for_delivery','delivered','cancelled'].map(s=>`<option value="${s}">${s.replace('_',' ')}</option>`).join('');
+  const statusLabelMap = {
+    hold: 'Hold',
+    pending: 'Pending',
+    shipping: 'Shipping',
+    delivered: 'Delivered',
+    cancelled: 'Cancelled',
+    placed: 'Placed',
+    confirmed: 'Confirmed',
+    shipped: 'Shipped',
+    out_for_delivery: 'Out For Delivery'
+  };
+  const statusOptionsFor = (currentStatus) => {
+    const preferred = ['hold', 'pending', 'shipping', 'delivered', 'cancelled'];
+    const legacy = ['placed', 'confirmed', 'shipped', 'out_for_delivery'];
+    const opts = [...new Set([String(currentStatus || '').trim(), ...preferred, ...legacy].filter(Boolean))];
+    return opts.map(s => `<option value="${s}" ${s === currentStatus ? 'selected' : ''}>${statusLabelMap[s] || s.replace('_', ' ')}</option>`).join('');
+  };
   
   document.getElementById('admin-content').innerHTML = `
   <div class="admin-header">
@@ -340,7 +404,7 @@ async function adminOrders() {
         <td><b>${formatCurrency(o.grandTotal)}</b></td>
         <td id="status-${o.id}"><span class="order-status-badge status-${o.status}" style="font-size:.7rem;">${o.status.replace('_',' ')}</span></td>
         <td>
-          <select id="new-status-${o.id}" style="padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:.75rem;">${statusOpts}</select>
+          <select id="new-status-${o.id}" style="padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:.75rem;">${statusOptionsFor(o.status)}</select>
         </td>
         <td>
           <div style="font-size:.75rem;font-weight:700;">${o.awbCode || o.trackingNumber || '—'}</div>
@@ -382,9 +446,10 @@ async function updateOrderStatus(orderId) {
   const trackingNumber = document.getElementById('tn-' + orderId)?.value;
   const r = await api('/api/admin/orders/' + orderId + '/status', { method: 'PUT', body: { status, deliveryPartner, trackingNumber } });
   if (r.error) { toast(r.error, 'error'); return; }
-  toast(`Order ${orderId} updated to "${status}"`, 'success');
+  const nextStatus = r.order?.status || status;
+  toast(`Order ${orderId} updated to "${nextStatus}"`, 'success');
   const el = document.getElementById('status-' + orderId);
-  if (el) el.innerHTML = `<span class="order-status-badge status-${status}" style="font-size:.7rem;">${status.replace('_',' ')}</span>`;
+  if (el) el.innerHTML = `<span class="order-status-badge status-${nextStatus}" style="font-size:.7rem;">${nextStatus.replace('_',' ')}</span>`;
 }
 
 async function adminViewInvoice(orderId) { await downloadInvoice(orderId); }
