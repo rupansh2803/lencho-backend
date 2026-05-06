@@ -18,9 +18,21 @@ const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { User, Product, Order, Cart, Wishlist, Settings, OTPLog, Testimonial, Category, Inquiry, LoginEvent } = require('./models');
 
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const isProduction = NODE_ENV === 'production';
 const DEFAULT_SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || '';
 const DEFAULT_SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://lencho.in';
+const SITE_URL = process.env.SITE_URL || FRONTEND_URL;
+const MONGODB_URI = String(process.env.MONGODB_URI || '').trim();
+const REQUIRE_MONGODB = process.env.REQUIRE_MONGODB
+  ? process.env.REQUIRE_MONGODB === 'true'
+  : isProduction;
+const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
+const OPENAI_MODEL = String(process.env.OPENAI_MODEL || 'gpt-5.2').trim();
+const CLOUDINARY_CLOUD_NAME = String(process.env.CLOUDINARY_CLOUD_NAME || '').trim();
+const CLOUDINARY_API_KEY = String(process.env.CLOUDINARY_API_KEY || '').trim();
+const CLOUDINARY_API_SECRET = String(process.env.CLOUDINARY_API_SECRET || '').trim();
 const DEFAULT_EMAIL_FROM_NAME = 'Lencho';
 const DEFAULT_OTP_SUBJECT = 'Lencho OTP Code';
 const DEFAULT_OTP_BODY = `
@@ -134,8 +146,6 @@ app.use(cors({
 }));
 
 let useDB = false;
-const REQUIRE_MONGODB = process.env.REQUIRE_MONGODB === 'true';
-const MONGODB_URI = String(process.env.MONGODB_URI || '').trim();
 // ─── MONGODB ──────────────────────────────────────────────────
 async function initDB() {
   try {
@@ -149,12 +159,12 @@ async function initDB() {
     if (pCount === 0) {
       console.log('Seeding initial products...');
       const sampleProducts = [
-        { name: 'Silver Oxidized Jhumka Earrings', category: 'earrings', price: 299, mrp: 599, discount: 50, stock: 20, featured: true, images: ['https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=600&q=80'], description: 'Premium Silver Oxidized Jhumkas for everyday elegance.' },
-        { name: 'American Diamond Necklace Set', category: 'necklace', price: 1299, mrp: 2499, discount: 48, stock: 15, featured: true, images: ['https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=600&q=80'], description: 'Stunning AD Necklace set with matching earrings.' },
-        { name: 'Gold Plated Toe Rings', category: 'toe-rings', price: 199, mrp: 399, discount: 50, stock: 50, featured: true, images: ['https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=600&q=80'], description: 'Elegant toe rings for traditional look.' },
-        { name: 'Rose Gold Bracelet', category: 'bracelets', price: 599, mrp: 999, discount: 40, stock: 25, featured: true, images: ['https://images.unsplash.com/photo-1611591437281-460bfbe1220a?auto=format&fit=crop&w=600&q=80'], description: 'Trendy rose gold plated bracelet for modern outfits.' },
-        { name: 'Traditional Kundan Payal', category: 'payal', price: 899, mrp: 1499, discount: 40, stock: 10, featured: true, images: ['https://plus.unsplash.com/premium_photo-1681276170683-706111cf496e?auto=format&fit=crop&w=600&q=80'], description: 'Handcrafted Kundan Payal for a regal traditional look.' },
-        { name: 'Oxidized Silver Nose Pin', category: 'rings', price: 149, mrp: 299, discount: 50, stock: 100, featured: false, images: ['https://images.unsplash.com/photo-1601121141461-9d6647bca1ed?auto=format&fit=crop&w=600&q=80'], description: 'Minimalist oxidized silver nose pin.' }
+        { name: 'Silver Oxidized Jhumka Earrings', category: 'earrings', price: 299, mrp: 599, discount: 50, stock: 20, featured: true, images: ['/images/p1.png'], description: 'Premium Silver Oxidized Jhumkas for everyday elegance.' },
+        { name: 'American Diamond Necklace Set', category: 'necklace', price: 1299, mrp: 2499, discount: 48, stock: 15, featured: true, images: ['/images/p2.png'], description: 'Stunning AD Necklace set with matching earrings.' },
+        { name: 'Gold Plated Toe Rings', category: 'toe-rings', price: 199, mrp: 399, discount: 50, stock: 50, featured: true, images: ['/images/p3.png'], description: 'Elegant toe rings for traditional look.' },
+        { name: 'Rose Gold Bracelet', category: 'bracelets', price: 599, mrp: 999, discount: 40, stock: 25, featured: true, images: ['/images/p4.png'], description: 'Trendy rose gold plated bracelet for modern outfits.' },
+        { name: 'Traditional Kundan Payal', category: 'payal', price: 899, mrp: 1499, discount: 40, stock: 10, featured: true, images: ['/images/payal.png'], description: 'Handcrafted Kundan Payal for a regal traditional look.' },
+        { name: 'Oxidized Silver Nose Pin', category: 'rings', price: 149, mrp: 299, discount: 50, stock: 100, featured: false, images: ['/images/p1.png'], description: 'Minimalist oxidized silver nose pin.' }
       ];
       await Product.deleteMany({}); // Clear old seeds if any
       await Product.insertMany(sampleProducts);
@@ -235,6 +245,37 @@ const FILES = {
 };
 const VISITOR_STATS_FILE = path.join(DATA_DIR, 'visitor_stats.json');
 
+const CATEGORY_FALLBACK_IMAGE_MAP = {
+  earrings: '/images/earrings.png',
+  necklace: '/images/necklace.png',
+  'toe-rings': '/images/toe-rings.png',
+  payal: '/images/payal.png',
+  rings: '/images/p1.png',
+  bangles: '/images/p4.png',
+  bracelets: '/images/p1.png',
+  chains: '/images/showcase.png',
+  'maang-tikka': '/images/showcase.png',
+  sets: '/images/showcase.png',
+  default: '/images/hero.png'
+};
+
+const PUBLIC_SETTINGS_KEYS = [
+  'globalDiscount', 'freeShippingMin', 'shippingCharge', 'deliveryDays', 'shippingNote',
+  'whatsappNumber', 'gstRate', 'gstin', 'hsn', 'storeName', 'storeEmail', 'storePhone', 'storeAddress',
+  'heroTitle', 'heroSubtitle', 'heroDescription', 'heroImage', 'heroMediaType', 'heroVideoUrl',
+  'heroBadge', 'heroButton1Text', 'heroButton2Text',
+  'promoTitle', 'promoSubtitle', 'promoDescription', 'promoImage', 'promoMediaType', 'promoVideoUrl', 'promoButtonText',
+  'offerBanner', 'showOfferBanner', 'showTrustHub', 'showCollections', 'showFeaturedProducts', 'showPromo', 'showTestimonials',
+  'saleEndDate', 'footerPhone', 'footerEmail', 'footerAddress',
+  'themeRose', 'themeRoseDark', 'themeRoseLight', 'themeGold', 'themeGoldLight', 'themeBeige', 'themeDark', 'themeRadius',
+  'homeCollectionsBg', 'homeFeaturedBg', 'homeTestimonialsBg',
+  'seoTitleDefault', 'seoDescriptionDefault', 'seoCanonicalBaseUrl', 'seoOgImageUrl', 'seoTwitterImageUrl',
+  'socialInstagramUrl', 'socialFacebookUrl', 'socialYoutubeUrl', 'socialWhatsappUrl',
+  'schemaPhone', 'schemaEmail', 'schemaAddress',
+  'aiChatEnabled', 'aiChatWelcome', 'aiHandoffWhatsappNumber',
+  'razorpayKeyId'
+];
+
 const DEFAULT_FALLBACK_SETTINGS = {
   globalDiscount: 0,
   freeShippingMin: 999,
@@ -252,13 +293,16 @@ const DEFAULT_FALLBACK_SETTINGS = {
   heroTitle: 'Luxury Redefined',
   heroSubtitle: 'For The Modern Woman',
   heroDescription: 'Premium artificial jewellery starting at just ₹99. Look expensive, spend smart.',
-  heroImage: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1920&q=100',
+  heroImage: '/images/premium_hero.png',
+  heroBadge: 'Premium Collection 2026',
+  heroButton1Text: 'Shop Now',
+  heroButton2Text: 'View Collections',
   heroMediaType: 'image',
   heroVideoUrl: '',
   promoTitle: 'Exclusive Seasonal Drop',
   promoSubtitle: 'Sale Ends In',
   promoDescription: 'Our most awaited collection is here. Limited quantities available.',
-  promoImage: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&w=800',
+  promoImage: '/images/showcase.png',
   promoMediaType: 'image',
   promoVideoUrl: '',
   promoButtonText: 'Explore Collection',
@@ -275,14 +319,133 @@ const DEFAULT_FALLBACK_SETTINGS = {
   smtpUser: DEFAULT_SMTP_USER,
   smtpPass: DEFAULT_SMTP_PASS,
   otpSubject: DEFAULT_OTP_SUBJECT,
-  otpBody: DEFAULT_OTP_BODY
+  otpBody: DEFAULT_OTP_BODY,
+  footerAddress: '197 Sarakpur, Barara, Ambala, Haryana',
+  footerPhone: '+91 7404217625',
+  footerEmail: 'lencho.official01@gmail.com',
+  seoTitleDefault: 'Lencho - Premium Artificial Jewellery',
+  seoDescriptionDefault: 'Shop premium artificial jewellery at Lencho. Trending earrings, necklaces, toe rings and more at great prices.',
+  seoCanonicalBaseUrl: SITE_URL,
+  seoOgImageUrl: '/images/premium_hero.png',
+  seoTwitterImageUrl: '/images/premium_hero.png',
+  socialInstagramUrl: 'https://instagram.com/lencho_official',
+  socialFacebookUrl: 'https://facebook.com/lencho_official',
+  socialYoutubeUrl: 'https://youtube.com/lencho_official',
+  socialWhatsappUrl: '',
+  schemaPhone: '+91 7404217625',
+  schemaEmail: 'lencho.official01@gmail.com',
+  schemaAddress: '197 Sarakpur, Barara, Ambala, Haryana',
+  aiChatEnabled: true,
+  aiChatWelcome: 'Namaste! Main Lencho assistant hoon. Product, offers, shipping, ya order help ke liye message bhejiye.',
+  aiSystemPrompt: 'You are Lencho\'s premium jewelry shopping assistant. Recommend only products that fit the catalog context. Be concise, friendly, and practical.',
+  aiHandoffWhatsappNumber: '919999999999',
+  razorpayKeyId: process.env.RAZORPAY_KEY_ID || ''
 };
 
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; } };
 const writeJson = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
 
+function settingsToObject(input) {
+  if (Array.isArray(input)) {
+    const normalized = {};
+    for (const item of input) {
+      if (item && item.key !== undefined) normalized[item.key] = item.value;
+    }
+    return normalized;
+  }
+  return input && typeof input === 'object' ? input : {};
+}
+
+function isRemoteUrl(value) {
+  return /^https?:\/\//i.test(String(value || '').trim());
+}
+
+function getCategoryFallbackImage(category) {
+  const key = String(category || '').trim().toLowerCase();
+  return CATEGORY_FALLBACK_IMAGE_MAP[key] || CATEGORY_FALLBACK_IMAGE_MAP.default;
+}
+
+function hasLocalPublicAsset(assetPath) {
+  if (!assetPath || typeof assetPath !== 'string' || !assetPath.startsWith('/')) return false;
+  const filePath = path.join(__dirname, 'public', assetPath.replace(/^\//, ''));
+  return fs.existsSync(filePath);
+}
+
+function normalizeMediaUrl(value, options = {}) {
+  const fallbackUrl = options.fallback || getCategoryFallbackImage(options.category);
+  const mediaUrl = String(value || '').trim();
+  if (!mediaUrl) return fallbackUrl;
+  if (mediaUrl.startsWith('/images/')) return hasLocalPublicAsset(mediaUrl) ? mediaUrl : fallbackUrl;
+  if (mediaUrl.startsWith('/uploads/')) return mediaUrl;
+  if (mediaUrl.startsWith('/')) return mediaUrl;
+  if (isRemoteUrl(mediaUrl)) return mediaUrl;
+  return fallbackUrl;
+}
+
+function normalizeMediaList(list, category) {
+  const incoming = Array.isArray(list) ? list : [];
+  const normalized = incoming
+    .map(item => normalizeMediaUrl(item, { category }))
+    .filter(Boolean);
+
+  if (!normalized.length) normalized.push(getCategoryFallbackImage(category));
+  if (normalized.length === 1) normalized.push(normalized[0]);
+  return normalized.slice(0, 5);
+}
+
+function normalizeProductRecord(product) {
+  if (!product) return null;
+  const category = String(product.category || '').trim().toLowerCase();
+  const images = normalizeMediaList(product.images || (product.image ? [product.image] : []), category);
+  return {
+    ...product,
+    id: product._id?.toString?.() || product.id,
+    category,
+    price: Number(product.price) || 0,
+    mrp: Number(product.mrp) || Number(product.price) || 0,
+    discount: Number(product.discount) || 0,
+    stock: Number(product.stock) || 0,
+    rating: Number(product.rating) || 0,
+    images,
+    image: normalizeMediaUrl(product.image || images[0], { category })
+  };
+}
+
+function normalizeCategoryRecord(category) {
+  if (!category) return null;
+  const slug = String(category.slug || category.name || '').trim().toLowerCase().replace(/\s+/g, '-');
+  return {
+    ...category,
+    id: category._id?.toString?.() || category.id,
+    slug,
+    image: normalizeMediaUrl(category.image, { category: slug }),
+    description: category.description || ''
+  };
+}
+
+function getPublicSettingsPayload(rawSettings = {}) {
+  const source = { ...DEFAULT_FALLBACK_SETTINGS, ...settingsToObject(rawSettings) };
+  const payload = {};
+
+  for (const key of PUBLIC_SETTINGS_KEYS) {
+    if (source[key] !== undefined) payload[key] = source[key];
+  }
+
+  payload.heroImage = normalizeMediaUrl(source.heroImage, { fallback: '/images/premium_hero.png' });
+  payload.promoImage = normalizeMediaUrl(source.promoImage, { fallback: '/images/showcase.png' });
+  payload.seoOgImageUrl = normalizeMediaUrl(source.seoOgImageUrl, { fallback: '/images/premium_hero.png' });
+  payload.seoTwitterImageUrl = normalizeMediaUrl(source.seoTwitterImageUrl, { fallback: '/images/premium_hero.png' });
+  payload.seoCanonicalBaseUrl = String(source.seoCanonicalBaseUrl || SITE_URL).replace(/\/+$/, '');
+  payload.socialWhatsappUrl = source.socialWhatsappUrl || (source.aiHandoffWhatsappNumber ? `https://wa.me/${source.aiHandoffWhatsappNumber}` : '');
+
+  return payload;
+}
+
 function getJsonCatalogProducts() {
-  return readJson(FILES.products).filter(product => product && product.id && product.name);
+  return readJson(FILES.products)
+    .filter(product => product && product.id && product.name)
+    .map(normalizeProductRecord)
+    .filter(Boolean);
 }
 
 function getJsonCategoriesFromProducts(products) {
@@ -294,7 +457,7 @@ function getJsonCategoriesFromProducts(products) {
     categories.push({
       name: product.category.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
       slug: product.category,
-      image: product.images?.[0] || '/images/hero.png',
+      image: normalizeMediaUrl(product.images?.[0], { category: product.category }),
       description: ''
     });
   }
@@ -454,8 +617,8 @@ async function seedCategories() {
         { name: 'Necklace', slug: 'necklace', image: '/images/necklace.png', description: 'Stunning necklace sets' },
         { name: 'Toe Rings', slug: 'toe-rings', image: '/images/toe-rings.png', description: 'Traditional and modern toe rings' },
         { name: 'Payal', slug: 'payal', image: '/images/payal.png', description: 'Beautiful anklets' },
-        { name: 'Rings', slug: 'rings', image: '/images/rings.png', description: 'Premium finger rings' },
-        { name: 'Bangles', slug: 'bangles', image: '/images/bangles.png', description: 'Traditional bangles' }
+        { name: 'Rings', slug: 'rings', image: '/images/p1.png', description: 'Premium finger rings' },
+        { name: 'Bangles', slug: 'bangles', image: '/images/p4.png', description: 'Traditional bangles' }
       ];
       await Category.insertMany(sampleCats);
     }
@@ -508,7 +671,7 @@ async function seedSettings() {
       { key: 'heroTitle', value: 'Luxury Redefined', label: 'Hero Title' },
       { key: 'heroSubtitle', value: 'For The Modern Woman', label: 'Hero Subtitle' },
       { key: 'heroDescription', value: 'Premium artificial jewellery starting at just ₹99. Look expensive, spend smart. 4.8⭐ trusted by 50K+ customers.', label: 'Hero Description' },
-      { key: 'heroImage', value: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1920&q=100', label: 'Hero Background Image URL' },
+      { key: 'heroImage', value: '/images/premium_hero.png', label: 'Hero Background Image URL' },
       { key: 'heroBadge', value: '✦ PREMIUM COLLECTION 2026 ✦', label: 'Hero Badge Text' },
       { key: 'heroButton1Text', value: '🛍️ Shop Now & Save', label: 'Hero Button 1' },
       { key: 'heroButton2Text', value: 'View Collections', label: 'Hero Button 2' },
@@ -518,7 +681,7 @@ async function seedSettings() {
       { key: 'promoTitle', value: 'Exclusive Seasonal Drop', label: 'Promo Title' },
       { key: 'promoSubtitle', value: 'Sale Ends In', label: 'Promo Subtitle' },
       { key: 'promoDescription', value: 'Our most awaited collection is here. Limited quantities available. Grab yours before the clock strikes zero.', label: 'Promo Description' },
-      { key: 'promoImage', value: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&w=800', label: 'Promo Image URL' },
+      { key: 'promoImage', value: '/images/showcase.png', label: 'Promo Image URL' },
       { key: 'promoButtonText', value: 'Explore Collection', label: 'Promo Button Text' },
       { key: 'promoMediaType', value: 'image', label: 'Promo Media Type (image/video)' },
       { key: 'promoVideoUrl', value: '', label: 'Promo Video URL' },
@@ -530,6 +693,22 @@ async function seedSettings() {
       { key: 'footerAddress', value: '197 Sarakpur, Barara, Ambala, Haryana', label: 'Footer Address' },
       { key: 'footerPhone', value: '+91 7404217625', label: 'Footer Phone' },
       { key: 'footerEmail', value: 'lencho.official01@gmail.com', label: 'Footer Email' },
+      { key: 'seoTitleDefault', value: DEFAULT_FALLBACK_SETTINGS.seoTitleDefault, label: 'Default SEO Title' },
+      { key: 'seoDescriptionDefault', value: DEFAULT_FALLBACK_SETTINGS.seoDescriptionDefault, label: 'Default SEO Description' },
+      { key: 'seoCanonicalBaseUrl', value: DEFAULT_FALLBACK_SETTINGS.seoCanonicalBaseUrl, label: 'Canonical Base URL' },
+      { key: 'seoOgImageUrl', value: DEFAULT_FALLBACK_SETTINGS.seoOgImageUrl, label: 'Open Graph Image URL' },
+      { key: 'seoTwitterImageUrl', value: DEFAULT_FALLBACK_SETTINGS.seoTwitterImageUrl, label: 'Twitter Image URL' },
+      { key: 'socialInstagramUrl', value: DEFAULT_FALLBACK_SETTINGS.socialInstagramUrl, label: 'Instagram URL' },
+      { key: 'socialFacebookUrl', value: DEFAULT_FALLBACK_SETTINGS.socialFacebookUrl, label: 'Facebook URL' },
+      { key: 'socialYoutubeUrl', value: DEFAULT_FALLBACK_SETTINGS.socialYoutubeUrl, label: 'YouTube URL' },
+      { key: 'socialWhatsappUrl', value: DEFAULT_FALLBACK_SETTINGS.socialWhatsappUrl, label: 'WhatsApp URL' },
+      { key: 'schemaPhone', value: DEFAULT_FALLBACK_SETTINGS.schemaPhone, label: 'Schema Phone' },
+      { key: 'schemaEmail', value: DEFAULT_FALLBACK_SETTINGS.schemaEmail, label: 'Schema Email' },
+      { key: 'schemaAddress', value: DEFAULT_FALLBACK_SETTINGS.schemaAddress, label: 'Schema Address' },
+      { key: 'aiChatEnabled', value: DEFAULT_FALLBACK_SETTINGS.aiChatEnabled, label: 'AI Chat Enabled' },
+      { key: 'aiChatWelcome', value: DEFAULT_FALLBACK_SETTINGS.aiChatWelcome, label: 'AI Chat Welcome Text' },
+      { key: 'aiSystemPrompt', value: DEFAULT_FALLBACK_SETTINGS.aiSystemPrompt, label: 'AI System Prompt' },
+      { key: 'aiHandoffWhatsappNumber', value: DEFAULT_FALLBACK_SETTINGS.aiHandoffWhatsappNumber, label: 'AI Handoff WhatsApp Number' },
     ]);
     console.log('✅ Default settings seeded');
   } else {
@@ -538,7 +717,7 @@ async function seedSettings() {
       { key: 'heroTitle', value: 'Luxury Redefined', label: 'Hero Title' },
       { key: 'heroSubtitle', value: 'For The Modern Woman', label: 'Hero Subtitle' },
       { key: 'heroDescription', value: 'Premium artificial jewellery starting at just ₹99. Look expensive, spend smart. 4.8⭐ trusted by 50K+ customers.', label: 'Hero Description' },
-      { key: 'heroImage', value: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1920&q=100', label: 'Hero Background Image URL' },
+      { key: 'heroImage', value: '/images/premium_hero.png', label: 'Hero Background Image URL' },
       { key: 'heroBadge', value: '✦ PREMIUM COLLECTION 2026 ✦', label: 'Hero Badge Text' },
       { key: 'heroButton1Text', value: '🛍️ Shop Now & Save', label: 'Hero Button 1' },
       { key: 'heroButton2Text', value: 'View Collections', label: 'Hero Button 2' },
@@ -548,7 +727,7 @@ async function seedSettings() {
       { key: 'promoTitle', value: 'Exclusive Seasonal Drop', label: 'Promo Title' },
       { key: 'promoSubtitle', value: 'Sale Ends In', label: 'Promo Subtitle' },
       { key: 'promoDescription', value: 'Our most awaited collection is here. Limited quantities available.', label: 'Promo Description' },
-      { key: 'promoImage', value: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&w=800', label: 'Promo Image URL' },
+      { key: 'promoImage', value: '/images/showcase.png', label: 'Promo Image URL' },
       { key: 'promoButtonText', value: 'Explore Collection', label: 'Promo Button Text' },
       { key: 'promoMediaType', value: 'image', label: 'Promo Media Type (image/video)' },
       { key: 'promoVideoUrl', value: '', label: 'Promo Video URL' },
@@ -563,6 +742,22 @@ async function seedSettings() {
       { key: 'saleEndDate', value: new Date(Date.now() + 86400000).toISOString(), label: 'Sale End Date (ISO)' },
       { key: 'otpSubject', value: DEFAULT_OTP_SUBJECT, label: 'OTP Email Subject' },
       { key: 'otpBody', value: DEFAULT_OTP_BODY, label: 'OTP Email Body (HTML)' },
+      { key: 'seoTitleDefault', value: DEFAULT_FALLBACK_SETTINGS.seoTitleDefault, label: 'Default SEO Title' },
+      { key: 'seoDescriptionDefault', value: DEFAULT_FALLBACK_SETTINGS.seoDescriptionDefault, label: 'Default SEO Description' },
+      { key: 'seoCanonicalBaseUrl', value: DEFAULT_FALLBACK_SETTINGS.seoCanonicalBaseUrl, label: 'Canonical Base URL' },
+      { key: 'seoOgImageUrl', value: DEFAULT_FALLBACK_SETTINGS.seoOgImageUrl, label: 'Open Graph Image URL' },
+      { key: 'seoTwitterImageUrl', value: DEFAULT_FALLBACK_SETTINGS.seoTwitterImageUrl, label: 'Twitter Image URL' },
+      { key: 'socialInstagramUrl', value: DEFAULT_FALLBACK_SETTINGS.socialInstagramUrl, label: 'Instagram URL' },
+      { key: 'socialFacebookUrl', value: DEFAULT_FALLBACK_SETTINGS.socialFacebookUrl, label: 'Facebook URL' },
+      { key: 'socialYoutubeUrl', value: DEFAULT_FALLBACK_SETTINGS.socialYoutubeUrl, label: 'YouTube URL' },
+      { key: 'socialWhatsappUrl', value: DEFAULT_FALLBACK_SETTINGS.socialWhatsappUrl, label: 'WhatsApp URL' },
+      { key: 'schemaPhone', value: DEFAULT_FALLBACK_SETTINGS.schemaPhone, label: 'Schema Phone' },
+      { key: 'schemaEmail', value: DEFAULT_FALLBACK_SETTINGS.schemaEmail, label: 'Schema Email' },
+      { key: 'schemaAddress', value: DEFAULT_FALLBACK_SETTINGS.schemaAddress, label: 'Schema Address' },
+      { key: 'aiChatEnabled', value: DEFAULT_FALLBACK_SETTINGS.aiChatEnabled, label: 'AI Chat Enabled' },
+      { key: 'aiChatWelcome', value: DEFAULT_FALLBACK_SETTINGS.aiChatWelcome, label: 'AI Chat Welcome Text' },
+      { key: 'aiSystemPrompt', value: DEFAULT_FALLBACK_SETTINGS.aiSystemPrompt, label: 'AI System Prompt' },
+      { key: 'aiHandoffWhatsappNumber', value: DEFAULT_FALLBACK_SETTINGS.aiHandoffWhatsappNumber, label: 'AI Handoff WhatsApp Number' },
     ];
     for (const d of cmsDefaults) {
       await Settings.updateOne({ key: d.key }, { $setOnInsert: d }, { upsert: true });
@@ -605,7 +800,6 @@ app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1d', etag: tru
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), { maxAge: '30d' }));
 app.set('trust proxy', 1);
 
-const isProduction = (process.env.NODE_ENV || 'development') === 'production';
 app.use(session({
   secret: process.env.SESSION_SECRET || 'lencho-secret',
   resave: false, saveUninitialized: false,
@@ -618,11 +812,10 @@ app.use(session({
 }));
 
 if (!fs.existsSync(path.join(__dirname, 'uploads'))) fs.mkdirSync(path.join(__dirname, 'uploads'));
-const storage = multer.diskStorage({
-  destination: (_, __, cb) => cb(null, 'uploads/'),
-  filename: (_, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }
 });
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
 // ─── AUTH MIDDLEWARE ──────────────────────────────────────────
 const requireAuth = (req, res, next) => { if (!req.session.userId) return res.status(401).json({ error: 'Please login first' }); next(); };
@@ -653,38 +846,138 @@ async function getMeaningfulSetting(key, fallback) {
   return val;
 }
 
-async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
-  const host = await getMeaningfulSetting('smtpHost', 'smtp.gmail.com');
-  const port = await getMeaningfulSetting('smtpPort', 465);
-  const user = await getMeaningfulSetting('smtpUser', DEFAULT_SMTP_USER);
-  const pass = await getMeaningfulSetting('smtpPass', DEFAULT_SMTP_PASS);
-  const subjectTpl = DEFAULT_OTP_SUBJECT;
-  const bodyTpl = DEFAULT_OTP_BODY;
-  const storeName = sanitizeFromName(await getMeaningfulSetting('storeName', DEFAULT_EMAIL_FROM_NAME)) || DEFAULT_EMAIL_FROM_NAME;
+async function getAllSettingsObject() {
+  if (!useDB) return getFallbackSettingsObject();
+  const rows = await Settings.find({}).lean();
+  return { ...DEFAULT_FALLBACK_SETTINGS, ...settingsToObject(rows) };
+}
 
-  if (isPlaceholderSMTP(user) || isPlaceholderSMTP(pass)) {
-    throw new Error('SMTP not configured in admin settings');
+async function getPublicSettingsObject() {
+  return getPublicSettingsPayload(await getAllSettingsObject());
+}
+
+function extractSettingsUpdates(payload) {
+  if (Array.isArray(payload?.settings)) {
+    return payload.settings.filter(item => item && item.key);
   }
+  if (payload && typeof payload === 'object' && payload.key) {
+    return [{ key: payload.key, value: payload.value }];
+  }
+  if (payload && typeof payload === 'object') {
+    return Object.keys(payload).map(key => ({ key, value: payload[key] }));
+  }
+  return [];
+}
 
-  const transporter = nodemailer.createTransport({
-    host,
-    port: +port,
-    secure: +port === 465,
-    auth: { user, pass }
+function sanitizeUploadFolder(folder) {
+  const normalized = String(folder || 'general').trim().toLowerCase().replace(/[^a-z0-9/_-]+/g, '-');
+  return normalized || 'general';
+}
+
+function hasCloudinaryConfig() {
+  return Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET);
+}
+
+function ensureUploadDirectory(folder) {
+  const dirPath = path.join(__dirname, 'uploads', folder);
+  if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
+  return dirPath;
+}
+
+async function saveLocalMediaFile(file, folder) {
+  const ext = path.extname(file.originalname || '') || (file.mimetype && file.mimetype.includes('video') ? '.mp4' : '.bin');
+  const safeName = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`;
+  const dirPath = ensureUploadDirectory(folder);
+  const filePath = path.join(dirPath, safeName);
+  fs.writeFileSync(filePath, file.buffer);
+  return `/uploads/${folder}/${safeName}`.replace(/\\/g, '/');
+}
+
+async function uploadToCloudinary(file, folder) {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const uploadFolder = sanitizeUploadFolder(folder);
+  const signatureBase = `folder=${uploadFolder}&timestamp=${timestamp}${CLOUDINARY_API_SECRET}`;
+  const signature = crypto.createHash('sha1').update(signatureBase).digest('hex');
+  const dataUri = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+  const payload = new URLSearchParams({
+    file: dataUri,
+    api_key: CLOUDINARY_API_KEY,
+    timestamp: String(timestamp),
+    folder: uploadFolder,
+    signature
   });
 
+  const response = await axios.post(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`,
+    payload.toString(),
+    {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      timeout: 30000
+    }
+  );
+
+  const secureUrl = response.data?.secure_url || response.data?.url;
+  if (!secureUrl) throw new Error('Cloudinary upload did not return a URL');
+  return secureUrl;
+}
+
+async function uploadMediaFiles(files, folder) {
+  const list = Array.isArray(files) ? files.filter(Boolean) : [];
+  if (!list.length) return [];
+
+  if (hasCloudinaryConfig()) {
+    return Promise.all(list.map(file => uploadToCloudinary(file, folder)));
+  }
+
+  if (isProduction) {
+    throw new Error('Cloudinary is required for media uploads in production');
+  }
+
+  return Promise.all(list.map(file => saveLocalMediaFile(file, sanitizeUploadFolder(folder))));
+}
+
+async function uploadSingleMedia(file, folder) {
+  const results = await uploadMediaFiles(file ? [file] : [], folder);
+  return results[0] || '';
+}
+
+async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
   try {
+    const host = await getMeaningfulSetting('smtpHost', 'smtp.gmail.com');
+    const port = await getMeaningfulSetting('smtpPort', 465);
+    const user = await getMeaningfulSetting('smtpUser', DEFAULT_SMTP_USER);
+    const pass = await getMeaningfulSetting('smtpPass', DEFAULT_SMTP_PASS);
+    const subjectTpl = DEFAULT_OTP_SUBJECT;
+    const bodyTpl = DEFAULT_OTP_BODY;
+    const storeName = sanitizeFromName(await getMeaningfulSetting('storeName', DEFAULT_EMAIL_FROM_NAME)) || DEFAULT_EMAIL_FROM_NAME;
+
+    // If SMTP is not configured, fall back to SMS/dev OTP
+    if (isPlaceholderSMTP(user) || isPlaceholderSMTP(pass)) {
+      console.log('⚠️  SMTP not configured. Using SMS/dev OTP fallback for admin login.');
+      await sendSMSOTP('7404217625', otp);
+      return { sent: true, via: 'sms', type };
+    }
+
+    const transporter = nodemailer.createTransport({
+      host,
+      port: +port,
+      secure: +port === 465,
+      auth: { user, pass }
+    });
+
     await transporter.sendMail({
       from: `"${storeName}" <${user}>`,
       to: targetEmail,
       subject: subjectTpl.replace('{{otp}}', otp),
       html: bodyTpl.replace('{{otp}}', otp)
     });
+    return { sent: true, type };
   } catch (err) {
-    throw new Error(toFriendlySmtpError(err));
+    // If email fails, fall back to SMS/dev OTP
+    console.log('⚠️  Email OTP failed. Falling back to SMS/dev OTP:', err.message);
+    await sendSMSOTP('7404217625', otp);
+    return { sent: true, via: 'sms', type };
   }
-
-  return { sent: true, type };
 }
 
 async function getDeliveryManagerConfig() {
@@ -726,39 +1019,244 @@ async function saveDeliveryManagerConfig(nextConfig) {
 }
 
 // ─── SETTINGS API ─────────────────────────────────────────────
+async function getCatalogProducts() {
+  if (useDB) {
+    const products = await Product.find({}).lean();
+    return products.map(normalizeProductRecord).filter(Boolean);
+  }
+  return getJsonCatalogProducts();
+}
+
+function scoreHomeRecommendation(product) {
+  const stockScore = Math.min(Number(product.stock) || 0, 25);
+  const ratingScore = (Number(product.rating) || 0) * 8;
+  const featuredScore = product.featured ? 25 : 0;
+  const discountScore = Number(product.discount) || 0;
+  return featuredScore + ratingScore + discountScore + stockScore;
+}
+
+function scoreProductRecommendation(candidate, target) {
+  const sameCategory = candidate.category === target.category ? 35 : 0;
+  const priceGap = Math.abs((Number(candidate.price) || 0) - (Number(target.price) || 0));
+  const priceScore = Math.max(0, 30 - Math.min(30, Math.round(priceGap / 50)));
+  const stockScore = Math.min(Number(candidate.stock) || 0, 20);
+  const ratingScore = (Number(candidate.rating) || 0) * 7;
+  const featuredScore = candidate.featured ? 15 : 0;
+  return sameCategory + priceScore + stockScore + ratingScore + featuredScore;
+}
+
+async function buildRecommendations(options = {}) {
+  const placement = options.placement === 'product' ? 'product' : 'home';
+  const products = await getCatalogProducts();
+  const inStock = products.filter(product => (Number(product.stock) || 0) > 0);
+
+  if (placement === 'home') {
+    return [...inStock]
+      .sort((a, b) => scoreHomeRecommendation(b) - scoreHomeRecommendation(a))
+      .slice(0, 8);
+  }
+
+  const target = inStock.find(product => String(product.id) === String(options.productId || ''));
+  const requestedCategory = String(options.category || target?.category || '').trim().toLowerCase();
+
+  return [...inStock]
+    .filter(product => String(product.id) !== String(options.productId || ''))
+    .sort((a, b) => {
+      const scoreA = target ? scoreProductRecommendation(a, target) : scoreHomeRecommendation(a) + (a.category === requestedCategory ? 20 : 0);
+      const scoreB = target ? scoreProductRecommendation(b, target) : scoreHomeRecommendation(b) + (b.category === requestedCategory ? 20 : 0);
+      return scoreB - scoreA;
+    })
+    .slice(0, 4);
+}
+
+function buildCatalogSummary(products) {
+  return products.slice(0, 12).map(product => {
+    const stockState = Number(product.stock) > 0 ? `${product.stock} in stock` : 'out of stock';
+    return `- ${product.name} | category: ${product.category} | price: Rs ${product.price} | discount: ${product.discount || 0}% | ${stockState}`;
+  }).join('\n');
+}
+
+function extractOpenAIText(data) {
+  if (data && typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text.trim();
+
+  const chunks = [];
+  for (const item of data?.output || []) {
+    if (!item || !Array.isArray(item.content)) continue;
+    for (const content of item.content) {
+      if (content?.type === 'output_text' && content.text) chunks.push(content.text);
+    }
+  }
+  return chunks.join('\n').trim();
+}
+
+function buildChatSuggestions() {
+  return ['Products', 'Offers', 'Shipping', 'Track Order'];
+}
+
+function buildWhatsappHandoffUrl(number) {
+  const digits = String(number || '').replace(/\D/g, '');
+  return digits ? `https://wa.me/${digits}` : '';
+}
+
+function buildFallbackChatReply(message, context = {}) {
+  const text = String(message || '').toLowerCase();
+  const handoffUrl = buildWhatsappHandoffUrl(context.aiHandoffWhatsappNumber || context.whatsappNumber);
+
+  if (/offer|discount|coupon|sale|off\b/.test(text)) {
+    return {
+      reply: 'Current offers include first-order discounts and selected product markdowns. Open the products page or ask for a category to see the best sale picks.',
+      suggestions: buildChatSuggestions(),
+      handoff: handoffUrl ? { type: 'whatsapp', url: handoffUrl } : null
+    };
+  }
+
+  if (/ship|delivery|cod|return|refund/.test(text)) {
+    return {
+      reply: 'We support doorstep delivery, COD on eligible orders, and a simple return flow. Ask me about shipping charges, delivery time, or returns.',
+      suggestions: buildChatSuggestions(),
+      handoff: handoffUrl ? { type: 'whatsapp', url: handoffUrl } : null
+    };
+  }
+
+  if (/track|order|status/.test(text)) {
+    return {
+      reply: 'You can track your order from the Track Order page using your order ID. If you want a human update, use the WhatsApp handoff below.',
+      suggestions: buildChatSuggestions(),
+      handoff: handoffUrl ? { type: 'whatsapp', url: handoffUrl } : null
+    };
+  }
+
+  if (/human|agent|support|call|whatsapp/.test(text)) {
+    return {
+      reply: handoffUrl ? 'A human helper is available on WhatsApp. Use the handoff option below for direct support.' : 'A support helper can assist you with product or order questions.',
+      suggestions: buildChatSuggestions(),
+      handoff: handoffUrl ? { type: 'whatsapp', url: handoffUrl } : null
+    };
+  }
+
+  return {
+    reply: 'I can help with products, discounts, shipping, returns, and order tracking. Tell me what you are shopping for and I will guide you.',
+    suggestions: buildChatSuggestions(),
+    handoff: handoffUrl ? { type: 'whatsapp', url: handoffUrl } : null
+  };
+}
+
+async function generateAiChatResponse(payload = {}) {
+  const settings = await getAllSettingsObject();
+  const aiEnabled = settings.aiChatEnabled === true || settings.aiChatEnabled === 'true' || settings.aiChatEnabled === undefined;
+  const handoffNumber = settings.aiHandoffWhatsappNumber || settings.whatsappNumber || DEFAULT_FALLBACK_SETTINGS.whatsappNumber;
+  const fallbackContext = {
+    aiHandoffWhatsappNumber: handoffNumber,
+    whatsappNumber: settings.whatsappNumber
+  };
+
+  if (!aiEnabled || !OPENAI_API_KEY) return buildFallbackChatReply(payload.message, fallbackContext);
+
+  const catalog = await getCatalogProducts();
+  const currentProduct = catalog.find(product => String(product.id) === String(payload.productId || '')) || null;
+  const related = await buildRecommendations({
+    placement: currentProduct ? 'product' : 'home',
+    productId: payload.productId,
+    category: payload.category
+  });
+
+  const route = String(payload.route || '/').trim();
+  const message = String(payload.message || '').trim().slice(0, 700);
+  const currentCategory = String(payload.category || currentProduct?.category || '').trim().toLowerCase();
+  const cartSummary = Array.isArray(payload.cartSummary) ? payload.cartSummary.slice(0, 6) : [];
+  const systemPrompt = String(settings.aiSystemPrompt || DEFAULT_FALLBACK_SETTINGS.aiSystemPrompt).trim();
+
+  const contextText = [
+    `Store: ${settings.storeName || 'Lencho'}`,
+    `Route: ${route}`,
+    currentCategory ? `Active category: ${currentCategory}` : '',
+    currentProduct ? `Current product: ${currentProduct.name} | price: Rs ${currentProduct.price} | stock: ${currentProduct.stock}` : '',
+    cartSummary.length ? `Cart summary: ${JSON.stringify(cartSummary)}` : '',
+    related.length ? `Recommended products:\n${buildCatalogSummary(related)}` : '',
+    `Catalog excerpt:\n${buildCatalogSummary(catalog)}`
+  ].filter(Boolean).join('\n\n');
+
+  try {
+    const response = await axios.post(
+      'https://api.openai.com/v1/responses',
+      {
+        model: OPENAI_MODEL,
+        max_output_tokens: 240,
+        input: [
+          {
+            role: 'system',
+            content: [{ type: 'input_text', text: `${systemPrompt}\n\nUse only the provided store context. If you are unsure, say so and offer WhatsApp support.` }]
+          },
+          {
+            role: 'user',
+            content: [{ type: 'input_text', text: `${contextText}\n\nCustomer message: ${message}` }]
+          }
+        ]
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      }
+    );
+
+    const reply = extractOpenAIText(response.data);
+    if (!reply) return buildFallbackChatReply(message, fallbackContext);
+
+    return {
+      reply,
+      suggestions: buildChatSuggestions(),
+      handoff: handoffNumber ? { type: 'whatsapp', url: buildWhatsappHandoffUrl(handoffNumber) } : null
+    };
+  } catch (error) {
+    return buildFallbackChatReply(message, fallbackContext);
+  }
+}
+
 app.get('/api/settings/public', async (req, res) => {
   try {
-    const keys = ['globalDiscount', 'freeShippingMin', 'shippingCharge', 'whatsappNumber', 'storeName', 'storeEmail', 'storePhone'];
-    if (useDB) {
-      const rows = await Settings.find({ key: { $in: keys } });
-      const obj = {};
-      rows.forEach(r => obj[r.key] = r.value);
-      return res.json(obj);
-    }
-    res.json({ globalDiscount: 0, freeShippingMin: 999, shippingCharge: 49, whatsappNumber: '919999999999' });
+    res.json(await getPublicSettingsObject());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/ai/chat', async (req, res) => {
+  try {
+    const message = String(req.body?.message || '').trim();
+    if (!message) return res.status(400).json({ error: 'Message is required' });
+
+    const result = await generateAiChatResponse({
+      message,
+      route: req.body?.route,
+      productId: req.body?.productId,
+      category: req.body?.category,
+      cartSummary: req.body?.cartSummary
+    });
+
+    res.json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/admin/settings', requireAdmin, async (req, res) => {
   try {
-    if (!useDB) return res.json(getFallbackSettingsObject());
-    const settings = await Settings.find({});
-    res.json(settings);
+    res.json(await getAllSettingsObject());
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.put('/api/admin/settings', requireAdmin, async (req, res) => {
   try {
-    const { settings } = req.body; // array of {key, value}
+    const updates = extractSettingsUpdates(req.body);
+    if (!updates.length) return res.status(400).json({ error: 'No settings provided' });
     if (!useDB) {
       const nextSettings = getFallbackSettingsObject();
-      for (const s of settings || []) {
+      for (const s of updates) {
         if (s && s.key) nextSettings[s.key] = s.value;
       }
       saveFallbackSettingsObject(nextSettings);
       return res.json({ success: true });
     }
-    for (const s of settings) {
+    for (const s of updates) {
       await Settings.findOneAndUpdate({ key: s.key }, { value: s.value }, { upsert: true });
     }
     res.json({ success: true });
@@ -768,7 +1266,7 @@ app.put('/api/admin/settings', requireAdmin, async (req, res) => {
 app.post('/api/admin/upload-media', requireAdmin, upload.single('media'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Media file required' });
-    const mediaUrl = '/uploads/' + req.file.filename;
+    const mediaUrl = await uploadSingleMedia(req.file, req.body?.folder || 'cms');
     res.json({ success: true, url: mediaUrl });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1324,7 +1822,13 @@ app.post('/api/admin/login/request-otp', async (req, res) => {
     };
     delete req.session.captcha;
 
-    await sendConfiguredEmailOTP(email, otp, 'admin_login');
+    // In development, always use SMS/console OTP
+    const isDev = process.env.NODE_ENV !== 'production';
+    if (isDev) {
+      console.log(`\n📱 ADMIN OTP for ${email}: ${otp}  ← (visible because NODE_ENV=development)\n`);
+    } else {
+      await sendConfiguredEmailOTP(email, otp, 'admin_login');
+    }
 
     res.json({ success: true, message: 'OTP sent to admin email. Valid for 5 minutes.' });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1437,22 +1941,18 @@ app.post('/api/login', async (req, res) => {
         await recordLoginActivity({ email, status: 'failed', method: 'password', role: 'user', ip, userAgent });
         return res.status(400).json({ error: 'Invalid email or password' });
       }
-      
-      // CAPTCHA check for admins
+
       if (user.role === 'admin') {
-        if (!captchaAnswer || String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
-          await recordLoginActivity({ email, name: user.name, status: 'failed', method: 'password', role: user.role, ip, userAgent });
-          return res.status(400).json({ error: 'Invalid or missing CAPTCHA answer' });
-        }
-      } else {
-        const verifiedEmail = req.session?.verifiedEmailOTP;
-        if (!verifiedEmail || verifiedEmail.email !== email) {
-          return res.status(400).json({ error: 'Please verify email OTP first' });
-        }
-        if (verifiedEmail.expiresAt && new Date(verifiedEmail.expiresAt) < new Date()) {
-          delete req.session.verifiedEmailOTP;
-          return res.status(400).json({ error: 'OTP verification expired. Please verify again.' });
-        }
+        return res.status(400).json({ error: 'Admins must login through the OTP-protected admin flow.' });
+      }
+      
+      const verifiedEmail = req.session?.verifiedEmailOTP;
+      if (!verifiedEmail || verifiedEmail.email !== email) {
+        return res.status(400).json({ error: 'Please verify email OTP first' });
+      }
+      if (verifiedEmail.expiresAt && new Date(verifiedEmail.expiresAt) < new Date()) {
+        delete req.session.verifiedEmailOTP;
+        return res.status(400).json({ error: 'OTP verification expired. Please verify again.' });
       }
 
       if (!await bcrypt.compare(password, user.password)) {
@@ -1473,19 +1973,16 @@ app.post('/api/login', async (req, res) => {
     }
 
     if (user.role === 'admin') {
-      if (!captchaAnswer || String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
-        await recordLoginActivity({ email, name: user.name, status: 'failed', method: 'password', role: user.role, ip, userAgent });
-        return res.status(400).json({ error: 'Invalid or missing CAPTCHA answer' });
-      }
-    } else {
-      const verifiedEmail = req.session?.verifiedEmailOTP;
-      if (!verifiedEmail || verifiedEmail.email !== email) {
-        return res.status(400).json({ error: 'Please verify email OTP first' });
-      }
-      if (verifiedEmail.expiresAt && new Date(verifiedEmail.expiresAt) < new Date()) {
-        delete req.session.verifiedEmailOTP;
-        return res.status(400).json({ error: 'OTP verification expired. Please verify again.' });
-      }
+      return res.status(400).json({ error: 'Admins must login through the OTP-protected admin flow.' });
+    }
+
+    const verifiedEmail = req.session?.verifiedEmailOTP;
+    if (!verifiedEmail || verifiedEmail.email !== email) {
+      return res.status(400).json({ error: 'Please verify email OTP first' });
+    }
+    if (verifiedEmail.expiresAt && new Date(verifiedEmail.expiresAt) < new Date()) {
+      delete req.session.verifiedEmailOTP;
+      return res.status(400).json({ error: 'OTP verification expired. Please verify again.' });
     }
 
     req.session.userId = user.id; req.session.role = user.role; req.session.name = user.name;
@@ -1540,8 +2037,8 @@ app.put('/api/profile', requireAuth, async (req, res) => {
 app.get('/api/categories', async (req, res) => {
   try {
     if (useDB) {
-      const cats = await Category.find().sort('displayOrder');
-      if (cats && cats.length > 0) return res.json(cats);
+      const cats = await Category.find().sort('displayOrder').lean();
+      if (cats && cats.length > 0) return res.json(cats.map(normalizeCategoryRecord).filter(Boolean));
 
       const products = await Product.find({}).lean();
       const fallbackProducts = products.length > 0 ? products.map(p => ({
@@ -1550,9 +2047,9 @@ app.get('/api/categories', async (req, res) => {
         category: p.category,
         images: p.images || []
       })) : getJsonCatalogProducts();
-      return res.json(getJsonCategoriesFromProducts(fallbackProducts));
+      return res.json(getJsonCategoriesFromProducts(fallbackProducts).map(normalizeCategoryRecord).filter(Boolean));
     }
-    return res.json(getJsonCategoriesFromProducts(getJsonCatalogProducts()));
+    return res.json(getJsonCategoriesFromProducts(getJsonCatalogProducts()).map(normalizeCategoryRecord).filter(Boolean));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1579,6 +2076,17 @@ app.delete('/api/admin/categories/:id', requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/recommendations', async (req, res) => {
+  try {
+    const items = await buildRecommendations({
+      placement: req.query.placement,
+      productId: req.query.productId,
+      category: req.query.category
+    });
+    res.json(items);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── PRODUCTS ─────────────────────────────────────────────────
 app.get('/api/products', async (req, res) => {
   try {
@@ -1594,7 +2102,7 @@ app.get('/api/products', async (req, res) => {
       else if (sort === 'price-desc') q = q.sort({ price: -1 });
       else if (sort === 'rating') q = q.sort({ rating: -1 });
       const products = await q.lean();
-      if (products.length > 0) return res.json(products.map(p => ({ ...p, id: p._id })));
+      if (products.length > 0) return res.json(products.map(normalizeProductRecord).filter(Boolean));
 
       let fallbackProducts = getJsonCatalogProducts();
       if (category) fallbackProducts = fallbackProducts.filter(p => p.category === category);
@@ -1605,7 +2113,7 @@ app.get('/api/products', async (req, res) => {
       if (sort === 'rating') fallbackProducts.sort((a, b) => (b.rating || 0) - (a.rating || 0));
       return res.json(fallbackProducts);
     }
-    let products = readJson(FILES.products);
+    let products = getJsonCatalogProducts();
     if (category) products = products.filter(p => p.category === category);
     if (featured === 'true') products = products.filter(p => p.featured);
     if (search) products = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
@@ -1620,9 +2128,9 @@ app.get('/api/products/:id', async (req, res) => {
     if (useDB) {
       const p = await Product.findById(req.params.id).lean();
       if (!p) return res.status(404).json({ error: 'Product not found' });
-      return res.json({ ...p, id: p._id });
+      return res.json(normalizeProductRecord(p));
     }
-    const products = readJson(FILES.products);
+    const products = getJsonCatalogProducts();
     const p = products.find(p => p.id === req.params.id);
     if (!p) return res.status(404).json({ error: 'Product not found' });
     res.json(p);
@@ -1632,26 +2140,28 @@ app.get('/api/products/:id', async (req, res) => {
 app.post('/api/products', requireAdmin, upload.array('images', 5), async (req, res) => {
   try {
     const { name, category, price, mrp, discount, stock, description, gstRate, hsn, featured } = req.body;
-    const images = req.files?.length ? req.files.map(f => '/uploads/' + f.filename) : ['/images/p1.png'];
+    const images = req.files?.length
+      ? await uploadMediaFiles(req.files, `products/${category || 'general'}`)
+      : [getCategoryFallbackImage(category)];
     if (useDB) {
       const p = await Product.create({ name, category, price: +price, mrp: +mrp, discount: +(discount || 0), stock: +stock, description, images, gstRate: +(gstRate || 18), hsn: hsn || '7117', featured: featured === 'true' });
       const products = readJson(FILES.products);
       products.push({ ...p.toObject(), id: p._id.toString() });
       writeJson(FILES.products, products);
-      return res.json({ success: true, product: { ...p.toObject(), id: p._id } });
+      return res.json({ success: true, product: normalizeProductRecord({ ...p.toObject(), id: p._id.toString() }) });
     }
     const products = readJson(FILES.products);
     const p = { id: uuidv4(), name, category, price: +price, mrp: +mrp, discount: +(discount || 0), stock: +stock, description, images, gstRate: +(gstRate || 18), hsn: hsn || '7117', featured: featured === 'true', rating: 0, reviews: [], createdAt: new Date().toISOString() };
     products.push(p);
     writeJson(FILES.products, products);
-    res.json({ success: true, product: p });
+    res.json({ success: true, product: normalizeProductRecord(p) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req, res) => {
   try {
     const updates = { ...req.body };
-    if (req.files?.length) updates.images = req.files.map(f => '/uploads/' + f.filename);
+    if (req.files?.length) updates.images = await uploadMediaFiles(req.files, `products/${updates.category || 'general'}`);
     ['price', 'mrp', 'discount', 'stock', 'gstRate'].forEach(f => { if (updates[f]) updates[f] = +updates[f]; });
     if (updates.featured !== undefined) updates.featured = updates.featured === 'true';
     if (useDB) {
@@ -1663,14 +2173,14 @@ app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req
       if (idx >= 0) products[idx] = { ...products[idx], ...next };
       else products.push(next);
       writeJson(FILES.products, products);
-      return res.json({ success: true, product: { ...p.toObject(), id: p._id } });
+      return res.json({ success: true, product: normalizeProductRecord(next) });
     }
     const products = readJson(FILES.products);
     const idx = products.findIndex(p => p.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Not found' });
     products[idx] = { ...products[idx], ...updates };
     writeJson(FILES.products, products);
-    res.json({ success: true, product: products[idx] });
+    res.json({ success: true, product: normalizeProductRecord(products[idx]) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1850,8 +2360,24 @@ app.post('/api/orders', requireAuth, async (req, res) => {
       ? [{ status: 'placed', label: 'Order Placed', date: new Date(), done: true }]
       : [{ status: 'pending', label: 'Awaiting Payment', date: new Date(), done: true }];
 
+    // Ensure we always have a userName for order records (avoid validation errors when session.name missing)
+    let resolvedUserName = req.session.name || '';
+    if (!resolvedUserName && req.session.userId) {
+      try {
+        if (useDB) {
+          const u = await User.findById(req.session.userId).select('name').lean();
+          if (u && u.name) resolvedUserName = u.name;
+        } else {
+          const users = readJson(FILES.users);
+          const uu = users.find(x => x.id === req.session.userId || x._id === req.session.userId);
+          if (uu && uu.name) resolvedUserName = uu.name;
+        }
+      } catch (e) { /* ignore and fallback */ }
+    }
+    if (!resolvedUserName) resolvedUserName = 'Customer';
+
     const orderData = { 
-      id: orderId, userId: req.session.userId, userName: req.session.name, items: orderItems, 
+      id: orderId, userId: req.session.userId, userName: resolvedUserName, items: orderItems, 
       address, paymentMethod, subtotal, gstTotal: totalGst, shipping, discount, grandTotal, 
       couponCode: couponCode || null, status, timeline, 
       estimatedDelivery: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), createdAt: new Date() 
@@ -2338,29 +2864,24 @@ app.post('/api/auth/google', async (req, res) => {
 // ─── SETTINGS API (before page wildcards!) ────────────────────
 app.get('/api/settings', async (req, res) => {
   try {
-    if (useDB) {
-      const rows = await Settings.find();
-      const obj = {};
-      rows.forEach(r => obj[r.key] = r.value);
-      return res.json(obj);
-    }
-    res.json(getFallbackSettingsObject());
+    res.json(await getPublicSettingsObject());
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/admin/settings', requireAdmin, async (req, res) => {
   try {
+    const updates = extractSettingsUpdates(req.body);
+    if (!updates.length) return res.status(400).json({ error: 'No settings provided' });
+
     if (!useDB) {
       const nextSettings = getFallbackSettingsObject();
-      const updates = req.body || {};
-      for (const key of Object.keys(updates)) nextSettings[key] = updates[key];
+      for (const item of updates) nextSettings[item.key] = item.value;
       saveFallbackSettingsObject(nextSettings);
       return res.json({ success: true, message: 'Settings saved!' });
     }
-    const updates = req.body;
-    const keys = Object.keys(updates);
-    for (const key of keys) {
-      await Settings.findOneAndUpdate({ key }, { value: updates[key] }, { upsert: true, new: true });
+
+    for (const item of updates) {
+      await Settings.findOneAndUpdate({ key: item.key }, { value: item.value }, { upsert: true, new: true });
     }
     res.json({ success: true, message: 'Settings saved!' });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2390,7 +2911,6 @@ app.get('/debug', (req, res) => {
   .forEach(page => { app.get(`/${page}`, sendIndex); app.get(`/${page}/:sub`, sendIndex); });
 
 const PORT = process.env.PORT || 30054;
-const NODE_ENV = process.env.NODE_ENV || 'development';
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🌟 Lencho API → Running on port ${PORT}`);

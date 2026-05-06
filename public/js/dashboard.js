@@ -50,8 +50,8 @@ async function showDashTab(tab) {
           </div>
           <span style="padding:4px 12px;border-radius:99px;font-size:.75rem;font-weight:600;background:${statusColors[o.status]||'#f3f4f6'};color:${statusTextColors[o.status]||'#374151'}">${statusLabels[o.status]||o.status}</span>
         </div>
-        <div class="order-items-preview">
-          ${o.items.slice(0,3).map(i=>`<img class="order-thumb" src="${i.image}" alt="${i.name}" title="${i.name}"/>`).join('')}
+            <div class="order-items-preview">
+              ${o.items.slice(0,3).map(i=>`<img class="order-thumb" src="${safeImageUrl(i.image, i.category)}" ${imageFallbackAttr(i.category, i.image)} alt="${i.name}" title="${i.name}"/>`).join('')}
           ${o.items.length>3?`<div style="width:50px;height:50px;border-radius:var(--radius-sm);background:var(--light-gray);display:flex;align-items:center;justify-content:center;font-size:.8rem;color:var(--gray);">+${o.items.length-3}</div>`:''}
         </div>
         <div style="font-size:.875rem;color:var(--gray);margin-bottom:.75rem;">${o.items.length} item${o.items.length>1?'s':''} · ${o.paymentMethod?.toUpperCase()}</div>
@@ -107,7 +107,7 @@ async function viewOrderDetail(orderId) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2rem;">
       <div class="checkout-section">
         <h3>Items Ordered</h3>
-        ${order.items.map(i=>`<div class="co-item" style="margin-bottom:.75rem;"><img src="${i.image}" style="width:54px;height:54px;border-radius:8px;object-fit:cover;"/><div style="flex:1;margin-left:.75rem;"><div style="font-weight:600;">${i.name}</div><div style="color:var(--gray);font-size:.8rem;">Qty: ${i.quantity} × ${formatCurrency(i.price)}</div></div><div style="font-weight:700;color:var(--rose-dark);">${formatCurrency(i.price*i.quantity)}</div></div>`).join('')}
+        ${order.items.map(i=>`<div class="co-item" style="margin-bottom:.75rem;"><img src="${safeImageUrl(i.image, i.category)}" ${imageFallbackAttr(i.category, i.image)} style="width:54px;height:54px;border-radius:8px;object-fit:cover;"/><div style="flex:1;margin-left:.75rem;"><div style="font-weight:600;">${i.name}</div><div style="color:var(--gray);font-size:.8rem;">Qty: ${i.quantity} × ${formatCurrency(i.price)}</div></div><div style="font-weight:700;color:var(--rose-dark);">${formatCurrency(i.price*i.quantity)}</div></div>`).join('')}
       </div>
       <div class="checkout-section">
         <h3>Delivery Address</h3>

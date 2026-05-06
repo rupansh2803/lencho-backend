@@ -124,19 +124,64 @@ async function adminLogin() {
   const pass = document.getElementById('adm-pass')?.value;
   const captcha = document.getElementById('adm-captcha')?.value;
   const err = document.getElementById('adm-err');
-  
+
   if (!email || !pass || !captcha) { err.textContent = 'Please fill all fields'; return; }
-  
-  const r = await api('/api/login', { method: 'POST', body: { email, password: pass, captchaAnswer: captcha } });
-  if (r.error) { 
-    err.textContent = r.error; 
+
+  // Step 1: Request OTP for admin login
+  const r = await api('/api/admin/login/request-otp', { method: 'POST', body: { email, password: pass, captchaAnswer: captcha } });
+  if (r.error) {
+    err.textContent = r.error;
     showAdminLogin(); // Refresh captcha
-    return; 
+    return;
   }
-  currentUser = r.user;
+
+  toast('OTP sent to the admin email/phone. Please enter the OTP.', 'info');
+  showAdminVerifyOtp(email);
+}
+
+function showAdminVerifyOtp(email) {
+  document.getElementById('app').innerHTML = `
+  <div style="min-height:100vh;background:var(--dark);display:flex;align-items:center;justify-content:center;padding:2rem;">
+    <div style="background:#fff;border-radius:24px;padding:2.5rem;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);">
+      <div style="text-align:center;margin-bottom:1.25rem;">
+        <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;margin-bottom:.25rem;">Enter OTP</h2>
+        <p style="color:var(--gray);font-size:.9rem;">We've sent a one-time code to the admin contact for <strong>${email}</strong>.</p>
+      </div>
+      <div class="form-group"><label>One-Time Password (OTP)</label><input type="text" id="adm-otp" placeholder="Enter OTP" maxlength="8" style="text-align:center;font-weight:700;letter-spacing:.2em;"/></div>
+      <div id="adm-otp-err" style="color:#ef4444;font-size:.85rem;min-height:20px;margin-bottom:.5rem;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-primary full-width" onclick="verifyAdminOtp('${email}')">Verify OTP</button>
+        <button class="btn-outline full-width" onclick="showAdminLogin()">Back</button>
+      </div>
+      <div style="margin-top:10px;text-align:center;color:var(--gray);font-size:.85rem;"><a href="#" onclick="resendAdminOtp('${email}');return false;">Resend OTP</a></div>
+    </div>
+  </div>`;
+  setTimeout(() => document.getElementById('adm-otp')?.focus(), 100);
+}
+
+async function verifyAdminOtp(email) {
+  const otp = document.getElementById('adm-otp')?.value;
+  const err = document.getElementById('adm-otp-err');
+  if (!otp || !email) { if (err) err.textContent = 'Please enter the OTP'; return; }
+
+  const r = await api('/api/admin/login/verify-otp', { method: 'POST', body: { email, otp } });
+  if (r.error) {
+    if (err) err.textContent = r.error;
+    return;
+  }
+
+  // Success: r should include user and session token if applicable
+  currentUser = r.user || null;
   updateHeader();
   toast('Admin Authorization Granted! ✦', 'success');
   buildAdminPanel();
+}
+
+async function resendAdminOtp(email) {
+  const el = document.getElementById('adm-otp-err');
+  const r = await api('/api/admin/login/request-otp', { method: 'POST', body: { email, resend: true } });
+  if (r && r.error) { if (el) el.textContent = r.error; return; }
+  if (el) el.textContent = 'OTP resent. Check email/phone.';
 }
 
 function buildAdminPanel() {
@@ -463,7 +508,7 @@ async function adminProducts() {
       <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>HSN Code</th><th>GST %</th><th>Featured</th><th>Actions</th></tr></thead>
       <tbody>${products.map(p=>`
       <tr>
-        <td><img src="${p.images[0]}" style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid #eee;"/></td>
+        <td><img src="${safeImageUrl(p.images[0], p.category)}" ${imageFallbackAttr(p.category,p.images[0])} style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid #eee;"/></td>
         <td><div style="font-weight:700;">${p.name}</div><div style="font-size:.7rem;color:var(--gray);">${p.id.substring(0,8)}...</div></td>
         <td style="text-transform:capitalize;"><span class="product-badge" style="position:static;font-size:0.7rem;padding:3px 8px;">${p.category}</span></td>
         <td><div style="font-weight:700;">${formatCurrency(p.price)}</div><div style="font-size:.7rem;color:var(--gray);text-decoration:line-through;">${formatCurrency(p.mrp)}</div></td>
@@ -527,7 +572,7 @@ async function adminAddProduct(product = null) {
           const existingImg = product?.images?.[n-1] || '';
           return `<div style="border:2px dashed var(--border);border-radius:12px;aspect-ratio:1;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;cursor:pointer;background:#fafafa;" onclick="document.getElementById('p-img-${n}').click()">
             <input type="file" id="p-img-${n}" accept="image/*" style="display:none" onchange="previewSingleImage(this,${n})">
-            <img id="p-img-preview-${n}" src="${existingImg}" style="width:100%;height:100%;object-fit:cover;display:${existingImg?'block':'none'};" />
+            <img id="p-img-preview-${n}" src="${safeImageUrl(existingImg, product?.category)}" ${imageFallbackAttr(product?.category, existingImg)} style="width:100%;height:100%;object-fit:cover;display:${existingImg?'block':'none'};" />
             <div id="p-img-label-${n}" style="text-align:center;color:var(--gray);font-size:.75rem;display:${existingImg?'none':'block'};">
               <i class="fas fa-plus" style="font-size:1.2rem;display:block;margin-bottom:4px;"></i>
               ${n===1?'Main':'Image '+n}
@@ -953,7 +998,7 @@ async function viewCategoryProducts(slug) {
       <tr>
         <td>
           <div style="display:flex;align-items:center;gap:15px;">
-            <img src="${p.image}" style="width:40px;height:40px;border-radius:8px;object-fit:cover;"/>
+            <img src="${safeImageUrl(p.image, p.category)}" ${imageFallbackAttr(p.category,p.image)} style="width:40px;height:40px;border-radius:8px;object-fit:cover;"/>
             <div style="font-weight:600;">${p.name}</div>
           </div>
         </td>
@@ -1187,6 +1232,34 @@ async function adminSiteManager() {
     <div class="form-group"><label>Address</label><input id="cms-footerAddress" value="${g('footerAddress')}" placeholder="197 Sarakpur, Barara, Ambala"/></div>
     <button class="btn-primary" onclick="saveCmsFooter()"><i class="fas fa-save"></i> Save Footer</button>
   </div>`;
+
+  // SEO Panel
+  document.getElementById('admin-content').innerHTML += `
+  <div class="admin-form" style="margin-bottom:2rem;">
+    <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-search"></i> SEO & Social Defaults</h3>
+    <div class="form-group"><label>Default SEO Title</label><input id="cms-seoTitleDefault" value="${g('seoTitleDefault') || ''}" placeholder="Lencho - Premium Artificial Jewellery"/></div>
+    <div class="form-group"><label>Default SEO Description</label><textarea id="cms-seoDescriptionDefault" rows="2" placeholder="Default meta description...">${g('seoDescriptionDefault') || ''}</textarea></div>
+    <div class="form-group"><label>Canonical Base URL</label><input id="cms-seoCanonicalBaseUrl" value="${g('seoCanonicalBaseUrl') || ''}" placeholder="https://lencho.in"/></div>
+    <div class="form-group"><label>OG Image URL</label><input id="cms-seoOgImageUrl" value="${g('seoOgImageUrl') || ''}" placeholder="https://.../og-image.png"/></div>
+    <div class="form-group"><label>Upload OG Image</label><input type="file" id="cms-seoOgImageUrl-file" accept="image/*"/></div>
+    <button class="btn-outline" type="button" onclick="uploadCmsMedia('cms-seoOgImageUrl-file','cms-seoOgImageUrl')"><i class="fas fa-upload"></i> Upload OG Image</button>
+    <div style="height:8px"></div>
+    <div class="form-group"><label>Twitter Image URL</label><input id="cms-seoTwitterImageUrl" value="${g('seoTwitterImageUrl') || ''}" placeholder="https://.../twitter-image.png"/></div>
+    <div class="form-group"><label>Upload Twitter Image</label><input type="file" id="cms-seoTwitterImageUrl-file" accept="image/*"/></div>
+    <button class="btn-outline" type="button" onclick="uploadCmsMedia('cms-seoTwitterImageUrl-file','cms-seoTwitterImageUrl')"><i class="fas fa-upload"></i> Upload Twitter Image</button>
+    <div style="margin-top:1rem;display:flex;gap:10px;"><button class="btn-primary" onclick="saveSeoSettings()"><i class="fas fa-save"></i> Save SEO Defaults</button></div>
+  </div>`;
+
+}
+
+async function saveSeoSettings() {
+  const keys = ['seoTitleDefault','seoDescriptionDefault','seoCanonicalBaseUrl','seoOgImageUrl','seoTwitterImageUrl'];
+  for (const k of keys) {
+    const el = document.getElementById('cms-' + k);
+    if (!el) continue;
+    await api('/api/admin/settings', { method: 'POST', body: { key: k, value: el.value } });
+  }
+  toast('✅ SEO settings saved!', 'success');
 }
 
 async function saveCmsToggles() {

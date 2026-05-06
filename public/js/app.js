@@ -7,6 +7,20 @@ const apiGetCache = new Map();
 const API_CACHE_TTL_MS = 2 * 60 * 1000;
 
 const SETTINGS_CACHE_KEY = 'lencho_public_settings_cache_v1';
+const MEDIA_FALLBACKS = {
+  earrings: '/images/earrings.png',
+  necklace: '/images/necklace.png',
+  'toe-rings': '/images/toe-rings.png',
+  payal: '/images/payal.png',
+  rings: '/images/p1.png',
+  bangles: '/images/p4.png',
+  bracelets: '/images/p1.png',
+  chains: '/images/showcase.png',
+  'maang-tikka': '/images/showcase.png',
+  sets: '/images/showcase.png',
+  default: '/images/hero.png'
+};
+let currentPageContext = { route: '/', category: '', product: null };
 
 function readCachedPublicSettings() {
   if (cachedPublicSettings && typeof cachedPublicSettings === 'object') return cachedPublicSettings;
@@ -28,6 +42,193 @@ function saveCachedPublicSettings(settings) {
     localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(normalized));
   } catch {}
   return normalized;
+}
+
+function getCategoryImageFallback(category = '') {
+  const key = String(category || '').trim().toLowerCase();
+  return MEDIA_FALLBACKS[key] || MEDIA_FALLBACKS.default;
+}
+
+function safeImageUrl(url, category = '', fallback = '') {
+  const value = String(url || '').trim();
+  return value || fallback || getCategoryImageFallback(category);
+}
+
+function handleImageFallback(img, category = '', fallback = '') {
+  if (!img) return;
+  const next = fallback || getCategoryImageFallback(category);
+  if (img.dataset.fallbackApplied === 'true') return;
+  img.dataset.fallbackApplied = 'true';
+  img.src = next;
+}
+
+function imageFallbackAttr(category = '', fallback = '') {
+  const safeCategory = String(category || '').replace(/[^a-z0-9-]/gi, '');
+  const safeFallback = safeImageUrl(fallback, safeCategory);
+  return `onerror="handleImageFallback(this,'${safeCategory}','${safeFallback}')"`; 
+}
+
+function normalizeClientProduct(product) {
+  if (!product || typeof product !== 'object') return product;
+  const category = String(product.category || '').trim().toLowerCase();
+  const images = Array.isArray(product.images) && product.images.length
+    ? product.images.map(img => safeImageUrl(img, category))
+    : [getCategoryImageFallback(category)];
+
+  if (images.length === 1) images.push(images[0]);
+
+  return {
+    ...product,
+    category,
+    images,
+    image: safeImageUrl(product.image || images[0], category)
+  };
+}
+
+function setPageContext(next = {}) {
+  currentPageContext = {
+    route: next.route || location.pathname || '/',
+    category: next.category || '',
+    product: next.product ? normalizeClientProduct(next.product) : null
+  };
+}
+
+function upsertMeta(selector, attribute, value) {
+  if (!value) return;
+  let node = document.querySelector(selector);
+  if (!node) {
+    node = document.createElement('meta');
+    node.setAttribute(attribute.includes('property') ? 'property' : 'name', attribute.replace(/^.*=/, ''));
+    document.head.appendChild(node);
+  }
+  node.setAttribute('content', value);
+}
+
+function upsertNamedMeta(name, value) {
+  upsertMeta(`meta[name="${name}"]`, `name=${name}`, value);
+}
+
+function upsertPropertyMeta(property, value) {
+  upsertMeta(`meta[property="${property}"]`, `property=${property}`, value);
+}
+
+function upsertLink(rel, href) {
+  if (!href) return;
+  let node = document.querySelector(`link[rel="${rel}"]`);
+  if (!node) {
+    node = document.createElement('link');
+    node.setAttribute('rel', rel);
+    document.head.appendChild(node);
+  }
+  node.setAttribute('href', href);
+}
+
+function upsertJsonLd(id, payload) {
+  if (!payload) return;
+  let node = document.getElementById(id);
+  if (!node) {
+    node = document.createElement('script');
+    node.type = 'application/ld+json';
+    node.id = id;
+    document.head.appendChild(node);
+  }
+  node.textContent = JSON.stringify(payload);
+}
+
+function syncFooterDetails(settings = {}) {
+  const phone = settings.footerPhone || settings.storePhone || '+91 7404217625';
+  const email = settings.footerEmail || settings.storeEmail || 'lencho.official01@gmail.com';
+  const address = settings.footerAddress || settings.storeAddress || '197 Sarakpur, Barara, Ambala, Haryana';
+
+  const phoneEl = document.getElementById('footer-phone');
+  const emailEl = document.getElementById('footer-email');
+  const addressEl = document.getElementById('footer-address');
+
+  if (phoneEl) phoneEl.textContent = phone;
+  if (emailEl) emailEl.textContent = email;
+  if (addressEl) addressEl.textContent = address;
+}
+
+async function applyRouteSeo(context = {}, settingsInput = null) {
+  const settings = normalizeSettings(settingsInput || readCachedPublicSettings());
+  const route = context.route || currentPageContext.route || location.pathname || '/';
+  const category = context.category || currentPageContext.category || '';
+  const product = context.product ? normalizeClientProduct(context.product) : currentPageContext.product;
+  const baseUrl = String(settings.seoCanonicalBaseUrl || location.origin).replace(/\/+$/, '');
+  const currentUrl = `${baseUrl}${route.startsWith('/') ? route : `/${route}`}${location.search || ''}`;
+  const defaultTitle = settings.seoTitleDefault || 'Lencho - Premium Artificial Jewellery';
+  const defaultDescription = settings.seoDescriptionDefault || 'Shop premium artificial jewellery at Lencho.';
+  const defaultImage = safeImageUrl(settings.seoOgImageUrl || settings.heroImage, '', '/images/premium_hero.png');
+  const twitterImage = safeImageUrl(settings.seoTwitterImageUrl || defaultImage, '', defaultImage);
+
+  let title = defaultTitle;
+  let description = defaultDescription;
+  let image = defaultImage;
+  let keywords = 'artificial jewellery, lencho, fashion jewellery';
+  let schema = {
+    '@context': 'https://schema.org',
+    '@type': 'Store',
+    name: settings.storeName || 'Lencho',
+    url: baseUrl,
+    image: `${baseUrl}${defaultImage}`,
+    description: defaultDescription,
+    telephone: settings.schemaPhone || settings.storePhone || '',
+    email: settings.schemaEmail || settings.storeEmail || '',
+    address: settings.schemaAddress || settings.storeAddress || ''
+  };
+
+  if (route === '/' || route === '') {
+    title = defaultTitle;
+    description = defaultDescription;
+    image = safeImageUrl(settings.heroImage || defaultImage, '', defaultImage);
+  } else if (route === '/products' && category) {
+    const label = category.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+    title = `${label} Collection | ${settings.storeName || 'Lencho'}`;
+    description = `Browse ${label} at ${settings.storeName || 'Lencho'}. Premium styles, current discounts, and fast delivery support.`;
+  } else if (route.startsWith('/product/') && product) {
+    title = `${product.name} | ${settings.storeName || 'Lencho'}`;
+    description = product.description || defaultDescription;
+    image = safeImageUrl(product.images?.[0], product.category, defaultImage);
+    keywords = Array.isArray(product.seoTags) && product.seoTags.length
+      ? product.seoTags.join(', ')
+      : `${product.category}, ${product.name}, lencho`;
+    schema = {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: product.name,
+      description,
+      image: product.images.map(img => `${baseUrl}${img.startsWith('/') ? img : `/${img}`}`),
+      sku: product.id,
+      category: product.category,
+      offers: {
+        '@type': 'Offer',
+        priceCurrency: 'INR',
+        price: Number(product.price) || 0,
+        availability: Number(product.stock) > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+        url: currentUrl
+      }
+    };
+  } else if (route === '/track') {
+    title = `Track Order | ${settings.storeName || 'Lencho'}`;
+    description = 'Track your Lencho order using your order ID.';
+  } else if (route === '/contact') {
+    title = `Contact ${settings.storeName || 'Lencho'}`;
+    description = 'Contact Lencho for product help, order support, and business inquiries.';
+  }
+
+  document.title = title;
+  upsertNamedMeta('description', description);
+  upsertNamedMeta('keywords', keywords);
+  upsertPropertyMeta('og:title', title);
+  upsertPropertyMeta('og:description', description);
+  upsertPropertyMeta('og:url', currentUrl);
+  upsertPropertyMeta('og:image', `${baseUrl}${image.startsWith('/') ? image : `/${image}`}`);
+  upsertNamedMeta('twitter:title', title);
+  upsertNamedMeta('twitter:description', description);
+  upsertNamedMeta('twitter:image', `${baseUrl}${twitterImage.startsWith('/') ? twitterImage : `/${twitterImage}`}`);
+  upsertLink('canonical', currentUrl);
+  upsertJsonLd('dynamic-seo-jsonld', schema);
+  syncFooterDetails(settings);
 }
 
 function withTimeout(promise, timeoutMs = 3000) {
@@ -61,7 +262,7 @@ async function fetchPublicSettings(options = {}) {
   if (!force && publicSettingsPromise) return publicSettingsPromise;
 
   publicSettingsPromise = (async () => {
-    const resp = await withTimeout(api('/api/settings'), timeoutMs);
+    const resp = await withTimeout(api('/api/settings/public'), timeoutMs);
     const normalized = normalizeSettings(resp || {});
     if (!resp || resp.error || Object.keys(normalized).length === 0) {
       return readCachedPublicSettings();
@@ -87,6 +288,7 @@ async function navigate(path, pushState = true) {
   app.innerHTML = '<div style="min-height:60vh;display:flex;align-items:center;justify-content:center;"><div class="loader-logo" style="color:var(--rose);font-size:1.5rem;">✦</div></div>';
   const [route, query] = path.split('?');
   const params = new URLSearchParams(query || '');
+  setPageContext({ route, category: params.get('category') || '' });
   footer.style.display = '';
   header.style.display = '';
   app.style.paddingTop = getHeaderOffset();  // Ensure everything avoids header overlap
@@ -112,6 +314,7 @@ async function navigate(path, pushState = true) {
     }
     else { app.innerHTML = `<div class="page-wrap" style="text-align:center;padding-top:120px;"><div class="empty-icon">🔍</div><h2 style="font-family:'Cormorant Garamond',serif;font-size:2rem;">Page Not Found</h2><p style="color:var(--gray);margin:1rem 0 2rem;">The page you're looking for doesn't exist.</p><button class="btn-primary" onclick="navigate('/')">Go Home</button></div>`; }
   } catch (e) { console.error(e); }
+  if (route !== '/admin') applyRouteSeo({ route, category: params.get('category') || '' });
   window.scrollTo(0, 0);
   initScrollReveal();
 }
@@ -125,7 +328,7 @@ async function api(url, opts = {}) {
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const method = String(opts.method || 'GET').toUpperCase();
-    const cacheable = method === 'GET' && /^\/api\/(products|categories|testimonials|settings(\/public)?)\b/.test(url);
+    const cacheable = method === 'GET' && /^\/api\/(products|categories|testimonials|recommendations|settings(\/public)?)\b/.test(url);
 
     if (cacheable) {
       const hit = apiGetCache.get(url);
@@ -561,16 +764,17 @@ function formatDate(d) { return new Date(d).toLocaleDateString('en-IN', { day: '
 
 // ── PRODUCT CARD ─────────────────────────────────────────
 function productCardHTML(p) {
-  const secondaryImg = p.images[1] || p.images[0];
+  const product = normalizeClientProduct(p);
+  const secondaryImg = product.images[1] || product.images[0];
   const stockStatus = p.stock < 5 && p.stock > 0 ? '⚡ Only ' + p.stock + ' left!' : '';
   const isFeatured = p.featured ? '⭐ Trending' : '';
   const badge = isFeatured || stockStatus || (p.discount > 30 ? '🔥 Hot Deal' : '');
   
   return `
   <div class="product-card reveal" style="border-radius:16px !important;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08) !important;transition:transform .3s ease,box-shadow .3s ease !important;background:#fff;border:1px solid rgba(201,106,138,.08);" onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 12px 32px rgba(201,106,138,.15) !important';" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 16px rgba(0,0,0,.08) !important';">
-    <div class="product-img-wrap" onclick="navigate('/product/${p.id}')" style="position:relative;overflow:hidden;aspect-ratio:1/1.15;cursor:pointer;">
-      <img class="product-img" src="${p.images[0]}" alt="${p.name}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;transition:transform .5s ease !important;display:block;"/>
-      <img class="product-img img-hover" src="${secondaryImg}" alt="${p.name}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;opacity:0;transition:opacity .4s ease !important;display:block;"/>
+    <div class="product-img-wrap" onclick="navigate('/product/${product.id}')" style="position:relative;overflow:hidden;aspect-ratio:1/1.15;cursor:pointer;">
+      <img class="product-img" src="${safeImageUrl(product.images[0], product.category)}" alt="${product.name}" loading="lazy" decoding="async" ${imageFallbackAttr(product.category)} style="width:100%;height:100%;object-fit:cover;transition:transform .5s ease !important;display:block;"/>
+      <img class="product-img img-hover" src="${safeImageUrl(secondaryImg, product.category)}" alt="${product.name}" loading="lazy" decoding="async" ${imageFallbackAttr(product.category)} style="width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;opacity:0;transition:opacity .4s ease !important;display:block;"/>
       
       ${p.discount ? `<span class="product-badge" style="position:absolute;top:12px;left:12px;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;padding:6px 12px;border-radius:8px;font-weight:700;font-size:.75rem;z-index:2;">✦ ${p.discount}% OFF ✦</span>` : ''}
       
@@ -632,17 +836,17 @@ function shuffleArray(items) {
 
 function renderFallbackCollectionCards(container) {
   const fallbackCollections = shuffleArray([
-    { name: 'Earrings', slug: 'earrings', image: 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=900&q=80' },
-    { name: 'Necklace Sets', slug: 'necklace', image: 'https://images.unsplash.com/photo-1617038220319-9c7b6f4f59ff?auto=format&fit=crop&w=900&q=80' },
-    { name: 'Rings', slug: 'rings', image: 'https://images.unsplash.com/photo-1611652022419-a9419f74343d?auto=format&fit=crop&w=900&q=80' },
-    { name: 'Bridal Sets', slug: 'sets', image: 'https://images.unsplash.com/photo-1617038220319-33d1c2d2c5b8?auto=format&fit=crop&w=900&q=80' },
-    { name: 'Bangles', slug: 'bangles', image: 'https://images.unsplash.com/photo-1617038220319-3f6e0adf8c5e?auto=format&fit=crop&w=900&q=80' },
-    { name: 'Bracelets', slug: 'bracelets', image: 'https://images.unsplash.com/photo-1611652022419-8a3f7f0de1c7?auto=format&fit=crop&w=900&q=80' },
+    { name: 'Earrings', slug: 'earrings', image: '/images/earrings.png' },
+    { name: 'Necklace Sets', slug: 'necklace', image: '/images/necklace.png' },
+    { name: 'Rings', slug: 'rings', image: '/images/p1.png' },
+    { name: 'Bridal Sets', slug: 'sets', image: '/images/showcase.png' },
+    { name: 'Bangles', slug: 'bangles', image: '/images/p4.png' },
+    { name: 'Bracelets', slug: 'bracelets', image: '/images/p1.png' },
   ]);
 
   container.innerHTML = fallbackCollections.map((c, i) => `
     <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
-      <img class="cat-img" src="${c.image}" alt="${c.name}" onerror="this.src='/images/hero.png'"/>
+      <img class="cat-img" src="${safeImageUrl(c.image, c.slug)}" alt="${c.name}" ${imageFallbackAttr(c.slug)}/>
       <div class="cat-overlay"></div>
       <div class="cat-content"><div class="cat-name">${c.name}</div><button class="cat-btn">Shop Now</button></div>
     </div>
@@ -652,16 +856,16 @@ function renderFallbackCollectionCards(container) {
 
 function renderFallbackFeaturedCards(container) {
   const fallbackFeatured = shuffleArray([
-    { title: 'Rose Glow Earrings', slug: 'earrings', image: 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=900&q=80' },
-    { title: 'Royal Necklace Set', slug: 'necklace', image: 'https://images.unsplash.com/photo-1617038220319-9c7b6f4f59ff?auto=format&fit=crop&w=900&q=80' },
-    { title: 'Bridal Ring Collection', slug: 'rings', image: 'https://images.unsplash.com/photo-1611652022419-a9419f74343d?auto=format&fit=crop&w=900&q=80' },
-    { title: 'Statement Bangles', slug: 'bangles', image: 'https://images.unsplash.com/photo-1617038220319-3f6e0adf8c5e?auto=format&fit=crop&w=900&q=80' },
+    { title: 'Rose Glow Earrings', slug: 'earrings', image: '/images/earrings.png' },
+    { title: 'Royal Necklace Set', slug: 'necklace', image: '/images/necklace.png' },
+    { title: 'Bridal Ring Collection', slug: 'rings', image: '/images/p1.png' },
+    { title: 'Statement Bangles', slug: 'bangles', image: '/images/p4.png' },
   ]);
 
   container.innerHTML = fallbackFeatured.map((item, i) => `
     <div class="product-card reveal" style="border-radius:16px !important;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08) !important;transition:transform .3s ease,box-shadow .3s ease !important;background:#fff;border:1px solid rgba(201,106,138,.08);" onclick="navigate('/products?category=${item.slug}')">
       <div class="product-img-wrap" style="position:relative;overflow:hidden;aspect-ratio:1/1.15;cursor:pointer;">
-        <img class="product-img" src="${item.image}" alt="${item.title}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;display:block;"/>
+        <img class="product-img" src="${safeImageUrl(item.image, item.slug)}" alt="${item.title}" loading="lazy" decoding="async" ${imageFallbackAttr(item.slug)} style="width:100%;height:100%;object-fit:cover;display:block;"/>
         <span class="product-badge" style="position:absolute;top:12px;left:12px;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;padding:6px 12px;border-radius:8px;font-weight:700;font-size:.75rem;z-index:2;">✦ Featured ✦</span>
       </div>
       <div class="product-body" style="padding:1rem 1rem 1.2rem;">

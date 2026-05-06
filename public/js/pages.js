@@ -14,12 +14,12 @@ async function renderProductDetail(id) {
         <div class="gallery-thumbs-top">
           ${p.images.map((img, i) => `
             <div class="thumb-item ${i === 0 ? 'active' : ''}" onclick="setThumb(this, '${img}')">
-              <img src="${img}" alt="Thumbnail ${i + 1}"/>
+              <img src="${safeImageUrl(img, p.category)}" ${imageFallbackAttr(p.category, img)} alt="Thumbnail ${i + 1}"/>
             </div>
           `).join('')}
         </div>
         <div class="gallery-main">
-          <img id="main-product-img" src="${p.images[0]}" alt="${p.name}"/>
+          <img id="main-product-img" src="${safeImageUrl(p.images[0], p.category)}" ${imageFallbackAttr(p.category, p.images[0])} alt="${p.name}"/>
           ${discountVal ? `<span class="badge-large">${discountVal}% OFF</span>` : ''}
         </div>
       </div>
@@ -195,7 +195,7 @@ async function loadRecommended(category, currentId) {
       grid.innerHTML = filtered.map(item => `
         <div class="product-card reveal" onclick="navigate('/product/${item.id}')">
           <div class="product-img-wrap">
-            <img class="product-img" src="${item.images[0]}" alt="${item.name}"/>
+            <img class="product-img" src="${safeImageUrl(item.images[0], item.category)}" ${imageFallbackAttr(item.category, item.images[0])} alt="${item.name}"/>
             ${item.discount ? `<div class="product-badge">${item.discount}% OFF</div>` : ''}
           </div>
           <div class="product-body">
@@ -220,7 +220,8 @@ async function loadRecommended(category, currentId) {
 function setThumb(el, src) {
   document.querySelectorAll('.gallery-thumbs-top .thumb-item').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
-  document.getElementById('main-product-img').src = src;
+  document.getElementById('main-product-img').src = safeImageUrl(src, currentPageContext.category);
+  document.getElementById('main-product-img').setAttribute('onerror', handleImageFallback ? "handleImageFallback(this, '"+ (currentPageContext.category||'') +"', '')" : '');
 }
 
 function setReviewRating(n) {
@@ -280,7 +281,7 @@ async function renderCart() {
         <div class="cart-items" id="cart-items-list">
           ${items.map(i => `
           <div class="cart-item" id="ci-${i.productId}">
-            <img class="cart-item-img" src="${i.product.images[0]}" alt="${i.product.name}" onclick="navigate('/product/${i.productId}')" style="cursor:pointer;"/>
+            <img class="cart-item-img" src="${safeImageUrl(i.product.images[0], i.product.category)}" ${imageFallbackAttr(i.product.category, i.product.images[0])} alt="${i.product.name}" onclick="navigate('/product/${i.productId}')" style="cursor:pointer;"/>
             <div class="cart-item-info">
               <div class="cart-item-name">${i.product.name}</div>
               <div class="cart-item-cat">${i.product.category}</div>
