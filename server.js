@@ -78,6 +78,21 @@ function sanitizeFromName(name) {
   return String(name || '').replace(/["<>\r\n]/g, '').trim();
 }
 
+// ─── FALLBACK (JSON) ──────────────────────────────────────────
+const DATA_DIR = path.join(__dirname, 'data');
+const FILES = {
+  users: path.join(DATA_DIR, 'users.json'),
+  products: path.join(DATA_DIR, 'products.json'),
+  orders: path.join(DATA_DIR, 'orders.json'),
+  carts: path.join(DATA_DIR, 'carts.json'),
+  wishlists: path.join(DATA_DIR, 'wishlists.json'),
+  inquiries: path.join(DATA_DIR, 'inquiries.json'),
+  settings: path.join(DATA_DIR, 'settings.json'),
+  discounts: path.join(DATA_DIR, 'discounts.json'),
+  loginLogs: path.join(DATA_DIR, 'login_logs.json'),
+};
+const VISITOR_STATS_FILE = path.join(DATA_DIR, 'visitor_stats.json');
+
 function isPlaceholderSMTP(value) {
   if (value === undefined || value === null) return true;
   const normalized = String(value).trim().toLowerCase();
@@ -235,21 +250,6 @@ async function sendSMSOTP(phone, otp) {
 }
 
 function generateOTP() { return Math.floor(100000 + Math.random() * 900000).toString(); }
-
-// ─── FALLBACK (JSON) ──────────────────────────────────────────
-const DATA_DIR = path.join(__dirname, 'data');
-const FILES = {
-  users: path.join(DATA_DIR, 'users.json'),
-  products: path.join(DATA_DIR, 'products.json'),
-  orders: path.join(DATA_DIR, 'orders.json'),
-  carts: path.join(DATA_DIR, 'carts.json'),
-  wishlists: path.join(DATA_DIR, 'wishlists.json'),
-  inquiries: path.join(DATA_DIR, 'inquiries.json'),
-  settings: path.join(DATA_DIR, 'settings.json'),
-  discounts: path.join(DATA_DIR, 'discounts.json'),
-  loginLogs: path.join(DATA_DIR, 'login_logs.json'),
-};
-const VISITOR_STATS_FILE = path.join(DATA_DIR, 'visitor_stats.json');
 
 const CATEGORY_FALLBACK_IMAGE_MAP = {
   earrings: '/images/earrings.png',

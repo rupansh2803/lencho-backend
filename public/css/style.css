@@ -38,8 +38,8 @@
 
   .site-logo {
     position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
+    right: 4%;
+    transform: none;
     order: initial;
     margin-left: 0;
     justify-content: center;
