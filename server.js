@@ -1978,11 +1978,17 @@ app.post('/api/admin/login/verify-otp', async (req, res) => {
 // ─── SIMPLIFIED ADMIN LOGIN (Email + Password only, no OTP/CAPTCHA) ────────────────
 app.post('/api/admin/login/simple', async (req, res) => {
   try {
-    const { email, password } = req.body || {};
+    const { email, password, captchaAnswer } = req.body || {};
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
     
-    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+    if (!email || !password || !captchaAnswer) return res.status(400).json({ error: 'Email, password and CAPTCHA are required' });
+
+    // Validate CAPTCHA (case-insensitive)
+    if (String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
+      await recordLoginActivity({ email, status: 'failed', method: 'admin_simple', role: 'admin', ip, userAgent });
+      return res.status(400).json({ error: 'Invalid CAPTCHA code' });
+    }
 
     let adminUser = null;
     
@@ -2011,6 +2017,7 @@ app.post('/api/admin/login/simple', async (req, res) => {
     }
     req.session.role = 'admin';
     req.session.name = adminUser.name;
+    delete req.session.captcha; // Clear CAPTCHA after use
     
     // Record successful login
     await recordLoginActivity({ email, name: adminUser.name, status: 'success', method: 'admin_simple', role: 'admin', ip, userAgent });
