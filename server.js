@@ -951,33 +951,76 @@ async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
     const bodyTpl = DEFAULT_OTP_BODY;
     const storeName = sanitizeFromName(await getMeaningfulSetting('storeName', DEFAULT_EMAIL_FROM_NAME)) || DEFAULT_EMAIL_FROM_NAME;
 
-    // If SMTP is not configured, fall back to SMS/dev OTP
+    // If SMTP is not configured, throw error for fallback
     if (isPlaceholderSMTP(user) || isPlaceholderSMTP(pass)) {
-      console.log('⚠️  SMTP not configured. Using SMS/dev OTP fallback for admin login.');
-      await sendSMSOTP('7404217625', otp);
-      return { sent: true, via: 'sms', type };
+      throw new Error('SMTP credentials not configured. Using fallback.');
     }
 
     const transporter = nodemailer.createTransport({
       host,
       port: +port,
       secure: +port === 465,
-      auth: { user, pass }
+      auth: { user, pass },
+      connectionTimeout: 10000,
+      socketTimeout: 10000
     });
 
-    await transporter.sendMail({
+    // Test connection first
+    await transporter.verify();
+
+    const result = await transporter.sendMail({
       from: `"${storeName}" <${user}>`,
       to: targetEmail,
       subject: subjectTpl.replace('{{otp}}', otp),
       html: bodyTpl.replace('{{otp}}', otp)
     });
-    return { sent: true, type };
+
+    console.log(`✅ Email OTP sent to ${targetEmail} via ${host}`);
+    return { sent: true, via: 'email', messageId: result.messageId };
   } catch (err) {
-    // If email fails, fall back to SMS/dev OTP
-    console.log('⚠️  Email OTP failed. Falling back to SMS/dev OTP:', err.message);
-    await sendSMSOTP('7404217625', otp);
-    return { sent: true, via: 'sms', type };
+    const errMsg = String(err?.message || err).toLowerCase();
+    console.log(`⚠️  Email OTP failed (${errMsg}). Will use SMS/console fallback.`);
+    throw err;
   }
+}
+
+async function sendSMSOTP(phone, otp) {
+  // Normalize phone number
+  const mobile = phone.replace(/\D/g, '').slice(-10);
+  const DEV = process.env.NODE_ENV !== 'production';
+
+  // Always log in dev (so you can test without SMS key)
+  if (DEV) {
+    console.log(`\n📱 SMS OTP for ${mobile}: ${otp}  ← (visible in development mode)\n`);
+  }
+
+  // If Fast2SMS key is configured, send real SMS
+  const key = process.env.FAST2SMS_KEY;
+  if (key && key !== 'your_fast2sms_api_key_here') {
+    try {
+      const response = await axios.get('https://www.fast2sms.com/dev/bulkV2', {
+        params: {
+          authorization: key,
+          variables_values: otp,
+          route: 'otp',
+          numbers: mobile
+        },
+        timeout: 10000
+      });
+
+      if (response.data?.return === true) {
+        console.log(`✅ SMS OTP sent to ${mobile} via Fast2SMS`);
+        return { sent: true, via: 'sms' };
+      } else {
+        throw new Error('Fast2SMS returned error: ' + JSON.stringify(response.data));
+      }
+    } catch (e) {
+      console.log('⚠️  SMS send failed:', e.message);
+    }
+  }
+
+  // Fallback: return dev OTP so frontend can show it
+  return { sent: true, via: 'dev', devOtp: DEV ? otp : undefined };
 }
 
 async function getDeliveryManagerConfig() {
@@ -1245,6 +1288,25 @@ app.get('/api/admin/settings', requireAdmin, async (req, res) => {
 });
 
 app.put('/api/admin/settings', requireAdmin, async (req, res) => {
+  try {
+    const updates = extractSettingsUpdates(req.body);
+    if (!updates.length) return res.status(400).json({ error: 'No settings provided' });
+    if (!useDB) {
+      const nextSettings = getFallbackSettingsObject();
+      for (const s of updates) {
+        if (s && s.key) nextSettings[s.key] = s.value;
+      }
+      saveFallbackSettingsObject(nextSettings);
+      return res.json({ success: true });
+    }
+    for (const s of updates) {
+      await Settings.findOneAndUpdate({ key: s.key }, { value: s.value }, { upsert: true });
+    }
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/settings', requireAdmin, async (req, res) => {
   try {
     const updates = extractSettingsUpdates(req.body);
     if (!updates.length) return res.status(400).json({ error: 'No settings provided' });
@@ -1822,15 +1884,32 @@ app.post('/api/admin/login/request-otp', async (req, res) => {
     };
     delete req.session.captcha;
 
-    // In development, always use SMS/console OTP
+    // Determine OTP delivery method
     const isDev = process.env.NODE_ENV !== 'production';
-    if (isDev) {
-      console.log(`\n📱 ADMIN OTP for ${email}: ${otp}  ← (visible because NODE_ENV=development)\n`);
-    } else {
-      await sendConfiguredEmailOTP(email, otp, 'admin_login');
+    let otpSent = { via: 'console', message: 'OTP sent to admin email. Valid for 5 minutes.' };
+
+    // Always show OTP in development for testing
+    console.log(`\n📱 ADMIN OTP for ${email}: ${otp}  ← (visible in development mode)\n`);
+
+    // In production, try email first, then SMS fallback
+    if (!isDev) {
+      try {
+        await sendConfiguredEmailOTP(email, otp, 'admin_login');
+        otpSent = { via: 'email', message: 'OTP sent to your admin email. Valid for 5 minutes.' };
+      } catch (emailErr) {
+        console.log('⚠️  Email OTP failed, attempting SMS fallback:', emailErr.message);
+        try {
+          await sendSMSOTP(email.replace(/@.*/, '7404217625'), otp);
+          otpSent = { via: 'sms', message: 'OTP sent via SMS. Valid for 5 minutes.' };
+        } catch (smsErr) {
+          console.log('⚠️  SMS also failed, showing console OTP:', smsErr.message);
+          // If both fail, return success but user can see OTP in console
+          otpSent = { via: 'console', message: 'OTP system temporary issue. Check server logs.' };
+        }
+      }
     }
 
-    res.json({ success: true, message: 'OTP sent to admin email. Valid for 5 minutes.' });
+    res.json({ success: true, message: otpSent.message, via: otpSent.via, devOtp: isDev ? otp : undefined });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1895,6 +1974,52 @@ app.post('/api/admin/login/verify-otp', async (req, res) => {
     res.json({ success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ─── SIMPLIFIED ADMIN LOGIN (Email + Password only, no OTP/CAPTCHA) ────────────────
+app.post('/api/admin/login/simple', async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    const userAgent = req.headers['user-agent'] || '';
+    
+    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+
+    let adminUser = null;
+    
+    // Try MongoDB first
+    if (useDB) {
+      adminUser = await User.findOne({ email });
+      if (!adminUser || adminUser.role !== 'admin' || !await bcrypt.compare(password, adminUser.password)) {
+        await recordLoginActivity({ email, status: 'failed', method: 'admin_simple', role: adminUser?.role || 'user', ip, userAgent });
+        return res.status(400).json({ error: 'Invalid admin credentials' });
+      }
+    } else {
+      // Use JSON fallback
+      const users = readJson(FILES.users);
+      adminUser = users.find(u => u.email === email && u.role === 'admin');
+      if (!adminUser || !await bcrypt.compare(password, adminUser.password)) {
+        await recordLoginActivity({ email, status: 'failed', method: 'admin_simple', role: adminUser?.role || 'user', ip, userAgent });
+        return res.status(400).json({ error: 'Invalid admin credentials' });
+      }
+    }
+
+    // Set session
+    if (useDB) {
+      req.session.userId = adminUser._id.toString();
+    } else {
+      req.session.userId = adminUser.id;
+    }
+    req.session.role = 'admin';
+    req.session.name = adminUser.name;
+    
+    // Record successful login
+    await recordLoginActivity({ email, name: adminUser.name, status: 'success', method: 'admin_simple', role: 'admin', ip, userAgent });
+    
+    console.log(`✅ Admin logged in: ${email}`);
+    res.json({ success: true, message: 'Admin login successful', user: { id: req.session.userId, name: adminUser.name, email: adminUser.email, role: 'admin' } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── AUTH ROUTES ──────────────────────────────────────────────
 app.post('/api/signup', async (req, res) => {
   try {

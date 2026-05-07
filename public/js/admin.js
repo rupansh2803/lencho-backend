@@ -77,37 +77,20 @@ async function handleAdminSetup() {
 }
 
 async function showAdminLogin() {
-  const captcha = await api('/api/captcha');
   document.getElementById('app').innerHTML = `
   <div style="min-height:100vh;background:var(--dark);display:flex;align-items:center;justify-content:center;padding:2rem;">
     <div style="background:#fff;border-radius:24px;padding:2.5rem;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);">
       <div style="text-align:center;margin-bottom:2rem;">
         <div style="font-family:'Cormorant Garamond',serif;font-size:1.2rem;color:var(--rose);letter-spacing:.2em;margin-bottom:.5rem;">✦ LENCHO ✦</div>
         <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;margin-bottom:.4rem;">Admin Login</h2>
-        <p style="color:var(--gray);font-size:.875rem;">Secure biometric/credential login</p>
+        <p style="color:var(--gray);font-size:.875rem;">Enter your credentials to access the admin panel</p>
       </div>
-      <div class="form-group"><label>Email Address</label><input type="email" id="adm-email" placeholder="admin@example.com"/></div>
+      <div class="form-group"><label>Email Address</label><input type="email" id="adm-email" placeholder="admin@example.com" autofocus/></div>
       <div class="form-group"><label>Password</label><input type="password" id="adm-pass" placeholder="Password"/></div>
-      
-      <div style="background:var(--beige);padding:1rem;border-radius:12px;margin-bottom:1.5rem;border:1px solid rgba(0,0,0,.04);">
-        <label style="font-size:.7rem;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:8px;letter-spacing:.08em;">Security Code</label>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;">
-          <div style="min-width:180px;flex:1;background:#fff;padding:.85rem 1rem;border-radius:10px;border:1px solid #eee;display:flex;flex-direction:column;gap:.2rem;">
-            <span style="font-size:.72rem;color:var(--gray);text-transform:uppercase;letter-spacing:.08em;">Type this code exactly</span>
-            <span style="font-weight:800;font-size:1.35rem;letter-spacing:.12em;color:var(--rose-dark);">${captcha.question.replace('Type this code: ', '')}</span>
-          </div>
-          <button type="button" class="btn-outline" onclick="showAdminLogin()" style="white-space:nowrap;padding:.75rem 1rem;">
-            <i class="fas fa-rotate-right"></i> Refresh
-          </button>
-        </div>
-        <div class="form-group" style="margin-top:12px;margin-bottom:0;">
-          <input type="text" id="adm-captcha" inputmode="text" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="5" pattern="[A-Za-z0-9]{5}" placeholder="Enter security code" style="appearance:none;-webkit-appearance:none;-moz-appearance:textfield;text-align:center;letter-spacing:.35em;font-weight:700;text-transform:uppercase;" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,5)"/>
-        </div>
-      </div>
 
       <div id="adm-err" style="color:#ef4444;font-size:.8rem;margin-bottom:.75rem;min-height:20px;"></div>
       <button class="btn-primary full-width" onclick="adminLogin()">
-        <i class="fas fa-shield-alt"></i> Authorize Login
+        <i class="fas fa-shield-alt"></i> Sign In
       </button>
 
       <button class="btn-outline full-width" style="margin-top:10px;" onclick="showRecovery()">
@@ -116,27 +99,26 @@ async function showAdminLogin() {
     </div>
   </div>`;
 
-  setTimeout(() => document.getElementById('adm-captcha')?.focus(), 0);
+  setTimeout(() => document.getElementById('adm-email')?.focus(), 0);
 }
 
 async function adminLogin() {
   const email = document.getElementById('adm-email')?.value;
   const pass = document.getElementById('adm-pass')?.value;
-  const captcha = document.getElementById('adm-captcha')?.value;
   const err = document.getElementById('adm-err');
 
-  if (!email || !pass || !captcha) { err.textContent = 'Please fill all fields'; return; }
+  if (!email || !pass) { err.textContent = 'Please fill all fields'; return; }
 
-  // Step 1: Request OTP for admin login
-  const r = await api('/api/admin/login/request-otp', { method: 'POST', body: { email, password: pass, captchaAnswer: captcha } });
+  // Direct admin login - email and password only
+  const r = await api('/api/admin/login/simple', { method: 'POST', body: { email, password: pass } });
   if (r.error) {
     err.textContent = r.error;
-    showAdminLogin(); // Refresh captcha
     return;
   }
 
-  toast('OTP sent to the admin email/phone. Please enter the OTP.', 'info');
-  showAdminVerifyOtp(email);
+  // Login successful - refresh admin panel
+  toast('✅ Admin login successful!', 'success');
+  setTimeout(() => renderAdmin(), 800);
 }
 
 function showAdminVerifyOtp(email) {
@@ -955,8 +937,13 @@ async function adminCollections() {
 
     <div class="admin-table-wrap">
       <table>
-        <thead><tr><th>Showcase</th><th>Name</th><th>Slug</th><th>Product Count</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Image</th><th>Name</th><th>Slug</th><th>Product Count</th><th>Actions</th></tr></thead>
         <tbody>${cats.map(c => `
+          <tr>
+            <td><img src="${c.image || ''}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;background:#f0f0f0;"/></td>
+            <td>${c.name}</td>
+            <td><code>${c.slug}</code></td>
+            <td><span style="background:var(--rose-light);color:var(--rose-dark);padding:4px 8px;border-radius:6px;font-weight:600;">${counts[c.slug] || 0}</span></td>
             <td>
               <button class="btn-sm btn-outline" onclick="viewCategoryProducts('${c.slug}')"><i class="fas fa-boxes"></i> Inventory</button>
               <button class="btn-sm" onclick="deleteCategory('${c._id}')" style="background:#fee2e2;color:#ef4444;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button>
