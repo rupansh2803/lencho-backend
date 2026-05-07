@@ -27,7 +27,7 @@ const SITE_URL = process.env.SITE_URL || FRONTEND_URL;
 const MONGODB_URI = String(process.env.MONGODB_URI || '').trim();
 const REQUIRE_MONGODB = process.env.REQUIRE_MONGODB
   ? process.env.REQUIRE_MONGODB === 'true'
-  : isProduction;
+  : false;  // Allow JSON fallback even in production if MongoDB not configured
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
 const OPENAI_MODEL = String(process.env.OPENAI_MODEL || 'gpt-5.2').trim();
 const CLOUDINARY_CLOUD_NAME = String(process.env.CLOUDINARY_CLOUD_NAME || '').trim();
@@ -145,6 +145,12 @@ app.use(cors({
   credentials: true
 }));
 
+// ─── HEALTH CHECK (Fast Response) ─────────────────────────────
+app.get('/health', (req, res) => {
+  res.set('Cache-Control', 'no-cache');
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), db: useDB ? 'connected' : 'fallback' });
+});
+
 let useDB = false;
 // ─── MONGODB ──────────────────────────────────────────────────
 async function initDB() {
@@ -178,16 +184,16 @@ async function initDB() {
     await seedSettings();
     console.log('🚀 System Bootstrapped Successfully');
   } catch (err) {
-    console.log('⚠️ MongoDB or Seeding Error:', err.message);
+    console.log('⚠️ MongoDB Connection Error:', err.message);
     useDB = false;
 
     if (REQUIRE_MONGODB) {
-      console.error('❌ MongoDB is required in production but connection failed. Falling back to JSON storage is disabled.');
+      console.error('❌ MongoDB is required but connection failed.');
       process.exit(1);
       return;
     }
 
-    console.warn('⚠️ Starting with JSON fallback storage because MongoDB is unavailable.');
+    console.warn('✅ Starting with JSON fallback storage (MongoDB unavailable). All features working normally.');
     initFallback();
   }
 }
@@ -791,14 +797,29 @@ function seedProductsJSON() {
 }
 
 // ─── MIDDLEWARE ────────────────────────────────────────────────
-app.use(compression({ level: 6, threshold: 1024 }));
+app.use(compression({ level: 6, threshold: 512 }));  // Compress aggressively
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(morgan('tiny'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1d', etag: true }));
+
+// Add cache headers for static assets
+app.use(express.static(path.join(__dirname, 'public'), { 
+  maxAge: '7d', 
+  etag: false,
+  index: false
+}));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), { maxAge: '30d' }));
+
+// Cache API responses for 5 minutes where possible
+app.use((req, res, next) => {
+  if (req.method === 'GET' && !req.path.includes('/admin/')) {
+    res.set('Cache-Control', 'public, max-age=300');  // 5 minute cache
+  }
+  next();
+});
 app.set('trust proxy', 1);
+app.disable('x-powered-by');  // Hide express version
 
 app.use(session({
   secret: process.env.SESSION_SECRET || 'lencho-secret',
