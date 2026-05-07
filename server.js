@@ -2143,9 +2143,10 @@ app.get('/api/me', async (req, res) => {
 
 app.put('/api/profile', requireAuth, async (req, res) => {
   try {
-    const { name, phone, address, gender, password, securityQuestion, securityAnswer } = req.body;
+    const { name, phone, address, gender, password, securityQuestion, securityAnswer, email } = req.body;
     if (useDB) {
       const updates = { name, phone, address, gender };
+      if (email) updates.email = email;
       if (password) updates.password = await bcrypt.hash(password, 10);
       if (securityQuestion) updates.securityQuestion = securityQuestion;
       if (securityAnswer) updates.securityAnswer = securityAnswer;
@@ -2154,11 +2155,21 @@ app.put('/api/profile', requireAuth, async (req, res) => {
       req.session.name = user.name;
       return res.json({ success: true, user: { id: user._id, ...user.toObject() } });
     }
+    
+    // JSON fallback
     const users = readJson(FILES.users);
     const idx = users.findIndex(u => u.id === req.session.userId);
     if (idx === -1) return res.status(404).json({ error: 'User not found' });
-    if (name) users[idx].name = name; if (phone) users[idx].phone = phone;
-    if (address) users[idx].address = address; if (gender) users[idx].gender = gender;
+    
+    if (name) users[idx].name = name;
+    if (email) users[idx].email = email;
+    if (phone) users[idx].phone = phone;
+    if (address) users[idx].address = address;
+    if (gender) users[idx].gender = gender;
+    if (password) users[idx].password = await bcrypt.hash(password, 10);
+    if (securityQuestion) users[idx].securityQuestion = securityQuestion;
+    if (securityAnswer) users[idx].securityAnswer = securityAnswer;
+    
     writeJson(FILES.users, users);
     const { password: p, ...safe } = users[idx];
     res.json({ success: true, user: safe });
@@ -2719,6 +2730,31 @@ app.delete('/api/admin/inquiries/:id', requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── UPDATE INQUIRY STATUS ────────────────────────────────────
+app.put('/api/admin/inquiries/:id/status', requireAdmin, async (req, res) => {
+  try {
+    const { status } = req.body || {};
+    const validStatuses = ['new', 'read', 'replied'];
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status. Use: new, read, replied' });
+    }
+    
+    if (useDB) {
+      const inquiry = await Inquiry.findByIdAndUpdate(req.params.id, { status }, { new: true });
+      if (!inquiry) return res.status(404).json({ error: 'Inquiry not found' });
+      return res.json({ success: true, inquiry });
+    }
+    
+    const inquiries = readJson(FILES.inquiries);
+    const idx = inquiries.findIndex(i => String(i._id) === String(req.params.id));
+    if (idx === -1) return res.status(404).json({ error: 'Inquiry not found' });
+    
+    inquiries[idx].status = status;
+    writeJson(FILES.inquiries, inquiries);
+    res.json({ success: true, inquiry: inquiries[idx] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── ADMIN TOOLS ──────────────────────────────────────────────
 app.put('/api/admin/clear-data', requireAdmin, async (req, res) => {
   try {
@@ -2818,6 +2854,27 @@ app.put('/api/admin/orders/:id/status', requireAdmin, async (req, res) => {
     if (trackingNumber) orders[idx].trackingNumber = trackingNumber;
     if (!orders[idx].timeline?.find(t => t.status === normalizedStatus)) (orders[idx].timeline = orders[idx].timeline || []).push(timelineEntry);
     writeJson(FILES.orders, orders); res.json({ success: true, order: orders[idx] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── DELETE ORDER ─────────────────────────────────────────────
+app.delete('/api/admin/orders/:id', requireAdmin, async (req, res) => {
+  try {
+    if (useDB) {
+      const deleted = await Order.findOneAndDelete({ $or: [{ id: req.params.id }, { _id: req.params.id.match(/^[a-f\d]{24}$/i) ? req.params.id : null }] });
+      if (!deleted) return res.status(404).json({ error: 'Order not found' });
+      console.log(`✅ Order deleted: ${req.params.id}`);
+      return res.json({ success: true, message: `Order ${req.params.id} deleted` });
+    }
+    
+    const orders = readJson(FILES.orders);
+    const idx = orders.findIndex(o => o.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Order not found' });
+    
+    const deletedOrder = orders.splice(idx, 1)[0];
+    writeJson(FILES.orders, orders);
+    console.log(`✅ Order deleted: ${req.params.id}`);
+    res.json({ success: true, message: `Order ${req.params.id} deleted` });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

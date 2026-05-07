@@ -234,6 +234,17 @@ function buildAdminPanel() {
   loadAdminVisitorCounter();
   if (window.adminVisitorCounterTimer) clearInterval(window.adminVisitorCounterTimer);
   window.adminVisitorCounterTimer = setInterval(loadAdminVisitorCounter, 60000);
+  
+  // Show loading indicator
+  document.getElementById('admin-content').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;min-height:300px;">
+      <div style="text-align:center;">
+        <div style="font-size:2rem;margin-bottom:1rem;animation:spin 1s linear infinite;"><i class="fas fa-spinner"></i></div>
+        <div style="font-size:.95rem;color:var(--gray);">Loading Dashboard...</div>
+      </div>
+    </div>
+  `;
+  
   adminTab('dashboard');
 }
 
@@ -341,15 +352,37 @@ async function adminLoginLogs() {
 
 async function adminInquiries() {
   const inquiries = await api('/api/admin/inquiries');
+  
+  // Tabs for filtering
+  const pendingCount = inquiries.filter(i => i.status !== 'replied').length;
+  const solvedCount = inquiries.filter(i => i.status === 'replied').length;
+  
+  let filterStatus = localStorage.getItem('inquiry-filter') || 'all';
+  let filtered = inquiries;
+  
+  if (filterStatus === 'pending') filtered = inquiries.filter(i => i.status !== 'replied');
+  if (filterStatus === 'solved') filtered = inquiries.filter(i => i.status === 'replied');
+  
   document.getElementById('admin-content').innerHTML = `
     <div class="admin-header">
       <h1 class="admin-page-title">Customer Inquiries (${inquiries.length})</h1>
       <button class="btn-outline" onclick="adminTab('inquiries')"><i class="fas fa-sync"></i> Refresh</button>
     </div>
+    <div style="display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+      <button class="btn-${filterStatus==='all' ? 'primary' : 'outline'}" onclick="filterInquiries('all')">
+        <i class="fas fa-inbox"></i> All (${inquiries.length})
+      </button>
+      <button class="btn-${filterStatus==='pending' ? 'primary' : 'outline'}" onclick="filterInquiries('pending')">
+        <i class="fas fa-clock"></i> Pending (${pendingCount})
+      </button>
+      <button class="btn-${filterStatus==='solved' ? 'primary' : 'outline'}" onclick="filterInquiries('solved')">
+        <i class="fas fa-check-circle"></i> Solved (${solvedCount})
+      </button>
+    </div>
     <div class="admin-table-wrap">
       <table>
-        <thead><tr><th>Details</th><th>Message</th><th>Received At</th><th>Actions</th></tr></thead>
-        <tbody>${inquiries.map(iq => `
+        <thead><tr><th>Details</th><th>Message</th><th>Status</th><th>Received At</th><th>Actions</th></tr></thead>
+        <tbody>${filtered.map(iq => `
           <tr>
             <td style="min-width:180px;">
               <div style="font-weight:700;">${iq.name}</div>
@@ -357,8 +390,16 @@ async function adminInquiries() {
               <div style="font-size:.7rem;color:var(--rose-dark);font-weight:600;">${iq.phone || 'No Phone'}</div>
             </td>
             <td><div style="font-size:.85rem;max-width:400px;line-height:1.4;">${iq.message}</div></td>
+            <td>
+              <span class="order-status-badge status-${iq.status === 'replied' ? 'delivered' : 'pending'}" style="font-size:.7rem;">
+                ${iq.status === 'replied' ? '✓ Solved' : '⏱ Pending'}
+              </span>
+            </td>
             <td style="white-space:nowrap;font-size:.75rem;">${new Date(iq.createdAt).toLocaleString()}</td>
             <td>
+              <button class="btn-sm" onclick="markInquirySolved('${iq._id}', '${iq.status === 'replied' ? 'new' : 'replied'}')" title="Toggle Status" style="background:${iq.status === 'replied' ? '#fef3c7' : '#dcfce7'};color:${iq.status === 'replied' ? '#92400e' : '#15803d'};border:none;">
+                <i class="fas fa-${iq.status === 'replied' ? 'undo' : 'check'}"></i>
+              </button>
               <button class="btn-sm btn-danger" onclick="deleteInquiry('${iq._id}')"><i class="fas fa-trash"></i></button>
               <a href="mailto:${iq.email}" class="btn-sm btn-primary" style="text-decoration:none;"><i class="fas fa-reply"></i> Reply</a>
             </td>
@@ -366,6 +407,18 @@ async function adminInquiries() {
         `).join('')}</tbody>
       </table>
     </div>`;
+}
+
+function filterInquiries(status) {
+  localStorage.setItem('inquiry-filter', status);
+  adminInquiries();
+}
+
+async function markInquirySolved(id, newStatus) {
+  const r = await api(`/api/admin/inquiries/${id}/status`, { method: 'PUT', body: { status: newStatus } });
+  if (r.error) { toast(r.error, 'error'); return; }
+  toast(`Inquiry marked as ${newStatus === 'replied' ? 'Solved' : 'Pending'}`, 'success');
+  adminInquiries();
 }
 
 async function deleteInquiry(id) {
@@ -462,6 +515,7 @@ async function adminOrders() {
             <button class="btn-sm btn-outline" onclick="adminViewInvoice('${o.id}')" title="Invoice"><i class="fas fa-file-invoice"></i></button>
             <button class="btn-sm" onclick="window.open('/api/admin/orders/${o.id}/label-branded')" title="Generate Branded Label" style="background:#fef3c7;color:#92400e;border-color:#f59e0b;"><i class="fas fa-print"></i> Label</button>
             ${o.awbCode ? `<button class="btn-sm btn-gold" onclick="adminShiprocketLabel('${o.id}')" title="SR Label"><i class="fas fa-download"></i> SR</button>` : `<button class="btn-sm" onclick="adminShiprocketShip('${o.id}')" title="Ship with Shiprocket" style="background:#e0f2fe;color:#0369a1;"><i class="fas fa-shipping-fast"></i> Ship</button>`}
+            <button class="btn-sm" onclick="deleteOrder('${o.id}')" title="Delete Order" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5;"><i class="fas fa-trash"></i></button>
           </div>
         </td>
       </tr>`).join('')}
@@ -496,6 +550,14 @@ async function updateOrderStatus(orderId) {
   toast(`Order ${orderId} updated to "${nextStatus}"`, 'success');
   const el = document.getElementById('status-' + orderId);
   if (el) el.innerHTML = `<span class="order-status-badge status-${nextStatus}" style="font-size:.7rem;">${nextStatus.replace('_',' ')}</span>`;
+}
+
+async function deleteOrder(orderId) {
+  if (!confirm(`Are you sure you want to delete order ${orderId}? This cannot be undone.`)) return;
+  const r = await api(`/api/admin/orders/${orderId}`, { method: 'DELETE' });
+  if (r.error) { toast(r.error, 'error'); return; }
+  toast(`Order ${orderId} deleted successfully`, 'success');
+  adminOrders();
 }
 
 async function adminViewInvoice(orderId) { await downloadInvoice(orderId); }
