@@ -3052,7 +3052,8 @@ app.post('/api/auth/google', async (req, res) => {
     
     req.session.userId = user._id?.toString() || user.id;
     req.session.role = user.role || 'user';
-    await recordLoginActivity({ email, name: user.name, status: 'success', method: 'google', role: user.role || 'user', ip, userAgent });
+    const userName = user.name || name || email.split('@')[0] || 'User';
+    await recordLoginActivity({ email, name: userName, status: 'success', method: 'google', role: user.role || 'user', ip, userAgent });
     
     res.json({ 
       success: true, 

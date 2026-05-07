@@ -860,6 +860,12 @@ ul {
   backdrop-filter: blur(6px)
 }
 
+/* Hide header when modal is open */
+.modal-overlay:not([style*="display:none"]) ~ #site-header,
+#site-header:has(~ .modal-overlay:not([style*="display:none"])) {
+  display: none !important;
+}
+
 .modal-card {
   background: #fff;
   border-radius: 24px;

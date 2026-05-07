@@ -412,6 +412,7 @@ function handleUserClick() {
 
 async function openAuthModal() {
   document.getElementById('auth-modal').style.display = 'flex';
+  document.getElementById('site-header').style.display = 'none';
   document.body.style.overflow = 'hidden';
   document.documentElement.style.overflow = 'hidden';
   const otpInput = document.getElementById('auth-otp-input');
@@ -429,6 +430,7 @@ async function openAuthModal() {
 }
 function closeAuthModal() {
   document.getElementById('auth-modal').style.display = 'none';
+  document.getElementById('site-header').style.display = '';
   document.body.style.overflow = '';
   document.documentElement.style.overflow = '';
   window.pendingAuth = null;
