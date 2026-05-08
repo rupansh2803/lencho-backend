@@ -1390,6 +1390,10 @@ app.post('/api/admin/settings', requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ──── AUTH SETTINGS ROUTES ────────────────────────────────────
+const authSettingsRoutes = require('./routes/auth-settings');
+app.use('/api/auth-settings', authSettingsRoutes);
+
 app.post('/api/admin/upload-media', requireAdmin, upload.single('media'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Media file required' });
