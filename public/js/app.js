@@ -453,27 +453,15 @@ function switchToSignup() {
 }
 
 function switchLoginType(type) {
-  window.loginType = type || 'email';
+  // Enforce email-only login UI. Phone login has been removed.
+  window.loginType = 'email';
   const emailFields = document.getElementById('email-login-fields');
+  if (emailFields) emailFields.style.display = 'block';
+  // hide phone fields if present (defensive)
   const phoneFields = document.getElementById('phone-login-fields');
+  if (phoneFields) phoneFields.style.display = 'none';
   const emailBtn = document.getElementById('login-type-email');
-  const phoneBtn = document.getElementById('login-type-phone');
-  
-  if (type === 'email') {
-    emailFields.style.display = 'block';
-    phoneFields.style.display = 'none';
-    emailBtn.style.color = 'var(--rose)';
-    emailBtn.style.borderBottomColor = 'var(--rose)';
-    phoneBtn.style.color = '#999';
-    phoneBtn.style.borderBottomColor = 'transparent';
-  } else {
-    emailFields.style.display = 'none';
-    phoneFields.style.display = 'block';
-    phoneBtn.style.color = 'var(--rose)';
-    phoneBtn.style.borderBottomColor = 'var(--rose)';
-    emailBtn.style.color = '#999';
-    emailBtn.style.borderBottomColor = 'transparent';
-  }
+  if (emailBtn) { emailBtn.style.color = 'var(--rose)'; emailBtn.style.borderBottomColor = 'var(--rose)'; }
 }
 
 function switchToLogin() {
@@ -510,17 +498,9 @@ async function handleSignup() {
 }
 
 async function handlePhoneLogin() {
-  const phone = document.getElementById('login-phone').value;
+  // Phone login disabled — redirect user to email login flow
   const err = document.getElementById('phone-login-error');
-  err.textContent = '';
-  
-  if (!phone) { err.textContent = 'Please enter your phone number'; return; }
-  
-  const mobile = phone.replace(/\D/g, '').slice(-10);
-  if (mobile.length !== 10) { err.textContent = 'Please enter a valid 10-digit phone number'; return; }
-  
-  window.pendingAuth = { type: 'login', phone: '+91' + mobile, loginType: 'phone' };
-  sendPhoneOTP('+91' + mobile);
+  if (err) err.textContent = 'Phone login is disabled. Please use Email login.';
 }
 
 async function sendEmailOTP(email, currentFormId, errorId) {
@@ -815,6 +795,18 @@ function initHeader() {
   document.querySelectorAll('#main-nav a, #main-nav .icon-btn').forEach(el => {
     el.addEventListener('click', closeMobileMenu);
   });
+
+  // Safety guard: if the header actions are ever left inside the mobile nav
+  // while on desktop (due to a race), move them back to the header.
+  try {
+    const mo = new MutationObserver(() => {
+      if (window.innerWidth > 768 && mainNav.contains(headerActions) && headerInner) {
+        headerActions.classList.remove('mobile-nav-actions');
+        headerInner.appendChild(headerActions);
+      }
+    });
+    mo.observe(mainNav, { attributes: true, attributeFilter: ['class'] });
+  } catch (e) { /* ignore if MutationObserver not available */ }
 }
 
 // ── MOBILE NAV DROPDOWN TOGGLE ────────────────────────────

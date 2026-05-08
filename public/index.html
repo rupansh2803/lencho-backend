@@ -164,7 +164,6 @@
         <!-- Login Type Toggle -->
         <div style="display:flex;gap:.5rem;margin-bottom:1.5rem;border-bottom:2px solid #f0f0f0;padding-bottom:1rem;">
           <button class="login-type-btn active" id="login-type-email" onclick="switchLoginType('email')" style="flex:1;padding:8px;border:none;background:none;color:var(--rose);font-weight:600;border-bottom:3px solid var(--rose);cursor:pointer;font-size:.9rem;transition:all .3s;">✉️ Email</button>
-          <button class="login-type-btn" id="login-type-phone" onclick="switchLoginType('phone')" style="flex:1;padding:8px;border:none;background:none;color:#999;font-weight:600;cursor:pointer;font-size:.9rem;transition:all .3s;">📱 Phone</button>
         </div>
         
         <!-- Email Login Fields -->
@@ -175,12 +174,7 @@
           <button class="btn-primary full-width" id="login-btn" onclick="handleLogin()">Sign In</button>
         </div>
         
-        <!-- Phone Login Fields -->
-        <div id="phone-login-fields" style="display:none;">
-          <div class="form-group"><label>Mobile Number</label><input type="tel" id="login-phone" placeholder="+91 98765 43210" maxlength="13"/></div>
-          <div id="phone-login-error" class="form-error"></div>
-          <button class="btn-primary full-width" id="login-phone-btn" onclick="handlePhoneLogin()">Get OTP</button>
-        </div>
+        <!-- Phone login removed — email-only authentication -->
         
         <div class="modal-divider"><span>or</span></div>
         <button class="btn-outline full-width" onclick="switchToSignup()">Create New Account</button>

@@ -1197,6 +1197,22 @@ ul {
   gap: .5rem
 }
 
+/* Ensure header action icons remain visible on the top-right
+   even if JavaScript temporarily moves the element into the
+   .main-nav container (e.g. mobile drawer). This keeps the
+   header consistent on desktop pages like /cart. */
+@media (min-width: 769px) {
+  .main-nav .header-actions {
+    position: absolute !important;
+    right: 5% !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    z-index: 10001 !important;
+    display: flex !important;
+    gap: .5rem !important;
+  }
+}
+
 .icon-btn {
   width: 42px;
   height: 42px;
