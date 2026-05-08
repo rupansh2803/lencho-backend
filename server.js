@@ -847,16 +847,7 @@ app.use(morgan('tiny'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve frontend dist folder (React built app)
-const frontendDistPath = path.join(__dirname, 'frontend', 'dist');
-if (fs.existsSync(frontendDistPath)) {
-  app.use(express.static(frontendDistPath, { 
-    maxAge: '7d', 
-    etag: false
-  }));
-}
-
-// Add cache headers for static assets
+// Add cache headers for static assets (serve legacy public folder)
 app.use(express.static(path.join(__dirname, 'public'), { 
   maxAge: '7d', 
   etag: false,
@@ -3168,12 +3159,7 @@ const sendIndex = async (req, res) => {
   } catch (e) {
     console.error('Visitor counter error:', e.message);
   }
-  // Serve React app index.html from frontend/dist if available
-  const reactIndexPath = path.join(__dirname, 'frontend', 'dist', 'index.html');
-  if (fs.existsSync(reactIndexPath)) {
-    return res.sendFile(reactIndexPath);
-  }
-  // Fallback to public index.html
+  // Serve legacy public index.html
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 };
 app.get('/', sendIndex);
@@ -3186,10 +3172,6 @@ app.get('/debug', (req, res) => {
 
 // Catch-all for React Router - serve index.html for any other routes
 app.get('*', (req, res) => {
-  const reactIndexPath = path.join(__dirname, 'frontend', 'dist', 'index.html');
-  if (fs.existsSync(reactIndexPath)) {
-    return res.sendFile(reactIndexPath);
-  }
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 

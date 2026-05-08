@@ -5,9 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js",
-    "build": "cd frontend && npm install --include=dev && npm run build",
-    "postinstall": "cd frontend && npm install --include=dev && npm run build"
+    "dev": "node server.js"
   },
   "keywords": [],
   "author": "",
