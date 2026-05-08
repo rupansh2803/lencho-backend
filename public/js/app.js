@@ -946,7 +946,7 @@ async function renderHome(options = {}) {
 
   // Hero media
   const heroMediaType = g('heroMediaType', 'image');
-  const heroImage = g('heroImage', 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1920&q=100');
+  const heroImage = g('heroImage', '/images/hero_model.png');
   const heroVideo = g('heroVideoUrl', '');
   const heroBackground = heroMediaType === 'video' && heroVideo
     ? ''
@@ -964,7 +964,7 @@ async function renderHome(options = {}) {
     <div class="hero-p-centered reveal" style="position:relative; z-index:2; padding: 60px 5% 0; margin-top:20px;">
       <div class="hero-badge" style="color:var(--gold-light);background:rgba(0,0,0,0.3); border:1.5px solid rgba(201,168,76,.4);padding:12px 28px;border-radius:99px;display:inline-block;margin-bottom:1.5rem;letter-spacing:.25em;font-size:.85rem;backdrop-filter:blur(8px);font-weight:600;">${g('heroBadge', '✦ PREMIUM COLLECTION 2026 ✦')}</div>
       <h1 class="hero-p-title" style="margin-bottom:1.5rem; font-size: clamp(2.5rem, 7vw, 5rem); line-height:1.15; text-shadow: 0 4px 20px rgba(0,0,0,0.5);">${g('heroTitle', 'Luxury Redefined')}<br/><span style="color:var(--gold-light); font-family:'Playfair Display',serif; font-style:italic;">${g('heroSubtitle', 'For The Modern Woman')}</span></h1>
-      <p class="hero-p-sub" style="max-width:700px; margin: 0 auto 1.5rem; color:#fff; font-size:1.15rem; line-height:1.7; font-weight:500; text-shadow: 0 2px 10px rgba(0,0,0,0.8);">${g('heroDescription', 'Premium artificial jewellery starting at just ₹99. Look expensive, spend smart. 4.8⭐ trusted by 50K+ customers.')}</p>
+      <p class="hero-p-sub" style="max-width:700px; margin: 0 auto 1.5rem; color:#fff; font-size:1.15rem; line-height:1.7; font-weight:500; text-shadow: 0 2px 10px rgba(0,0,0,0.8);">${g('heroDescription', 'Premium artificial jewellery for every occasion. Look expensive, spend smart. 4.8⭐ trusted by 50K+ customers.')}</p>
       
       <div class="hero-btns" style="display:flex; justify-content:center; gap:1rem; flex-wrap:wrap; margin-bottom:2rem;">
         <button class="btn-gold" style="padding:18px 42px; font-size:1rem; font-weight:700;box-shadow:0 8px 25px rgba(201,149,76,.4);" onclick="navigate('/products')">${g('heroButton1Text', '🛍️ Shop Now & Save')}</button>

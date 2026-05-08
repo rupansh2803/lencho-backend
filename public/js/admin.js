@@ -5,6 +5,11 @@ async function renderAdmin() {
     if (siteHeader) siteHeader.style.display = 'none';
     if (siteFooter) siteFooter.style.display = 'none';
 
+    const sessionMe = await api('/api/auth/me');
+    if (sessionMe?.user && sessionMe.user.role === 'admin') {
+      currentUser = sessionMe.user;
+    }
+
     // 1. Check if setup is required
     const status = await api('/api/admin/check-setup');
     if (status.error) throw new Error(status.error);

@@ -142,8 +142,8 @@ const DEFAULT_FALLBACK_SETTINGS = {
   storeAddress: '197 Sarakpur, Barara, Ambala, Haryana',
   heroTitle: 'Luxury Redefined',
   heroSubtitle: 'For The Modern Woman',
-  heroDescription: 'Premium artificial jewellery starting at just ₹99. Look expensive, spend smart.',
-  heroImage: '/images/premium_hero.png',
+  heroDescription: 'Premium artificial jewellery for every occasion. Look expensive, spend smart.',
+  heroImage: '/images/hero_model.png',
   heroBadge: 'Premium Collection 2026',
   heroButton1Text: 'Shop Now',
   heroButton2Text: 'View Collections',
@@ -216,6 +216,8 @@ function isAllowedOrigin(origin) {
   if (!origin) return true;
   if (allowedOriginSet.has(origin)) return true;
   if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/i.test(origin)) return true;
+  if (/^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin)) return true;
+  if (/^https:\/\/[a-z0-9-]+\.render\.com$/i.test(origin)) return true;
   if (/^https:\/\/([a-z0-9-]+--)?lencho\.netlify\.app$/i.test(origin)) return true;
   return false;
 }
@@ -235,6 +237,43 @@ app.use(cors({
 app.get('/health', (req, res) => {
   res.set('Cache-Control', 'no-cache');
   res.json({ status: 'ok', timestamp: new Date().toISOString(), db: useDB ? 'connected' : 'fallback' });
+});
+
+app.get('/api/auth/me', async (req, res) => {
+  try {
+    if (!req.session?.userId) return res.json({ user: null });
+
+    if (useDB) {
+      const user = await User.findById(req.session.userId).lean();
+      if (!user) return res.json({ user: null });
+      return res.json({
+        user: {
+          id: user._id?.toString?.() || user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role || 'user',
+          phone: user.phone || '',
+          avatar: user.avatar || ''
+        }
+      });
+    }
+
+    const users = readJson(FILES.users);
+    const user = users.find(entry => String(entry.id) === String(req.session.userId));
+    if (!user) return res.json({ user: null });
+    return res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role || 'user',
+        phone: user.phone || '',
+        avatar: user.avatar || ''
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 let useDB = false;
@@ -681,8 +720,8 @@ async function seedSettings() {
       // ── CMS SETTINGS ──
       { key: 'heroTitle', value: 'Luxury Redefined', label: 'Hero Title' },
       { key: 'heroSubtitle', value: 'For The Modern Woman', label: 'Hero Subtitle' },
-      { key: 'heroDescription', value: 'Premium artificial jewellery starting at just ₹99. Look expensive, spend smart. 4.8⭐ trusted by 50K+ customers.', label: 'Hero Description' },
-      { key: 'heroImage', value: '/images/premium_hero.png', label: 'Hero Background Image URL' },
+      { key: 'heroDescription', value: 'Premium artificial jewellery for every occasion. Look expensive, spend smart. 4.8⭐ trusted by 50K+ customers.', label: 'Hero Description' },
+      { key: 'heroImage', value: '/images/hero_model.png', label: 'Hero Background Image URL' },
       { key: 'heroBadge', value: '✦ PREMIUM COLLECTION 2026 ✦', label: 'Hero Badge Text' },
       { key: 'heroButton1Text', value: '🛍️ Shop Now & Save', label: 'Hero Button 1' },
       { key: 'heroButton2Text', value: 'View Collections', label: 'Hero Button 2' },
@@ -727,8 +766,8 @@ async function seedSettings() {
     const cmsDefaults = [
       { key: 'heroTitle', value: 'Luxury Redefined', label: 'Hero Title' },
       { key: 'heroSubtitle', value: 'For The Modern Woman', label: 'Hero Subtitle' },
-      { key: 'heroDescription', value: 'Premium artificial jewellery starting at just ₹99. Look expensive, spend smart. 4.8⭐ trusted by 50K+ customers.', label: 'Hero Description' },
-      { key: 'heroImage', value: '/images/premium_hero.png', label: 'Hero Background Image URL' },
+      { key: 'heroDescription', value: 'Premium artificial jewellery for every occasion. Look expensive, spend smart. 4.8⭐ trusted by 50K+ customers.', label: 'Hero Description' },
+      { key: 'heroImage', value: '/images/hero_model.png', label: 'Hero Background Image URL' },
       { key: 'heroBadge', value: '✦ PREMIUM COLLECTION 2026 ✦', label: 'Hero Badge Text' },
       { key: 'heroButton1Text', value: '🛍️ Shop Now & Save', label: 'Hero Button 1' },
       { key: 'heroButton2Text', value: 'View Collections', label: 'Hero Button 2' },
