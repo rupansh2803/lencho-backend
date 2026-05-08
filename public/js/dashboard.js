@@ -32,7 +32,7 @@ async function showDashTab(tab) {
     content.innerHTML = '<div style="padding:1rem;color:var(--gray);">Loading orders...</div>';
     const orders = await api('/api/orders/my');
     if (!orders.length) {
-      content.innerHTML = `<div class="dash-section"><h2>My Orders</h2><div class="empty-state"><div class="empty-icon">📦</div><h3>No orders yet</h3><p>Start shopping to see your orders here!</p><button class="btn-primary" onclick="navigate('/products')">Shop Now</button></div></div>`;
+      content.innerHTML = `<div class="dash-section"><h2>My Orders</h2><div class="empty-state"><div class="empty-icon">📦</div><h3>No orders yet</h3><p>Start shopping to see your orders here!</p><button class="btn-primary" onclick="navigate('/')">Shop Now</button></div></div>`;
       return;
     }
     const statusLabels = { hold:'On Hold', pending:'Pending', shipping:'Shipping', delivered:'Delivered', cancelled:'Cancelled', placed:'Placed', confirmed:'Confirmed', shipped:'Shipped', out_for_delivery:'Out for Delivery' };
