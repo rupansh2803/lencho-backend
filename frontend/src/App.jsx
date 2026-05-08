@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { restoreSession } from './store/authSlice'
-import { loading } from 'react-hot-toast'
 import './styles/responsive.css'
 
 // Layout

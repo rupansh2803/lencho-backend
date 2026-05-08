@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
-import { loginSuccess, loginError } from '../store/authSlice'
-import { authAPI } from '../services/apiService'
+import { loginSuccess, loginError } from '../../store/authSlice'
+import { authAPI } from '../../services/apiService'
 import toast from 'react-hot-toast'
 
 export default function LoginModal({ isOpen, onClose }) {
