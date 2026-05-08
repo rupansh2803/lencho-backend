@@ -647,6 +647,7 @@ async function adminAddProduct(product = null) {
               <i class="fas fa-plus" style="font-size:1.2rem;display:block;margin-bottom:4px;"></i>
               ${n===1?'Main':'Image '+n}
             </div>
+            ${existingImg ? `<button type="button" class="img-remove-btn" onclick="event.stopPropagation(); markImageRemoved(${n}, '${existingImg}')" title="Remove image" style="position:absolute;top:8px;right:8px;background:rgba(255,255,255,0.9);border:1px solid #f3d7df;border-radius:8px;padding:6px;cursor:pointer;">✕</button>` : ''}
           </div>`;
         }).join('')}
       </div>
@@ -665,7 +666,28 @@ function previewSingleImage(input, n) {
     preview.src = URL.createObjectURL(input.files[0]);
     preview.style.display = 'block';
     if (label) label.style.display = 'none';
+    // If user selected a new file for an existing slot, unmark removal
+    const rem = document.getElementById('p-img-removed-' + n);
+    if (rem) rem.value = '';
   }
+}
+
+function markImageRemoved(n, url) {
+  // Hide preview and mark image for removal
+  const preview = document.getElementById('p-img-preview-' + n);
+  const label = document.getElementById('p-img-label-' + n);
+  if (preview) { preview.style.display = 'none'; preview.src = ''; }
+  if (label) label.style.display = 'block';
+  // add or set hidden input to track removals
+  let rem = document.getElementById('p-img-removed-' + n);
+  if (!rem) {
+    rem = document.createElement('input');
+    rem.type = 'hidden';
+    rem.id = 'p-img-removed-' + n;
+    rem.name = 'removedImages[]';
+    document.querySelector('.admin-form').appendChild(rem);
+  }
+  rem.value = url;
 }
 
 async function saveNewProduct() {

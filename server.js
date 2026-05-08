@@ -2376,9 +2376,27 @@ app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req
     if (req.files?.length) updates.images = await uploadMediaFiles(req.files, `products/${updates.category || 'general'}`);
     ['price', 'mrp', 'discount', 'stock', 'gstRate'].forEach(f => { if (updates[f]) updates[f] = +updates[f]; });
     if (updates.featured !== undefined) updates.featured = updates.featured === 'true';
+    // Handle removed images (sent as removedImages[] in form)
+    const removed = [];
+    if (Array.isArray(req.body.removedImages)) removed.push(...req.body.removedImages.filter(Boolean));
+    else if (req.body.removedImages) removed.push(req.body.removedImages);
     if (useDB) {
       const p = await Product.findByIdAndUpdate(req.params.id, updates, { new: true });
       if (!p) return res.status(404).json({ error: 'Not found' });
+      // If images were removed, delete local files where applicable
+      if (removed.length > 0) {
+        await Promise.all(removed.map(async (img) => {
+          try {
+            if (String(img).startsWith('/uploads/')) {
+              const fp = path.join(__dirname, img.replace('/uploads/', 'uploads/'));
+              if (fs.existsSync(fp)) fs.unlinkSync(fp);
+            } else if (hasCloudinaryConfig()) {
+              // Best-effort: attempt to delete from Cloudinary by public_id if available
+              // Note: Cloudinary deletion requires public_id; skipping for now if not configured
+            }
+          } catch (e) { /* ignore deletion errors */ }
+        }));
+      }
       const products = readJson(FILES.products);
       const idx = products.findIndex(item => item.id === req.params.id || item._id === req.params.id);
       const next = { ...p.toObject(), id: p._id.toString() };
@@ -2390,6 +2408,19 @@ app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req
     const products = readJson(FILES.products);
     const idx = products.findIndex(p => p.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Not found' });
+    // Remove images from JSON record and delete local files if needed
+    if (removed.length > 0) {
+      removed.forEach(img => {
+        const iidx = products[idx].images ? products[idx].images.indexOf(img) : -1;
+        if (iidx >= 0) products[idx].images.splice(iidx, 1);
+        try {
+          if (String(img).startsWith('/uploads/')) {
+            const fp = path.join(__dirname, img.replace('/uploads/', 'uploads/'));
+            if (fs.existsSync(fp)) fs.unlinkSync(fp);
+          }
+        } catch (e) {}
+      });
+    }
     products[idx] = { ...products[idx], ...updates };
     writeJson(FILES.products, products);
     res.json({ success: true, product: normalizeProductRecord(products[idx]) });
@@ -2399,13 +2430,40 @@ app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req
 app.delete('/api/products/:id', requireAdmin, async (req, res) => {
   try {
     if (useDB) {
-      await Product.findByIdAndDelete(req.params.id);
+      // Delete product and remove any local media files
+      const p = await Product.findByIdAndDelete(req.params.id);
       const products = readJson(FILES.products).filter(p => p.id !== req.params.id && p._id !== req.params.id);
+      // Remove local files referenced by product.images
+      if (p && Array.isArray(p.images)) {
+        p.images.forEach(img => {
+          try {
+            if (String(img).startsWith('/uploads/')) {
+              const fp = path.join(__dirname, img.replace('/uploads/', 'uploads/'));
+              if (fs.existsSync(fp)) fs.unlinkSync(fp);
+            }
+          } catch (e) {}
+        });
+      }
       writeJson(FILES.products, products);
       return res.json({ success: true });
     }
-    const products = readJson(FILES.products).filter(p => p.id !== req.params.id);
-    writeJson(FILES.products, products); res.json({ success: true });
+    const products = readJson(FILES.products);
+    const idx = products.findIndex(p => p.id === req.params.id);
+    if (idx !== -1) {
+      const rem = products.splice(idx, 1)[0];
+      if (rem && Array.isArray(rem.images)) {
+        rem.images.forEach(img => {
+          try {
+            if (String(img).startsWith('/uploads/')) {
+              const fp = path.join(__dirname, img.replace('/uploads/', 'uploads/'));
+              if (fs.existsSync(fp)) fs.unlinkSync(fp);
+            }
+          } catch (e) {}
+        });
+      }
+      writeJson(FILES.products, products);
+    }
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
