@@ -1566,7 +1566,7 @@ function signInWithGoogle(event) {
   if (googleAuthInFlight) return;
   const btn = event && event.currentTarget ? event.currentTarget : null;
   googleAuthInFlight = true;
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Connecting...'; }
+  if (btn) { btn.disabled = true; }
   
   // Load Google Identity Services library
   if (!window.google || !window.google.accounts) {
@@ -1736,6 +1736,6 @@ async function completeGoogleLogin(profile, btn) {
   if (currentUser.role === 'admin') {
     navigate('/admin');
   } else {
-    navigate('/dashboard');
+    navigate('/');
   }
 }

@@ -142,7 +142,9 @@ async function adminLogin() {
 
   // Login successful - refresh admin panel
   toast('✅ Admin login successful!', 'success');
-  setTimeout(() => renderAdmin(), 800);
+  currentUser = r.user || currentUser;
+  updateHeader();
+  buildAdminPanel();
 }
 
 function showAdminVerifyOtp(email) {
