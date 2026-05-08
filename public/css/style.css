@@ -3769,7 +3769,7 @@ label[for="captcha"],
 
   .site-logo {
     position: absolute;
-    left: 50%;
+    right: 0;
     transform: translateX(-50%);
   }
   .site-logo:hover img {
