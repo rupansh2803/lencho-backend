@@ -93,6 +93,10 @@ const FILES = {
 };
 const VISITOR_STATS_FILE = path.join(DATA_DIR, 'visitor_stats.json');
 
+// ─── JSON UTILITY FUNCTIONS (used by initFallback) ────────────
+const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; } };
+const writeJson = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
+
 function isPlaceholderSMTP(value) {
   if (value === undefined || value === null) return true;
   const normalized = String(value).trim().toLowerCase();
@@ -348,8 +352,7 @@ const DEFAULT_FALLBACK_SETTINGS = {
   razorpayKeyId: process.env.RAZORPAY_KEY_ID || ''
 };
 
-const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; } };
-const writeJson = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
+
 
 function settingsToObject(input) {
   if (Array.isArray(input)) {
