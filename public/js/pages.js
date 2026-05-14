@@ -263,56 +263,78 @@ async function buyNow(productId) {
 async function renderCart() {
   if (!currentUser) { openAuthModal(); navigate('/'); return; }
   const app = document.getElementById('app');
-  app.innerHTML = '<div class="page-wrap"><div style="text-align:center;padding:3rem;color:var(--gray);">Loading cart...</div></div>';
-  const r = await api('/api/cart');
-  const items = r.items || [];
-  if (!items.length) {
-    app.innerHTML = `<div class="page-wrap"><h1 class="page-title">My Cart</h1><div class="empty-state"><div class="empty-icon">🛍️</div><h3>Your cart is empty</h3><p>Add some beautiful jewellery to your cart!</p><button class="btn-primary" onclick="navigate('/products')">Shop Now</button></div></div>`;
-    return;
-  }
-  const subtotal = items.reduce((s, i) => s + i.product.price * i.quantity, 0);
-  const shipping = subtotal >= 999 ? 0 : 49;
-  let discount = 0;
-  app.innerHTML = `
-  <div class="page-wrap">
-    <h1 class="page-title">My Cart <span style="font-size:1.2rem;color:var(--gray);">(${items.length} items)</span></h1>
-    <div class="cart-layout">
-      <div>
-        <div class="cart-items" id="cart-items-list">
-          ${items.map(i => `
-          <div class="cart-item" id="ci-${i.productId}">
-            <img class="cart-item-img" src="${safeImageUrl(i.product.images[0], i.product.category)}" ${imageFallbackAttr(i.product.category, i.product.images[0])} alt="${i.product.name}" onclick="navigate('/product/${i.productId}')" style="cursor:pointer;"/>
-            <div class="cart-item-info">
-              <div class="cart-item-name">${i.product.name}</div>
-              <div class="cart-item-cat">${i.product.category}</div>
-              <div class="qty-control" style="margin-top:.5rem;">
-                <button class="qty-btn" onclick="updateQty('${i.productId}',${i.quantity-1})"><i class="fas fa-minus" style="font-size:.7rem;"></i></button>
-                <span class="qty-num">${i.quantity}</span>
-                <button class="qty-btn" onclick="updateQty('${i.productId}',${i.quantity+1})"><i class="fas fa-plus" style="font-size:.7rem;"></i></button>
+  app.innerHTML = '<div class="page-wrap"><div style="text-align:center;padding:3rem;color:var(--gray);">⏳ Loading your cart...</div></div>';
+  
+  try {
+    const r = await Promise.race([
+      api('/api/cart'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
+    ]);
+    
+    const items = r.items || [];
+    if (!items.length) {
+      app.innerHTML = `<div class="page-wrap"><h1 class="page-title">My Cart</h1><div class="empty-state"><div class="empty-icon">🛍️</div><h3>Your cart is empty</h3><p>Add some beautiful jewellery to your cart!</p><button class="btn-primary" onclick="navigate('/products')">Shop Now</button></div></div>`;
+      return;
+    }
+    
+    const subtotal = items.reduce((s, i) => s + (i.product?.price || 0) * (i.quantity || 1), 0);
+    const shipping = subtotal >= 999 ? 0 : 49;
+    let discount = 0;
+    app.innerHTML = `
+    <div class="page-wrap">
+      <h1 class="page-title">My Cart <span style="font-size:1.2rem;color:var(--gray);">(${items.length} items)</span></h1>
+      <div class="cart-layout">
+        <div>
+          <div class="cart-items" id="cart-items-list">
+            ${items.map(i => {
+              const price = i.product?.price || 0;
+              const qty = i.quantity || 1;
+              const total = price * qty;
+              return `
+            <div class="cart-item" id="ci-${i.productId}">
+              <img class="cart-item-img" loading="lazy" src="${safeImageUrl(i.product.images[0], i.product.category)}" ${imageFallbackAttr(i.product.category, i.product.images[0])} alt="${i.product.name}" onclick="navigate('/product/${i.productId}')" style="cursor:pointer;"/>
+              <div class="cart-item-info">
+                <div class="cart-item-name">${i.product.name || 'Product'}</div>
+                <div class="cart-item-cat">${i.product.category || 'Uncategorized'}</div>
+                <div class="cart-item-price-unit" style="font-size:0.85rem;color:var(--gold);font-weight:600;margin:.5rem 0;">₹${price}</div>
+                <div class="qty-control" style="margin-top:.5rem;display:flex;align-items:center;gap:0.5rem;">
+                  <button class="qty-btn" onclick="updateQty('${i.productId}',Math.max(1,${qty-1}))"><i class="fas fa-minus" style="font-size:.7rem;"></i></button>
+                  <span class="qty-num" style="min-width:2rem;text-align:center;">${qty}</span>
+                  <button class="qty-btn" onclick="updateQty('${i.productId}',${qty+1})"><i class="fas fa-plus" style="font-size:.7rem;"></i></button>
+                </div>
+                <button class="cart-remove" onclick="removeFromCart('${i.productId}')"><i class="fas fa-trash" style="font-size:.8rem;"></i> Remove</button>
               </div>
-              <button class="cart-remove" onclick="removeFromCart('${i.productId}')"><i class="fas fa-trash" style="font-size:.8rem;"></i> Remove</button>
-            </div>
-            <div class="cart-item-price">${formatCurrency(i.product.price * i.quantity)}</div>
-          </div>`).join('')}
+              <div class="cart-item-price" style="font-weight:700;color:var(--rose);">${formatCurrency(total)}</div>
+            </div>`;
+            }).join('')}
+          </div>
+        </div>
+        <div class="cart-summary">
+          <div class="summary-title">Order Summary</div>
+          <div class="summary-row"><span>Subtotal (${items.length} items)</span><span>${formatCurrency(subtotal)}</span></div>
+          <div class="summary-row"><span>Shipping</span><span style="color:${shipping===0?'#22c55e':'inherit'}">${shipping===0?'FREE':formatCurrency(shipping)}</span></div>
+          <div class="summary-row" id="discount-row" style="display:none;color:#22c55e;"><span>Discount</span><span id="discount-amt">-₹0</span></div>
+          <div class="coupon-row">
+            <input id="coupon-input" placeholder="Coupon code" style="text-transform:uppercase;"/>
+            <button class="btn-primary btn-sm" onclick="applyCoupon(${subtotal})">Apply</button>
+          </div>
+          <div id="coupon-msg" style="font-size:.8rem;margin-bottom:.5rem;"></div>
+          <div class="summary-row"><span class="summary-total">Grand Total</span><span class="summary-total" id="grand-total">${formatCurrency(subtotal+shipping)}</span></div>
+          ${subtotal < 999 ? `<p style="font-size:.75rem;color:var(--gray);margin:.75rem 0;">Add ${formatCurrency(999-subtotal)} more for FREE shipping!</p>` : ''}
+          <button class="btn-primary full-width" style="margin-top:.75rem;" onclick="navigate('/checkout')">Proceed to Checkout <i class="fas fa-arrow-right"></i></button>
+          <button class="btn-outline full-width" style="margin-top:.5rem;" onclick="navigate('/products')">Continue Shopping</button>
         </div>
       </div>
-      <div class="cart-summary">
-        <div class="summary-title">Order Summary</div>
-        <div class="summary-row"><span>Subtotal (${items.length} items)</span><span>${formatCurrency(subtotal)}</span></div>
-        <div class="summary-row"><span>Shipping</span><span style="color:${shipping===0?'#22c55e':'inherit'}">${shipping===0?'FREE':formatCurrency(shipping)}</span></div>
-        <div class="summary-row" id="discount-row" style="display:none;color:#22c55e;"><span>Discount</span><span id="discount-amt">-₹0</span></div>
-        <div class="coupon-row">
-          <input id="coupon-input" placeholder="Coupon code" style="text-transform:uppercase;"/>
-          <button class="btn-primary btn-sm" onclick="applyCoupon(${subtotal})">Apply</button>
-        </div>
-        <div id="coupon-msg" style="font-size:.8rem;margin-bottom:.5rem;"></div>
-        <div class="summary-row"><span class="summary-total">Grand Total</span><span class="summary-total" id="grand-total">${formatCurrency(subtotal+shipping)}</span></div>
-        ${subtotal < 999 ? `<p style="font-size:.75rem;color:var(--gray);margin:.75rem 0;">Add ${formatCurrency(999-subtotal)} more for FREE shipping!</p>` : ''}
-        <button class="btn-primary full-width" style="margin-top:.75rem;" onclick="navigate('/checkout')">Proceed to Checkout <i class="fas fa-arrow-right"></i></button>
-        <button class="btn-outline full-width" style="margin-top:.5rem;" onclick="navigate('/products')">Continue Shopping</button>
-      </div>
-    </div>
-  </div>`;
+    </div>`;
+  } catch (e) {
+    console.error('Cart loading error:', e);
+    app.innerHTML = `<div class="page-wrap"><div style="text-align:center;padding:3rem;">
+      <h2 style="color:var(--rose);margin-bottom:1rem;">⚠️ Cart Loading Error</h2>
+      <p style="color:var(--gray);margin-bottom:1.5rem;">We're having trouble loading your cart. Please try again.</p>
+      <button class="btn-primary" onclick="renderCart()">Retry</button>
+      <button class="btn-outline" onclick="navigate('/products')" style="margin-left:0.5rem;">Shop Now</button>
+    </div></div>`;
+  }
 }
 
 async function updateQty(productId, qty) {

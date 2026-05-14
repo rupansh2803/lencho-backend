@@ -4,8 +4,14 @@ let cartCount = 0;
 let cachedPublicSettings = null;
 let publicSettingsPromise = null;
 let loginType = 'email'; // Track current login type (email or phone)
+let authOtpRequestInFlight = false;
+let authOtpResendTimer = null;
+let authOtpResendEndsAt = 0;
+let searchCache = new Map();
+let searchTimeout = null;
 const apiGetCache = new Map();
 const API_CACHE_TTL_MS = 2 * 60 * 1000;
+const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 const SETTINGS_CACHE_KEY = 'lencho_public_settings_cache_v1';
 const MEDIA_FALLBACKS = {
@@ -290,9 +296,12 @@ async function navigate(path, pushState = true) {
   const [route, query] = path.split('?');
   const params = new URLSearchParams(query || '');
   setPageContext({ route, category: params.get('category') || '' });
-  footer.style.display = '';
-  header.style.display = '';
-  app.style.paddingTop = getHeaderOffset();  // Ensure everything avoids header overlap
+
+  // ── SAFETY GUARD: Always ensure header/footer visible for non-admin routes ──
+  const isAdmin = route === '/admin';
+  footer.style.display = isAdmin ? 'none' : '';
+  header.style.display = isAdmin ? 'none' : '';
+  app.style.paddingTop = isAdmin ? '0' : getHeaderOffset();
 
   try {
     if (route === '/' || route === '') { app.style.paddingTop = '0'; renderHome(); }
@@ -307,15 +316,10 @@ async function navigate(path, pushState = true) {
     else if (route === '/terms') { renderTerms(); }
     else if (route === '/privacy') { renderPrivacy(); }
     else if (route === '/disclaimer') { renderDisclaimer(); }
-    else if (route === '/admin') {
-      footer.style.display = 'none';
-      header.style.display = 'none';
-      app.style.paddingTop = '0';
-      renderAdmin();
-    }
+    else if (isAdmin) { renderAdmin(); }
     else { app.innerHTML = `<div class="page-wrap" style="text-align:center;padding-top:120px;"><div class="empty-icon">🔍</div><h2 style="font-family:'Cormorant Garamond',serif;font-size:2rem;">Page Not Found</h2><p style="color:var(--gray);margin:1rem 0 2rem;">The page you're looking for doesn't exist.</p><button class="btn-primary" onclick="navigate('/')">Go Home</button></div>`; }
   } catch (e) { console.error(e); }
-  if (route !== '/admin') applyRouteSeo({ route, category: params.get('category') || '' });
+  if (!isAdmin) applyRouteSeo({ route, category: params.get('category') || '' });
   window.scrollTo(0, 0);
   initScrollReveal();
 }
@@ -416,7 +420,7 @@ function handleUserClick() {
 
 async function openAuthModal() {
   document.getElementById('auth-modal').style.display = 'flex';
-  document.getElementById('site-header').style.display = 'none';
+  // Do NOT hide header — modal uses z-index to overlay it
   document.body.style.overflow = 'hidden';
   document.documentElement.style.overflow = 'hidden';
   const otpInput = document.getElementById('auth-otp-input');
@@ -425,24 +429,33 @@ async function openAuthModal() {
     otpInput.type = 'password';
     otpInput.setAttribute('placeholder', 'XXXXXX');
   }
-  // Load CAPTCHA
-  const r = await api('/api/captcha');
-  if (r.q) {
-    const el = document.getElementById('signup-captcha-q');
-    if (el) el.innerText = r.q;
-  }
+  // Load CAPTCHA for login + signup forms
+  await loadAuthCaptcha();
 }
 function closeAuthModal() {
   document.getElementById('auth-modal').style.display = 'none';
-  document.getElementById('site-header').style.display = '';
+  // Always ensure header is visible after modal closes
+  const header = document.getElementById('site-header');
+  if (header) header.style.display = '';
   document.body.style.overflow = '';
   document.documentElement.style.overflow = '';
+  authOtpRequestInFlight = false;
+  authOtpResendEndsAt = 0;
+  if (authOtpResendTimer) {
+    clearInterval(authOtpResendTimer);
+    authOtpResendTimer = null;
+  }
   window.pendingAuth = null;
   document.getElementById('auth-otp-step').style.display = 'none';
   const signupPasswordStep = document.getElementById('auth-signup-password-step');
   if (signupPasswordStep) signupPasswordStep.style.display = 'none';
   document.getElementById('auth-signup-form').style.display = 'none';
   document.getElementById('auth-login-form').style.display = 'block';
+  // Clear captcha inputs
+  const loginCaptcha = document.getElementById('login-captcha');
+  const signupCaptcha = document.getElementById('signup-captcha');
+  if (loginCaptcha) loginCaptcha.value = '';
+  if (signupCaptcha) signupCaptcha.value = '';
 }
 function switchToSignup() {
   document.getElementById('auth-login-form').style.display = 'none';
@@ -474,14 +487,34 @@ function switchToLogin() {
   switchLoginType('email');
 }
 
+// ── CAPTCHA HELPERS ──────────────────────────────────────
+async function loadAuthCaptcha() {
+  try {
+    const r = await api('/api/captcha');
+    if (r.question) {
+      const loginQ = document.getElementById('login-captcha-q');
+      const signupQ = document.getElementById('signup-captcha-q');
+      if (loginQ) loginQ.textContent = r.question;
+      if (signupQ) signupQ.textContent = r.question;
+    }
+    // Clear previous answers
+    const loginCaptcha = document.getElementById('login-captcha');
+    const signupCaptcha = document.getElementById('signup-captcha');
+    if (loginCaptcha) loginCaptcha.value = '';
+    if (signupCaptcha) signupCaptcha.value = '';
+  } catch(e) { console.error('Captcha load error:', e); }
+}
+
 async function handleLogin() {
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-password').value;
+  const captchaAnswer = document.getElementById('login-captcha')?.value || '';
   const err = document.getElementById('login-error');
   if(!email || !password) { err.textContent = 'Please enter email and password'; return; }
+  if(!captchaAnswer.trim()) { err.textContent = 'Please enter the security code'; return; }
   
-  window.pendingAuth = { type: 'login', email, password };
-  sendEmailOTP(email, 'auth-login-form', 'login-error');
+  window.pendingAuth = { type: 'login', email, password, captchaAnswer };
+  sendEmailOTP(email, 'auth-login-form', 'login-error', captchaAnswer);
 }
 
 async function handleSignup() {
@@ -489,12 +522,14 @@ async function handleSignup() {
   const email = document.getElementById('signup-email').value;
   const gender = document.getElementById('signup-gender')?.value || 'female';
   const phone = document.getElementById('signup-phone')?.value || '';
+  const captchaAnswer = document.getElementById('signup-captcha')?.value || '';
   const err = document.getElementById('signup-error');
   
   if(!name || !email) { err.textContent = 'Please fill name and email'; return; }
+  if(!captchaAnswer.trim()) { err.textContent = 'Please enter the security code'; return; }
 
-  window.pendingAuth = { type: 'signup', name, email, phone, gender };
-  sendEmailOTP(email, 'auth-signup-form', 'signup-error');
+  window.pendingAuth = { type: 'signup', name, email, phone, gender, captchaAnswer };
+  sendEmailOTP(email, 'auth-signup-form', 'signup-error', captchaAnswer);
 }
 
 async function handlePhoneLogin() {
@@ -503,20 +538,30 @@ async function handlePhoneLogin() {
   if (err) err.textContent = 'Phone login is disabled. Please use Email login.';
 }
 
-async function sendEmailOTP(email, currentFormId, errorId) {
+async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '') {
   const err = document.getElementById(errorId);
   const btnId = currentFormId === 'auth-login-form' ? 'login-btn' : 'signup-btn';
   const btn = document.getElementById(btnId);
   err.textContent = '';
+
+  if (authOtpRequestInFlight) {
+    err.textContent = 'OTP request is already in progress. Please wait.';
+    return;
+  }
+
+  authOtpRequestInFlight = true;
   
   if (btn) { btn.disabled = true; btn.textContent = 'Sending OTP... ✦'; }
   
-  const resp = await api('/api/otp/send-email', { method: 'POST', body: { email } });
+  const resp = await api('/api/otp/send-email', { method: 'POST', body: { email, captchaAnswer }, timeoutMs: 30000 });
   
+  authOtpRequestInFlight = false;
   if (btn) { btn.disabled = false; btn.textContent = currentFormId === 'auth-login-form' ? 'Sign In' : 'Send OTP ✦'; }
   
   if (resp.error) {
     const raw = String(resp.error || '');
+    // Refresh captcha on any error so user can retry
+    await loadAuthCaptcha();
     if (/535|badcredentials|invalid login|username and password not accepted/i.test(raw)) {
       err.textContent = 'Email OTP service is not configured correctly. Please try Google login or contact support.';
     } else {
@@ -524,6 +569,28 @@ async function sendEmailOTP(email, currentFormId, errorId) {
     }
     return;
   }
+
+  authOtpResendEndsAt = Date.now() + 60000;
+  const resendBtn = document.getElementById('resend-otp-btn');
+  if (resendBtn) {
+    resendBtn.style.pointerEvents = 'none';
+    resendBtn.style.opacity = '0.55';
+  }
+  if (authOtpResendTimer) clearInterval(authOtpResendTimer);
+  authOtpResendTimer = setInterval(() => {
+    const remaining = Math.max(0, Math.ceil((authOtpResendEndsAt - Date.now()) / 1000));
+    const resendNode = document.getElementById('resend-otp-btn');
+    if (!resendNode) return;
+    if (remaining <= 0) {
+      resendNode.textContent = 'Resend OTP';
+      resendNode.style.pointerEvents = '';
+      resendNode.style.opacity = '';
+      clearInterval(authOtpResendTimer);
+      authOtpResendTimer = null;
+      return;
+    }
+    resendNode.textContent = `Resend OTP (${remaining}s)`;
+  }, 1000);
   
   document.getElementById(currentFormId).style.display = 'none';
   document.getElementById('otp-error').textContent = '';
@@ -646,6 +713,8 @@ async function completeSignupAfterOTP() {
 }
 
 function resendEmailOTP() {
+  if (authOtpRequestInFlight) return;
+  if (authOtpResendEndsAt && Date.now() < authOtpResendEndsAt) return;
   if (window.pendingAuth) {
     if (window.pendingAuth.loginType === 'phone' && window.pendingAuth.phone) {
       sendPhoneOTP(window.pendingAuth.phone);
@@ -825,6 +894,103 @@ function toggleNavDropdown(e) {
     navigate('/products');
   }
 }
+
+// ── SEARCH FUNCTIONALITY ──────────────────────────────────
+function toggleSearch() {
+  const searchBox = document.getElementById('search-box');
+  if (!searchBox) return;
+  const isVisible = searchBox.style.display !== 'none';
+  searchBox.style.display = isVisible ? 'none' : 'block';
+  if (!isVisible) {
+    setTimeout(() => {
+      const input = document.getElementById('header-search-input');
+      if (input) input.focus();
+    }, 100);
+  }
+}
+
+async function performSearch(query) {
+  if (!query || query.length < 2) {
+    const resultsDiv = document.getElementById('search-results');
+    if (resultsDiv) resultsDiv.style.display = 'none';
+    return;
+  }
+
+  const cacheKey = `search_${query.toLowerCase()}`;
+  if (searchCache.has(cacheKey)) {
+    const cached = searchCache.get(cacheKey);
+    if (Date.now() - cached.timestamp < SEARCH_CACHE_TTL) {
+      displaySearchResults(cached.results, query);
+      return;
+    }
+  }
+
+  try {
+    const results = await api(`/api/products?search=${encodeURIComponent(query)}`);
+    const resultsArray = Array.isArray(results) ? results : [];
+    searchCache.set(cacheKey, { results: resultsArray, timestamp: Date.now() });
+    displaySearchResults(resultsArray, query);
+  } catch (e) {
+    console.error('Search error:', e);
+  }
+}
+
+function displaySearchResults(products, query) {
+  const resultsDiv = document.getElementById('search-results');
+  if (!resultsDiv) return;
+
+  if (!products || products.length === 0) {
+    resultsDiv.innerHTML = `<div style="padding:1rem;text-align:center;color:var(--gray);">No products found for "${query}"</div>`;
+    resultsDiv.style.display = 'block';
+    return;
+  }
+
+  const html = products.slice(0, 5).map(p => `
+    <div onclick="navigate('/product/${p._id || p.id}'); toggleSearch();" style="padding:0.75rem 1rem;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.2s;display:flex;align-items:center;gap:0.75rem;" onmouseover="this.style.background='var(--light-gray)'" onmouseout="this.style.background='transparent'">
+      <img src="${safeImageUrl(p.images?.[0], p.category)}" alt="${p.name}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;"/>
+      <div style="flex:1;">
+        <div style="font-weight:600;font-size:0.85rem;color:var(--dark);">${p.name}</div>
+        <div style="font-size:0.75rem;color:var(--gray);">₹${p.price}</div>
+      </div>
+    </div>
+  `).join('');
+
+  resultsDiv.innerHTML = html;
+  resultsDiv.style.display = 'block';
+}
+
+// Setup search listeners
+document.addEventListener('DOMContentLoaded', () => {
+  const searchInput = document.getElementById('header-search-input');
+  const mobileSearchInput = document.getElementById('mobile-search-input');
+
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => performSearch(e.target.value), 300);
+    });
+    searchInput.addEventListener('focus', () => {
+      if (searchInput.value.length >= 2) performSearch(searchInput.value);
+    });
+  }
+
+  if (mobileSearchInput) {
+    mobileSearchInput.addEventListener('input', (e) => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => performSearch(e.target.value), 300);
+    });
+  }
+
+  // Close search results on outside click
+  document.addEventListener('click', (e) => {
+    const resultsDiv = document.getElementById('search-results');
+    const searchBox = document.getElementById('search-box');
+    if (searchBox && !searchBox.contains(e.target) && !e.target.closest('#header-search-btn')) {
+      if (resultsDiv) resultsDiv.style.display = 'none';
+    }
+  });
+});
+
 // Close mobile dropdown when clicking outside
 document.addEventListener('click', (e) => {
   const dd = document.getElementById('nav-collections-dd');

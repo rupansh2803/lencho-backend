@@ -599,11 +599,22 @@ async function adminProducts() {
 }
 
 async function adminDeleteProduct(id, name) {
-  if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
-  const r = await api('/api/products/' + id, { method: 'DELETE' });
-  if (r.error) { toast(r.error, 'error'); return; }
-  toast('Product deleted', 'info');
-  adminProducts();
+  if (!confirm(`🚨 ARE YOU SURE?\n\nDelete "${name}"?\n\nThis action CANNOT be undone. The product will be permanently removed from your store.`)) return;
+  
+  // Double confirmation on mobile
+  if (window.innerWidth <= 768) {
+    if (!confirm(`Final confirmation: Delete "${name}"?`)) return;
+  }
+  
+  try {
+    const r = await api('/api/products/' + id, { method: 'DELETE' });
+    if (r.error) { toast(r.error, 'error'); return; }
+    toast('✓ Product deleted successfully', 'info');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    adminProducts();
+  } catch (e) {
+    toast('Error deleting product: ' + e.message, 'error');
+  }
 }
 
 async function adminAddProduct(product = null) {
@@ -747,24 +758,96 @@ async function saveEditProduct(id) {
 }
 
 async function adminUsers() {
-  const users = await api('/api/admin/users');
+  const response = await api('/api/admin/users');
+  const users = Array.isArray(response) ? response : (response.users || []);
+  const summary = response?.summary || {
+    total: users.length,
+    verified: users.filter(user => user.isVerified).length,
+    blocked: users.filter(user => user.isBlocked).length,
+    providers: users.reduce((acc, user) => {
+      const key = user.authProvider || 'email';
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {})
+  };
+  const escapeHtml = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
   document.getElementById('admin-content').innerHTML = `
-  <div class="admin-header"><h1 class="admin-page-title">Users (${users.length})</h1></div>
-  <div class="admin-table-wrap">
-    <table>
-      <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead>
-      <tbody>${users.map(u=>`
-      <tr>
-        <td><b>${u.name}</b></td>
-        <td>${u.email}</td>
-        <td>${u.phone||'—'}</td>
-        <td><span style="padding:3px 10px;border-radius:99px;font-size:.7rem;font-weight:600;background:${u.role==='admin'?'#ede9fe':'#dcfce7'};color:${u.role==='admin'?'#6d28d9':'#166534'};">${u.role}</span></td>
+  <div class="admin-header" style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+    <h1 class="admin-page-title">Users (${summary.total})</h1>
+    <div style="display:flex;gap:.75rem;flex-wrap:wrap;font-size:.85rem;">
+      <span style="padding:.45rem .7rem;border-radius:999px;background:#ecfeff;color:#155e75;">Verified ${summary.verified}</span>
+      <span style="padding:.45rem .7rem;border-radius:999px;background:#fef2f2;color:#991b1b;">Blocked ${summary.blocked}</span>
+      <span style="padding:.45rem .7rem;border-radius:999px;background:#f5f3ff;color:#6d28d9;">Email ${summary.providers.email || 0}</span>
+      <span style="padding:.45rem .7rem;border-radius:999px;background:#fefce8;color:#a16207;">Google ${summary.providers.google || 0}</span>
+    </div>
+  </div>
+  <div class="admin-form" style="margin-bottom:1rem;display:flex;gap:.75rem;flex-wrap:wrap;align-items:center;">
+    <div class="form-group" style="margin-bottom:0;min-width:240px;flex:1;">
+      <label>Search Users</label>
+      <input id="admin-user-search" type="text" placeholder="Name, email, phone, gender" oninput="filterAdminUsers()" />
+    </div>
+    <div class="form-group" style="margin-bottom:0;min-width:180px;">
+      <label>Status</label>
+      <select id="admin-user-status" onchange="filterAdminUsers()">
+        <option value="">All</option>
+        <option value="verified">Verified</option>
+        <option value="unverified">Unverified</option>
+        <option value="blocked">Blocked</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:0;min-width:180px;">
+      <label>Provider</label>
+      <select id="admin-user-provider" onchange="filterAdminUsers()">
+        <option value="">All</option>
+        <option value="email">Email</option>
+        <option value="google">Google</option>
+      </select>
+    </div>
+  </div>
+  <div class="admin-table-wrap" style="overflow-x:auto;">
+    <table style="min-width:980px;">
+      <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Gender</th><th>Provider</th><th>Verified</th><th>Join Date</th><th>Last Login</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="admin-users-tbody">${users.map(u=>`
+      <tr data-name="${escapeHtml(u.name).toLowerCase()}" data-email="${escapeHtml(u.email).toLowerCase()}" data-phone="${escapeHtml(u.phone || '').toLowerCase()}" data-gender="${escapeHtml(u.gender || '').toLowerCase()}" data-provider="${escapeHtml(u.authProvider || 'email')}" data-verified="${u.isVerified ? 'verified' : 'unverified'}" data-blocked="${u.isBlocked ? 'blocked' : 'active'}">
+        <td><b>${escapeHtml(u.name)}</b></td>
+        <td>${escapeHtml(u.email)}</td>
+        <td>${escapeHtml(u.phone || '—')}</td>
+        <td>${escapeHtml(u.gender || '—')}</td>
+        <td><span style="padding:3px 10px;border-radius:99px;font-size:.7rem;font-weight:600;background:${u.authProvider==='google'?'#f5f3ff':'#ecfeff'};color:${u.authProvider==='google'?'#6d28d9':'#155e75'};">${escapeHtml(u.authProvider || 'email')}</span></td>
+        <td>${u.isVerified ? 'Yes' : 'No'}</td>
         <td>${formatDate(u.createdAt)}</td>
-        <td>${u.role!=='admin'?`<button class="btn-danger btn-sm" onclick="deleteUser('${u.id}','${u.name.replace(/'/g,'\\\'')}')" style="padding:5px 10px;border-radius:6px;background:#fee2e2;color:#ef4444;border:1px solid #fca5a5;cursor:pointer;font-size:.75rem;">Remove</button>`:'<span style="color:#888;">Protected</span>'}</td>
+        <td>${formatDate(u.lastLoginAt || u.updatedAt || u.createdAt)}</td>
+        <td>${u.isBlocked ? '<span style="color:#b91c1c;font-weight:700;">Blocked</span>' : '<span style="color:#166534;font-weight:700;">Active</span>'}</td>
+        <td style="display:flex;gap:.4rem;flex-wrap:wrap;">
+          ${u.role !== 'admin' ? `<button class="btn-outline btn-sm" onclick="toggleUserBlock('${u.id}', ${u.isBlocked ? 'false' : 'true'})" style="padding:5px 10px;border-radius:6px;cursor:pointer;font-size:.75rem;">${u.isBlocked ? 'Unblock' : 'Block'}</button>` : '<span style="color:#888;">Protected</span>'}
+          ${u.role !== 'admin' ? `<button class="btn-danger btn-sm" onclick="deleteUser('${u.id}','${escapeHtml(u.name)}')" style="padding:5px 10px;border-radius:6px;background:#fee2e2;color:#ef4444;border:1px solid #fca5a5;cursor:pointer;font-size:.75rem;">Remove</button>` : ''}
+        </td>
       </tr>`).join('')}
       </tbody>
     </table>
   </div>`;
+}
+
+function filterAdminUsers() {
+  const search = String(document.getElementById('admin-user-search')?.value || '').trim().toLowerCase();
+  const status = String(document.getElementById('admin-user-status')?.value || '').toLowerCase();
+  const provider = String(document.getElementById('admin-user-provider')?.value || '').toLowerCase();
+  document.querySelectorAll('#admin-users-tbody tr').forEach(row => {
+    const matchesSearch = !search || [row.dataset.name, row.dataset.email, row.dataset.phone, row.dataset.gender].some(value => String(value || '').includes(search));
+    const matchesStatus = !status || (
+      status === 'blocked' ? row.dataset.blocked === 'blocked' :
+      status === 'verified' ? row.dataset.verified === 'verified' :
+      row.dataset.verified === 'unverified'
+    );
+    const matchesProvider = !provider || row.dataset.provider === provider;
+    row.style.display = matchesSearch && matchesStatus && matchesProvider ? '' : 'none';
+  });
 }
 
 async function deleteUser(id, name) {
@@ -772,6 +855,13 @@ async function deleteUser(id, name) {
   const r = await api('/api/admin/users/' + id, { method: 'DELETE' });
   if (r.error) { toast(r.error, 'error'); return; }
   toast('User removed', 'info');
+  adminUsers();
+}
+
+async function toggleUserBlock(id, blocked) {
+  const r = await api('/api/admin/users/' + id + '/block', { method: 'PUT', body: { blocked } });
+  if (r.error) { toast(r.error, 'error'); return; }
+  toast(r.blocked ? 'User blocked' : 'User unblocked', 'info');
   adminUsers();
 }
 

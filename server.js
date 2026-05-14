@@ -16,6 +16,7 @@ const nodemailer = require('nodemailer');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
+const { generateToken } = require('./middleware/auth');
 const { User, Product, Order, Cart, Wishlist, Settings, OTPLog, Testimonial, Category, Inquiry, LoginEvent } = require('./models');
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -76,6 +77,167 @@ const DEFAULT_OTP_BODY = `
 
 function sanitizeFromName(name) {
   return String(name || '').replace(/["<>\r\n]/g, '').trim();
+}
+
+const EMAIL_OTP_EXPIRY_MS = 10 * 60 * 1000;
+const SMTP_CONNECTION_TIMEOUT_MS = 25000;
+const SMTP_SOCKET_TIMEOUT_MS = 30000;
+let cachedVerifiedSmtpTransporter = null;
+
+// ─── RATE LIMITING (in-memory) ────────────────────────────────
+const otpRateLimits = new Map(); // key → { count, firstAt }
+const OTP_RATE_WINDOW_MS = 10 * 60 * 1000;
+const OTP_MAX_PER_EMAIL = 4;
+const OTP_MAX_PER_IP = 10;
+const LOGIN_FAIL_LIMITS = new Map(); // email → { count, lockedUntil }
+const LOGIN_FAIL_MAX = 5;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+
+function checkRateLimit(key, max) {
+  const now = Date.now();
+  const entry = otpRateLimits.get(key);
+  if (!entry || (now - entry.firstAt) > OTP_RATE_WINDOW_MS) {
+    otpRateLimits.set(key, { count: 1, firstAt: now });
+    return true;
+  }
+  if (entry.count >= max) return false;
+  entry.count++;
+  return true;
+}
+
+function checkLoginLock(email) {
+  const entry = LOGIN_FAIL_LIMITS.get(email);
+  if (!entry) return true;
+  if (entry.lockedUntil && Date.now() < entry.lockedUntil) return false;
+  if (entry.lockedUntil && Date.now() >= entry.lockedUntil) { LOGIN_FAIL_LIMITS.delete(email); return true; }
+  return true;
+}
+
+function recordLoginFail(email) {
+  const entry = LOGIN_FAIL_LIMITS.get(email) || { count: 0 };
+  entry.count++;
+  if (entry.count >= LOGIN_FAIL_MAX) { entry.lockedUntil = Date.now() + LOGIN_LOCK_MS; }
+  LOGIN_FAIL_LIMITS.set(email, entry);
+}
+
+function clearLoginFails(email) { LOGIN_FAIL_LIMITS.delete(email); }
+
+// Clean up rate limit maps every 15 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of otpRateLimits) { if ((now - v.firstAt) > OTP_RATE_WINDOW_MS) otpRateLimits.delete(k); }
+  for (const [k, v] of LOGIN_FAIL_LIMITS) { if (v.lockedUntil && now >= v.lockedUntil) LOGIN_FAIL_LIMITS.delete(k); }
+}, 15 * 60 * 1000);
+
+// ─── DISPOSABLE EMAIL BLOCKLIST ───────────────────────────────
+const DISPOSABLE_DOMAINS = new Set([
+  'mailinator.com','guerrillamail.com','tempmail.com','throwaway.email','yopmail.com',
+  'sharklasers.com','guerrillamailblock.com','grr.la','guerrillamail.info','guerrillamail.net',
+  'trashmail.com','trashmail.net','trashmail.me','temp-mail.org','fakeinbox.com',
+  'dispostable.com','maildrop.cc','mailnesia.com','tempail.com','tempr.email',
+  'discard.email','discardmail.com','disposableemailaddresses.emailmiser.com',
+  'drdrb.net','emailondeck.com','getnada.com','getairmail.com','harakirimail.com',
+  'jetable.org','mailcatch.com','mailexpire.com','mailforspam.com','mailinater.com',
+  'mailscrap.com','mohmal.com','mt2015.com','mytemp.email','nada.email',
+  'spambox.us','spamcowboy.com','spamfree24.org','spamgourmet.com','tempmailaddress.com',
+  'tempinbox.com','trashymail.com','trbvm.com','wegwerfmail.de','yopmail.fr',
+  'yopmail.net','10minutemail.com','20minutemail.com','mintemail.com','emailfake.com',
+  'crazymailing.com','armyspy.com','dayrep.com','einrot.com','fleckens.hu',
+  'gustr.com','jourrapide.com','rhyta.com','superrito.com','teleworm.us',
+  'mailtemp.info','tempsky.com','burnermail.io','inboxbear.com','mailsac.com',
+  'mytrashmail.com','safetymail.info','trashmail.org','trash-mail.com','binkmail.com',
+  'bobmail.info','chammy.info','devnullmail.com','dingbone.com','fakedemail.com',
+  'filzmail.com','haltospam.com','imstations.com','inboxalias.com','koszmail.pl',
+  'lhsdv.com','mailblocks.com','mailmoat.com','mailnull.com','msgos.com','nobulk.com',
+  'nogmailspam.info','nomail.xl.cx','nospam.ze.tc','owlpic.com','proxymail.eu',
+  'rcpt.at','rejectmail.com','safersignup.de','sogetthis.com','soodonims.com',
+  'spamhereplease.com','spamhole.com','spamify.com','spamthisplease.com','thankyou2010.com',
+  'trashemail.de','wh4f.org','whyspam.me','zehnminutenmail.de','guerrillamail.de'
+]);
+
+function isDisposableEmail(email) {
+  const domain = String(email || '').split('@')[1]?.toLowerCase()?.trim();
+  return domain ? DISPOSABLE_DOMAINS.has(domain) : false;
+}
+
+function isValidEmailFormat(email) {
+  return /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(String(email || '').trim());
+}
+let cachedSmtpSignature = '';
+
+function getSmtpConfigFromSettings(settings = null) {
+  const resolved = settings || {};
+  return {
+    host: String(resolved.smtpHost || process.env.SMTP_HOST || 'smtp.gmail.com').trim(),
+    port: Number(resolved.smtpPort || process.env.SMTP_PORT || 465),
+    user: String(resolved.smtpUser || DEFAULT_SMTP_USER || process.env.EMAIL_USER || '').trim(),
+    pass: String(resolved.smtpPass || DEFAULT_SMTP_PASS || process.env.EMAIL_PASS || '').trim(),
+    storeName: sanitizeFromName(resolved.storeName || DEFAULT_EMAIL_FROM_NAME) || DEFAULT_EMAIL_FROM_NAME,
+  };
+}
+
+function getSmtpSignature(config) {
+  return [config.host, config.port, config.user, config.pass].join('|');
+}
+
+async function createVerifiedSmtpTransporter(config) {
+  if (isPlaceholderSMTP(config.user) || isPlaceholderSMTP(config.pass)) {
+    throw new Error('SMTP credentials not configured');
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: Number(config.port) || 465,
+    secure: Number(config.port) === 465,
+    auth: { user: config.user, pass: config.pass },
+    connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+    greetingTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+    socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
+  });
+
+  await transporter.verify();
+  return transporter;
+}
+
+async function getVerifiedSmtpTransporter(config = null) {
+  const smtpConfig = config || getSmtpConfigFromSettings();
+  const signature = getSmtpSignature(smtpConfig);
+
+  if (cachedVerifiedSmtpTransporter && cachedSmtpSignature === signature) {
+    return cachedVerifiedSmtpTransporter;
+  }
+
+  const transporter = await createVerifiedSmtpTransporter(smtpConfig);
+  cachedVerifiedSmtpTransporter = transporter;
+  cachedSmtpSignature = signature;
+  return transporter;
+}
+
+async function sendEmailWithRetry(transporter, payload, attempts = 2) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await transporter.sendMail(payload);
+    } catch (error) {
+      lastError = error;
+      const message = String(error?.message || '').toLowerCase();
+      const retryable = /timeout|etimedout|eai_again|network|connection|socket|temporary/i.test(message);
+      if (attempt >= attempts || !retryable) break;
+      cachedVerifiedSmtpTransporter = null;
+    }
+  }
+
+  throw lastError || new Error('SMTP send failed');
+}
+
+async function warmupSmtpTransporter() {
+  try {
+    await getVerifiedSmtpTransporter();
+    console.log('✅ SMTP transporter verified on startup');
+  } catch (error) {
+    console.warn('⚠️ SMTP transporter verification failed on startup:', error.message);
+  }
 }
 
 // ─── FALLBACK (JSON) ──────────────────────────────────────────
@@ -307,6 +469,7 @@ async function initDB() {
     await seedCategories();
     await seedProducts();
     await seedSettings();
+    warmupSmtpTransporter().catch(() => {});
     console.log('🚀 System Bootstrapped Successfully');
   } catch (err) {
     console.log('⚠️ MongoDB Connection Error:', err.message);
@@ -1008,43 +1171,27 @@ async function uploadSingleMedia(file, folder) {
 
 async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
   try {
-    const host = await getMeaningfulSetting('smtpHost', 'smtp.gmail.com');
-    const port = await getMeaningfulSetting('smtpPort', 465);
-    const user = await getMeaningfulSetting('smtpUser', DEFAULT_SMTP_USER);
-    const pass = await getMeaningfulSetting('smtpPass', DEFAULT_SMTP_PASS);
-    const subjectTpl = DEFAULT_OTP_SUBJECT;
-    const bodyTpl = DEFAULT_OTP_BODY;
-    const storeName = sanitizeFromName(await getMeaningfulSetting('storeName', DEFAULT_EMAIL_FROM_NAME)) || DEFAULT_EMAIL_FROM_NAME;
-
-    // If SMTP is not configured, throw error for fallback
-    if (isPlaceholderSMTP(user) || isPlaceholderSMTP(pass)) {
-      throw new Error('SMTP credentials not configured. Using fallback.');
-    }
-
-    const transporter = nodemailer.createTransport({
-      host,
-      port: +port,
-      secure: +port === 465,
-      auth: { user, pass },
-      connectionTimeout: 10000,
-      socketTimeout: 10000
+    const smtpConfig = getSmtpConfigFromSettings({
+      smtpHost: await getMeaningfulSetting('smtpHost', 'smtp.gmail.com'),
+      smtpPort: await getMeaningfulSetting('smtpPort', 465),
+      smtpUser: await getMeaningfulSetting('smtpUser', DEFAULT_SMTP_USER),
+      smtpPass: await getMeaningfulSetting('smtpPass', DEFAULT_SMTP_PASS),
+      storeName: await getMeaningfulSetting('storeName', DEFAULT_EMAIL_FROM_NAME),
     });
+    const transporter = await getVerifiedSmtpTransporter(smtpConfig);
 
-    // Test connection first
-    await transporter.verify();
-
-    const result = await transporter.sendMail({
-      from: `"${storeName}" <${user}>`,
+    const result = await sendEmailWithRetry(transporter, {
+      from: `"${smtpConfig.storeName}" <${smtpConfig.user}>`,
       to: targetEmail,
-      subject: subjectTpl.replace('{{otp}}', otp),
-      html: bodyTpl.replace('{{otp}}', otp)
+      subject: DEFAULT_OTP_SUBJECT.replace('{{otp}}', otp),
+      html: DEFAULT_OTP_BODY.replace('{{otp}}', otp)
     });
 
-    console.log(`✅ Email OTP sent to ${targetEmail} via ${host}`);
+    console.log(`✅ Email OTP sent to ${targetEmail} via ${smtpConfig.host}`);
     return { sent: true, via: 'email', messageId: result.messageId };
   } catch (err) {
     const errMsg = String(err?.message || err).toLowerCase();
-    console.log(`⚠️  Email OTP failed (${errMsg}). Will use SMS/console fallback.`);
+    console.error(`⚠️  Email OTP failed (${errMsg}).`);
     throw err;
   }
 }
@@ -1833,51 +1980,66 @@ app.post('/api/otp/verify', async (req, res) => {
 
 app.post('/api/otp/send-email', async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, captchaAnswer } = req.body;
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     if (!email) return res.status(400).json({ error: 'Email required' });
-    delete req.session.verifiedEmailOTP;
+
+    // ── CAPTCHA validation ──
+    if (captchaAnswer) {
+      if (String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
+        return res.status(400).json({ error: 'Invalid security code. Please try again.' });
+      }
+      delete req.session.captcha; // one-time use
+    }
+
+    // ── Email format validation ──
+    const cleanEmail = String(email).trim().toLowerCase();
+    if (!isValidEmailFormat(cleanEmail)) {
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
+
+    // ── Disposable email blocking ──
+    if (isDisposableEmail(cleanEmail)) {
+      return res.status(400).json({ error: 'Temporary/disposable email addresses are not allowed. Please use a real email.' });
+    }
+
+    // ── Rate limiting ──
+    if (!checkRateLimit(`email:${cleanEmail}`, OTP_MAX_PER_EMAIL)) {
+      return res.status(429).json({ error: 'Too many OTP requests for this email. Please wait 10 minutes.' });
+    }
+    if (!checkRateLimit(`ip:${ip}`, OTP_MAX_PER_IP)) {
+      return res.status(429).json({ error: 'Too many requests from your network. Please wait a few minutes.' });
+    }
+
+    if (req.session) delete req.session.verifiedEmailOTP;
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + EMAIL_OTP_EXPIRY_MS);
+    console.log(`[auth] OTP request received for ${cleanEmail} from IP ${ip}`);
 
     if (useDB) {
-      await OTPLog.deleteMany({ target: email, used: false });
-      await OTPLog.create({ target: email, code: otp, type: 'email_login', expiresAt });
+      await OTPLog.deleteMany({ target: cleanEmail, used: false });
+      await OTPLog.create({ target: cleanEmail, code: otp, type: 'email_login', expiresAt });
     } else {
-      req.session.pendingEmailOTP = { email, code: otp, expiresAt: expiresAt.toISOString() };
+      req.session.pendingEmailOTP = { email: cleanEmail, code: otp, expiresAt: expiresAt.toISOString() };
     }
-
-    const host = await getMeaningfulSetting('smtpHost', 'smtp.gmail.com');
-    const port = await getMeaningfulSetting('smtpPort', 465);
-    const user = await getMeaningfulSetting('smtpUser', DEFAULT_SMTP_USER);
-    const pass = await getMeaningfulSetting('smtpPass', DEFAULT_SMTP_PASS);
-    const subjectTpl = DEFAULT_OTP_SUBJECT;
-    const bodyTpl = DEFAULT_OTP_BODY;
-    const storeName = sanitizeFromName(await getMeaningfulSetting('storeName', DEFAULT_EMAIL_FROM_NAME)) || DEFAULT_EMAIL_FROM_NAME;
-
-    if (isPlaceholderSMTP(user) || isPlaceholderSMTP(pass)) {
-      return res.status(500).json({
-        error: 'Email OTP is not configured yet. Please set SMTP User and App Password in Admin > SMTP Settings.'
-      });
-    }
-
-    const transporter = nodemailer.createTransport({
-      host, port: +port, secure: +port === 465,
-      auth: { user, pass }
-    });
-
     try {
-      await transporter.sendMail({
-        from: `"${storeName}" <${user}>`,
-        to: email,
-        subject: subjectTpl.replace('{{otp}}', otp),
-        html: bodyTpl.replace('{{otp}}', otp)
+      const sendResult = await sendConfiguredEmailOTP(cleanEmail, otp, 'email_login');
+      console.log(`[auth] OTP email sent to ${cleanEmail} | messageId=${sendResult.messageId || 'n/a'}`);
+      return res.json({
+        success: true,
+        message: 'OTP sent! Check your inbox.',
+        expiresIn: Math.floor(EMAIL_OTP_EXPIRY_MS / 1000),
+        provider: 'gmail',
+        verifiedTransport: true
       });
     } catch (smtpErr) {
-      return res.status(500).json({ error: toFriendlySmtpError(smtpErr) });
+      console.error('[auth] OTP email send failed:', smtpErr);
+      return res.status(500).json({
+        error: toFriendlySmtpError(smtpErr),
+        debug: process.env.NODE_ENV === 'development' ? String(smtpErr?.message || smtpErr) : undefined
+      });
     }
-
-    res.json({ success: true, message: 'OTP sent! Check your inbox.' });
   } catch (e) { res.status(500).json({ error: toFriendlySmtpError(e) }); }
 });
 
@@ -1891,7 +2053,11 @@ app.post('/api/otp/verify-email', async (req, res) => {
       if (!log) return res.status(400).json({ error: 'Invalid or expired OTP' });
       log.used = true; await log.save();
       // Update User verification status
-      await User.findOneAndUpdate({ email }, { isVerified: true, isPhoneVerified: true });
+      await User.findOneAndUpdate(
+        { email },
+        { $set: { isVerified: true, emailVerifiedAt: new Date(), authProvider: 'email' } },
+        { upsert: false }
+      );
     } else {
       const pending = req.session.pendingEmailOTP;
       if (!pending || pending.email !== email || pending.code !== otp) return res.status(400).json({ error: 'Invalid OTP' });
@@ -2114,20 +2280,32 @@ app.post('/api/signup', async (req, res) => {
     if (useDB) {
       if (await User.findOne({ email })) return res.status(400).json({ error: 'Email already registered' });
       const hashed = await bcrypt.hash(password, 10);
-      const user = await User.create({ name, email, password: hashed, phone: phone || '', gender: gender || 'female', isVerified: true });
+      const user = await User.create({
+        name,
+        email,
+        password: hashed,
+        phone: phone || '',
+        gender: gender || 'female',
+        isVerified: true,
+        emailVerifiedAt: new Date(),
+        authProvider: 'email',
+        loginCount: 1,
+        lastLoginAt: new Date()
+      });
       req.session.userId = user._id.toString(); req.session.role = user.role; req.session.name = user.name;
       delete req.session.verifiedEmailOTP;
       const { password: _, ...safe } = user.toObject();
-      return res.json({ success: true, user: { id: safe._id, ...safe } });
+      return res.json({ success: true, token: generateToken(user._id.toString(), user.role), user: { id: safe._id, ...safe } });
     }
     const users = readJson(FILES.users);
     if (users.find(u => u.email === email)) return res.status(400).json({ error: 'Email already registered' });
     const hashed = await bcrypt.hash(password, 10);
-    const user = { id: uuidv4(), name, email, password: hashed, phone: phone || '', gender: gender || 'female', role: 'user', isVerified: true, address: '', createdAt: new Date().toISOString() };
+    const now = new Date().toISOString();
+    const user = { id: uuidv4(), name, email, password: hashed, phone: phone || '', gender: gender || 'female', role: 'user', isVerified: true, authProvider: 'email', emailVerifiedAt: now, address: '', createdAt: now, lastLoginAt: now, loginCount: 1 };
     users.push(user); writeJson(FILES.users, users);
     req.session.userId = user.id; req.session.role = user.role; req.session.name = user.name;
     delete req.session.verifiedEmailOTP;
-    return res.json({ success: true, user: { id: user.id, name, email, role: user.role } });
+    return res.json({ success: true, token: generateToken(user.id, user.role), user: { id: user.id, name, email, role: user.role } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2136,11 +2314,22 @@ app.post('/api/login', async (req, res) => {
     const { email, password, captchaAnswer } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
+
+    // ── Login lock check (5 failed attempts → 15 min lock) ──
+    if (!checkLoginLock(email)) {
+      return res.status(429).json({ error: 'Account temporarily locked due to too many failed attempts. Please try again in 15 minutes.' });
+    }
+
     if (useDB) {
       const user = await User.findOne({ email });
       if (!user) {
         await recordLoginActivity({ email, status: 'failed', method: 'password', role: 'user', ip, userAgent });
         return res.status(400).json({ error: 'Invalid email or password' });
+      }
+
+      if (user.isBlocked) {
+        await recordLoginActivity({ email, name: user.name, status: 'failed', method: 'password', role: user.role, ip, userAgent });
+        return res.status(403).json({ error: 'This account is blocked. Please contact support.' });
       }
 
       if (user.role === 'admin') {
@@ -2157,20 +2346,36 @@ app.post('/api/login', async (req, res) => {
       }
 
       if (!await bcrypt.compare(password, user.password)) {
+        recordLoginFail(email);
         await recordLoginActivity({ email, name: user.name, status: 'failed', method: 'password', role: user.role, ip, userAgent });
         return res.status(400).json({ error: 'Invalid email or password' });
       }
+
+      user.lastLoginAt = new Date();
+      user.lastLoginIp = String(ip || '');
+      user.lastLoginUserAgent = String(userAgent || '');
+      user.loginCount = (user.loginCount || 0) + 1;
+      user.authProvider = user.authProvider || 'email';
+      await user.save();
+
       req.session.userId = user._id.toString(); req.session.role = user.role; req.session.name = user.name;
       if (user.role !== 'admin') delete req.session.verifiedEmailOTP;
+      clearLoginFails(email);
       await recordLoginActivity({ email, name: user.name, status: 'success', method: 'password', role: user.role, ip, userAgent });
       const { password: _, ...safe } = user.toObject();
-      return res.json({ success: true, user: { id: user._id, ...safe } });
+      return res.json({ success: true, token: generateToken(user._id.toString(), user.role), user: { id: user._id, ...safe } });
     }
     const users = readJson(FILES.users);
     const user = users.find(u => u.email === email);
     if (!user || !await bcrypt.compare(password, user.password)) {
+      recordLoginFail(email);
       await recordLoginActivity({ email, status: 'failed', method: 'password', role: user?.role || 'user', ip, userAgent });
       return res.status(400).json({ error: 'Invalid email or password' });
+    }
+
+    if (user.isBlocked) {
+      await recordLoginActivity({ email, name: user.name, status: 'failed', method: 'password', role: user.role, ip, userAgent });
+      return res.status(403).json({ error: 'This account is blocked. Please contact support.' });
     }
 
     if (user.role === 'admin') {
@@ -2186,10 +2391,17 @@ app.post('/api/login', async (req, res) => {
       return res.status(400).json({ error: 'OTP verification expired. Please verify again.' });
     }
 
+    user.lastLoginAt = new Date().toISOString();
+    user.lastLoginIp = String(ip || '');
+    user.lastLoginUserAgent = String(userAgent || '');
+    user.loginCount = (user.loginCount || 0) + 1;
+    user.authProvider = user.authProvider || 'email';
+
     req.session.userId = user.id; req.session.role = user.role; req.session.name = user.name;
     if (user.role !== 'admin') delete req.session.verifiedEmailOTP;
     await recordLoginActivity({ email, name: user.name, status: 'success', method: 'password', role: user.role, ip, userAgent });
-    res.json({ success: true, user: { id: user.id, name: user.name, email, role: user.role } });
+    writeJson(FILES.users, users);
+    res.json({ success: true, token: generateToken(user.id, user.role), user: { id: user.id, name: user.name, email, role: user.role, phone: user.phone || '', gender: user.gender || 'female', createdAt: user.createdAt, lastLoginAt: user.lastLoginAt, authProvider: user.authProvider || 'email', isVerified: user.isVerified !== false, isBlocked: !!user.isBlocked } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2242,6 +2454,75 @@ app.put('/api/profile', requireAuth, async (req, res) => {
     writeJson(FILES.users, users);
     const { password: p, ...safe } = users[idx];
     res.json({ success: true, user: safe });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── ADMIN USERS MANAGEMENT API ───────────────────────────────
+app.get('/api/admin/users', async (req, res) => {
+  if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  try {
+    const { search, verified, blocked, page = 1, limit = 50 } = req.query;
+    if (useDB) {
+      let query = {};
+      if (search) {
+        const regex = new RegExp(search, 'i');
+        query.$or = [{ name: regex }, { email: regex }, { phone: regex }];
+      }
+      if (verified === 'true') query.isVerified = true;
+      if (verified === 'false') query.isVerified = false;
+      if (blocked === 'true') query.isBlocked = true;
+      if (blocked === 'false') query.isBlocked = { $ne: true };
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const [users, total] = await Promise.all([
+        User.find(query).select('-password -otp').sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)),
+        User.countDocuments(query)
+      ]);
+      return res.json({ users: users.map(u => ({ id: u._id, ...u.toObject() })), total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) });
+    }
+    let users = readJson(FILES.users).map(u => { const { password, ...safe } = u; return safe; });
+    if (search) {
+      const s = search.toLowerCase();
+      users = users.filter(u => (u.name||'').toLowerCase().includes(s) || (u.email||'').toLowerCase().includes(s) || (u.phone||'').includes(s));
+    }
+    res.json({ users, total: users.length, page: 1, pages: 1 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/admin/users/:id/block', async (req, res) => {
+  if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  try {
+    const { id } = req.params;
+    if (useDB) {
+      const user = await User.findById(id);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      user.isBlocked = !user.isBlocked;
+      await user.save();
+      return res.json({ success: true, blocked: user.isBlocked });
+    }
+    const users = readJson(FILES.users);
+    const idx = users.findIndex(u => u.id === id);
+    if (idx === -1) return res.status(404).json({ error: 'User not found' });
+    users[idx].isBlocked = !users[idx].isBlocked;
+    writeJson(FILES.users, users);
+    res.json({ success: true, blocked: users[idx].isBlocked });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/users/:id', async (req, res) => {
+  if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  try {
+    const { id } = req.params;
+    if (useDB) {
+      const user = await User.findByIdAndDelete(id);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      return res.json({ success: true });
+    }
+    const users = readJson(FILES.users);
+    const idx = users.findIndex(u => u.id === id);
+    if (idx === -1) return res.status(404).json({ error: 'User not found' });
+    users.splice(idx, 1);
+    writeJson(FILES.users, users);
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3007,8 +3288,65 @@ app.delete('/api/admin/orders/:id', requireAdmin, async (req, res) => {
 
 app.get('/api/admin/users', requireAdmin, async (req, res) => {
   try {
-    if (useDB) { const u = await User.find().select('-password').lean(); return res.json(u.map(u => ({ ...u, id: u._id }))); }
-    res.json(readJson(FILES.users).map(({ password, ...u }) => u));
+    if (useDB) {
+      const { q = '', authProvider = '', verified = '', blocked = '' } = req.query || {};
+      const filter = {};
+      if (authProvider) filter.authProvider = authProvider;
+      if (verified === 'true') filter.isVerified = true;
+      if (verified === 'false') filter.isVerified = false;
+      if (blocked === 'true') filter.isBlocked = true;
+      if (blocked === 'false') filter.isBlocked = false;
+
+      const users = await User.find(filter).select('-password -otp').sort({ createdAt: -1 }).lean();
+      const normalized = users.map(user => ({
+        ...user,
+        id: user._id?.toString?.() || user.id,
+      })).filter(user => {
+        const term = String(q || '').trim().toLowerCase();
+        if (!term) return true;
+        return [user.name, user.email, user.phone, user.gender, user.authProvider]
+          .some(value => String(value || '').toLowerCase().includes(term));
+      });
+
+      return res.json({
+        success: true,
+        users: normalized,
+        summary: {
+          total: normalized.length,
+          verified: normalized.filter(user => user.isVerified).length,
+          blocked: normalized.filter(user => user.isBlocked).length,
+          providers: normalized.reduce((acc, user) => {
+            const key = user.authProvider || 'email';
+            acc[key] = (acc[key] || 0) + 1;
+            return acc;
+          }, {})
+        }
+      });
+    }
+
+    const users = readJson(FILES.users).map(({ password, ...u }) => ({
+      ...u,
+      id: u.id || u._id,
+      authProvider: u.authProvider || 'email',
+      isVerified: u.isVerified !== false,
+      isBlocked: !!u.isBlocked,
+      loginCount: u.loginCount || 0,
+      lastLoginAt: u.lastLoginAt || null
+    }));
+    return res.json({
+      success: true,
+      users,
+      summary: {
+        total: users.length,
+        verified: users.filter(user => user.isVerified).length,
+        blocked: users.filter(user => user.isBlocked).length,
+        providers: users.reduce((acc, user) => {
+          const key = user.authProvider || 'email';
+          acc[key] = (acc[key] || 0) + 1;
+          return acc;
+        }, {})
+      }
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3017,6 +3355,28 @@ app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
     if (useDB) { await User.findOneAndDelete({ _id: req.params.id, role: { $ne: 'admin' } }); return res.json({ success: true }); }
     const u = readJson(FILES.users).filter(u => u.id !== req.params.id || u.role === 'admin');
     writeJson(FILES.users, u); res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/admin/users/:id/block', requireAdmin, async (req, res) => {
+  try {
+    const nextBlocked = Boolean(req.body?.blocked);
+    if (useDB) {
+      const user = await User.findOneAndUpdate(
+        { _id: req.params.id, role: { $ne: 'admin' } },
+        { $set: { isBlocked: nextBlocked } },
+        { new: true }
+      ).select('-password -otp');
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      return res.json({ success: true, user: { ...user.toObject(), id: user._id.toString() } });
+    }
+
+    const users = readJson(FILES.users);
+    const index = users.findIndex(user => String(user.id) === String(req.params.id));
+    if (index === -1 || users[index].role === 'admin') return res.status(404).json({ error: 'User not found' });
+    users[index].isBlocked = nextBlocked;
+    writeJson(FILES.users, users);
+    return res.json({ success: true, user: { ...users[index] } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

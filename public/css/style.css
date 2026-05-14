@@ -886,11 +886,7 @@ ul {
   backdrop-filter: blur(6px)
 }
 
-/* Hide header when modal is open */
-.modal-overlay:not([style*="display:none"]) ~ #site-header,
-#site-header:has(~ .modal-overlay:not([style*="display:none"])) {
-  display: none !important;
-}
+/* Auth modal uses z-index:10001 to overlay the header — no hiding needed */
 
 .modal-card {
   background: #fff;
@@ -1114,7 +1110,7 @@ ul {
   right: 0;
   z-index: 9999;
   padding: 0 5%;
-  background: rgba(255, 255, 255, 0.8);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.95) 100%);
   backdrop-filter: blur(18px) saturate(1.8);
   -webkit-backdrop-filter: blur(18px) saturate(1.8);
   border-bottom: 1.5px solid var(--border);
@@ -1123,7 +1119,7 @@ ul {
 }
 
 #site-header.scrolled {
-  background: rgba(255, 255, 255, 0.95);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(255, 255, 255, 0.97) 100%);
   box-shadow: 0 10px 50px rgba(0, 0, 0, 0.06);
 }
 
@@ -1194,7 +1190,42 @@ ul {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: .5rem
+  gap: .5rem;
+  position: relative;
+}
+
+/* Search Box Styling */
+.search-box {
+  position: relative;
+}
+
+.search-box input {
+  transition: all 0.3s;
+}
+
+.search-box input:focus {
+  width: 240px !important;
+  border-color: var(--rose) !important;
+  box-shadow: 0 0 0 3px rgba(201, 106, 138, 0.1) !important;
+}
+
+#search-results {
+  max-width: 280px;
+  border: 1px solid var(--border);
+}
+
+.mobile-search {
+  background: rgba(201, 106, 138, 0.08);
+  border-radius: 8px;
+}
+
+.mobile-search input {
+  background: transparent;
+  color: var(--dark);
+}
+
+.mobile-search input::placeholder {
+  color: var(--gray);
 }
 
 /* Ensure header action icons remain visible on the top-right
@@ -3475,10 +3506,11 @@ tr:hover td {
 
 /* ── FOOTER ──────────────────────────────────────────────── */
 #site-footer {
-  background: var(--dark);
+  background: linear-gradient(135deg, #2d1b33 0%, #18122B 50%, #2d1b33 100%);
   color: rgba(255, 255, 255, .75);
   padding: 4rem 5% 0;
-  overflow: hidden
+  overflow: hidden;
+  border-top: 1.5px solid var(--border);
 }
 
 .footer-grid {
@@ -5044,6 +5076,7 @@ label[for="captcha"],
   .admin-layout {
     flex-direction: column;
     position: relative;
+    overflow-x: hidden;
   }
 
   /* Hamburger button — always visible top-left */
@@ -5055,8 +5088,8 @@ label[for="captcha"],
     top: 14px;
     left: 14px;
     z-index: 1001;
-    width: 44px;
-    height: 44px;
+    width: 48px;
+    height: 48px;
     border-radius: 12px;
     border: none;
     background: var(--rose, #c96a8a);
@@ -5077,7 +5110,9 @@ label[for="captcha"],
     transform: translateX(-100%);
     z-index: 1000;
     overflow-y: auto;
+    overflow-x: hidden;
     box-shadow: 4px 0 24px rgba(0, 0, 0, .2);
+    -webkit-overflow-scrolling: touch;
   }
 
   /* When .open class is added — slide in */
@@ -5099,7 +5134,8 @@ label[for="captcha"],
   /* Main content takes full width */
   .admin-main {
     width: 100%;
-    padding-top: 60px;
+    padding-top: 70px;
+    overflow-x: hidden;
     /* space for hamburger button */
   }
 
@@ -5123,6 +5159,7 @@ label[for="captcha"],
   /* Admin content padding */
   #admin-content {
     padding: 1rem !important;
+    overflow-x: hidden;
   }
 
   /* Tables — horizontal scroll */
@@ -5131,10 +5168,31 @@ label[for="captcha"],
     overflow-x: auto;
     display: block;
     max-width: 100%;
+    -webkit-overflow-scrolling: touch;
   }
 
   /* Admin logo area spacing */
   .admin-logo {
     padding: 24px 16px 16px !important;
+  }
+
+  /* Buttons sizing on mobile */
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  button {
+    padding: 0.75rem 1.5rem !important;
+    font-size: 0.95rem !important;
+    min-height: 44px !important;
+    border-radius: 8px !important;
+  }
+
+  /* Input fields sizing */
+  input,
+  textarea,
+  select {
+    padding: 0.75rem 1rem !important;
+    font-size: 16px !important; /* Prevents zoom on iOS */
+    min-height: 44px !important;
   }
 }
