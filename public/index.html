@@ -318,9 +318,9 @@
           <a href="#" class="social-icon"><i class="fab fa-youtube"></i></a>
         </div>
       </div>
-      <div class="footer-col">
-        <h4>Quick Links</h4>
-        <ul>
+      <div class="footer-col footer-dropdown" onclick="toggleFooterDropdown(this)">
+        <h4>Quick Links <i class="fas fa-chevron-down" style="font-size:.65rem;transition:transform .2s;margin-left:8px;"></i></h4>
+        <ul class="footer-col-menu">
           <li><a onclick="navigate('/')">Home</a></li>
           <li><a onclick="navigate('/products?category=earrings')">Earrings</a></li>
           <li><a onclick="navigate('/products?category=necklace')">Necklace</a></li>
@@ -328,9 +328,9 @@
           <li><a onclick="navigate('/track')">Track Order</a></li>
         </ul>
       </div>
-      <div class="footer-col">
-        <h4>Customer Care</h4>
-        <ul>
+      <div class="footer-col footer-dropdown" onclick="toggleFooterDropdown(this)">
+        <h4>Customer Care <i class="fas fa-chevron-down" style="font-size:.65rem;transition:transform .2s;margin-left:8px;"></i></h4>
+        <ul class="footer-col-menu">
           <li><a onclick="navigate('/dashboard')">My Account</a></li>
           <li><a onclick="navigate('/cart')">My Cart</a></li>
           <li><a onclick="navigate('/wishlist')">Wishlist</a></li>
@@ -338,16 +338,18 @@
           <li><a href="#">Size Guide</a></li>
         </ul>
       </div>
-      <div class="footer-col" id="contact">
-        <h4>Contact Us</h4>
-        <div class="contact-item"><i class="fas fa-phone"></i> +91 7404217625</div>
-        <div class="contact-item"><i class="fas fa-envelope"></i> lencho.official01@gmail.com</div>
-        <div class="contact-item"><i class="fas fa-map-marker-alt"></i> 197 Sarakpur, Barara, Ambala, Haryana</div>
-        <div class="contact-item"><i class="fas fa-clock"></i> Mon–Sat: 10AM–7PM</div>
-        <div class="trust-badges">
-          <span>🔒 Secure Pay</span>
-          <span>🚚 Free Ship ₹999+</span>
-          <span>↩️ Easy Return</span>
+      <div class="footer-col footer-dropdown" onclick="toggleFooterDropdown(this)" id="contact">
+        <h4>Contact Us <i class="fas fa-chevron-down" style="font-size:.65rem;transition:transform .2s;margin-left:8px;"></i></h4>
+        <div class="footer-col-menu footer-contact-menu">
+          <div class="contact-item"><i class="fas fa-phone"></i> +91 7404217625</div>
+          <div class="contact-item"><i class="fas fa-envelope"></i> lencho.official01@gmail.com</div>
+          <div class="contact-item"><i class="fas fa-map-marker-alt"></i> 197 Sarakpur, Barara, Ambala, Haryana</div>
+          <div class="contact-item"><i class="fas fa-clock"></i> Mon–Sat: 10AM–7PM</div>
+          <div class="trust-badges">
+            <span>🔒 Secure Pay</span>
+            <span>🚚 Free Ship ₹999+</span>
+            <span>↩️ Easy Return</span>
+          </div>
         </div>
       </div>
     </div>

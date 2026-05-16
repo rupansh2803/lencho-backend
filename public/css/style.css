@@ -1331,6 +1331,12 @@ ul {
     margin: .25rem 0 .5rem 1rem;
     border-left: 3px solid var(--rose-light);
     gap: 0;
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    transform: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
   }
 
   .nav-dropdown-menu a {
@@ -3605,6 +3611,24 @@ tr:hover td {
   padding-left: 6px
 }
 
+/* Desktop: Footer dropdowns always open */
+@media (min-width: 769px) {
+  .footer-col-menu {
+    max-height: 100% !important;
+    overflow: visible !important;
+  }
+
+  .footer-col h4 i {
+    display: none !important;
+  }
+}
+
+.footer-contact-menu {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: .6rem !important;
+}
+
 .contact-item {
   display: flex;
   align-items: flex-start;
@@ -4081,7 +4105,33 @@ label[for="captcha"],
   }
 
   .footer-col {
-    text-align: center
+    text-align: center;
+    cursor: pointer;
+  }
+
+  .footer-col h4 {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .footer-dropdown .footer-col-menu {
+    max-height: 500px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+  }
+
+  .footer-dropdown.closed .footer-col-menu {
+    max-height: 0;
+  }
+
+  .footer-dropdown.closed h4 i {
+    transform: rotate(0deg);
+  }
+
+  .footer-dropdown.open h4 i {
+    transform: rotate(180deg);
   }
 
   .footer-col ul li:hover {

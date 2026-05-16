@@ -895,6 +895,37 @@ function toggleNavDropdown(e) {
   }
 }
 
+// ── FOOTER DROPDOWN TOGGLE (Mobile) ────────────────────────
+function toggleFooterDropdown(el) {
+  const isMobile = window.innerWidth <= 768;
+  if (!isMobile) return;
+  
+  const isOpen = el.classList.contains('open');
+  const menu = el.querySelector('.footer-col-menu');
+  const icon = el.querySelector('i');
+  
+  if (isOpen) {
+    el.classList.remove('open');
+    el.classList.add('closed');
+    if (icon) icon.style.transform = 'rotate(0deg)';
+  } else {
+    el.classList.remove('closed');
+    el.classList.add('open');
+    if (icon) icon.style.transform = 'rotate(180deg)';
+  }
+}
+
+// Initialize footer dropdowns as closed on mobile on page load
+document.addEventListener('DOMContentLoaded', () => {
+  if (window.innerWidth <= 768) {
+    document.querySelectorAll('.footer-dropdown').forEach((el, idx) => {
+      el.classList.add('closed');
+      const icon = el.querySelector('i');
+      if (icon) icon.style.transform = 'rotate(0deg)';
+    });
+  }
+});
+
 // ── SEARCH FUNCTIONALITY ──────────────────────────────────
 function toggleSearch() {
   const searchBox = document.getElementById('search-box');
