@@ -900,31 +900,40 @@ function toggleFooterDropdown(el) {
   const isMobile = window.innerWidth <= 768;
   if (!isMobile) return;
   
+  el.stopPropagation?.();
   const isOpen = el.classList.contains('open');
-  const menu = el.querySelector('.footer-col-menu');
-  const icon = el.querySelector('i');
   
   if (isOpen) {
     el.classList.remove('open');
     el.classList.add('closed');
-    if (icon) icon.style.transform = 'rotate(0deg)';
   } else {
     el.classList.remove('closed');
     el.classList.add('open');
-    if (icon) icon.style.transform = 'rotate(180deg)';
   }
 }
 
 // Initialize footer dropdowns as closed on mobile on page load
-document.addEventListener('DOMContentLoaded', () => {
+function initFooterDropdowns() {
   if (window.innerWidth <= 768) {
-    document.querySelectorAll('.footer-dropdown').forEach((el, idx) => {
+    document.querySelectorAll('.footer-dropdown').forEach((el) => {
       el.classList.add('closed');
-      const icon = el.querySelector('i');
-      if (icon) icon.style.transform = 'rotate(0deg)';
+      el.classList.remove('open');
+    });
+  } else {
+    // On desktop, remove closed class and show everything
+    document.querySelectorAll('.footer-dropdown').forEach((el) => {
+      el.classList.remove('closed', 'open');
     });
   }
-});
+}
+
+// Call on load and on resize
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initFooterDropdowns);
+} else {
+  initFooterDropdowns();
+}
+window.addEventListener('resize', initFooterDropdowns);
 
 // ── SEARCH FUNCTIONALITY ──────────────────────────────────
 function toggleSearch() {
@@ -1683,6 +1692,58 @@ async function loadPublicSettings() {
     const wb = document.getElementById('whatsapp-btn');
     if (wb && s.whatsappNumber) wb.href = 'https://wa.me/' + s.whatsappNumber + '?text=Hi%20Lencho%20India!';
   } catch (e) { }
+}
+
+// ── POLICY PAGES ──────────────────────────────────────────────
+async function renderTerms() {
+  const app = document.getElementById('app');
+  try {
+    const s = await api('/api/cms/terms', { timeoutMs: 2000 });
+    const content = s?.content || 'Terms and Conditions content not set in admin panel yet.';
+    app.innerHTML = `
+    <div class="page-wrap" style="max-width:900px;margin:0 auto;">
+      <h1 class="page-title">Terms and Conditions</h1>
+      <div style="background:#fff;padding:2rem;border-radius:12px;color:var(--dark);line-height:1.8;font-size:0.95rem;">
+        ${content.replace(/\n/g, '<br>')}
+      </div>
+    </div>`;
+  } catch (e) {
+    app.innerHTML = `<div class="page-wrap" style="max-width:900px;margin:0 auto;"><h1 class="page-title">Terms and Conditions</h1><div style="background:#fff;padding:2rem;border-radius:12px;color:var(--dark);">Content coming soon...</div></div>`;
+  }
+}
+
+async function renderPrivacy() {
+  const app = document.getElementById('app');
+  try {
+    const s = await api('/api/cms/privacy', { timeoutMs: 2000 });
+    const content = s?.content || 'Privacy Policy content not set in admin panel yet.';
+    app.innerHTML = `
+    <div class="page-wrap" style="max-width:900px;margin:0 auto;">
+      <h1 class="page-title">Privacy Policy</h1>
+      <div style="background:#fff;padding:2rem;border-radius:12px;color:var(--dark);line-height:1.8;font-size:0.95rem;">
+        ${content.replace(/\n/g, '<br>')}
+      </div>
+    </div>`;
+  } catch (e) {
+    app.innerHTML = `<div class="page-wrap" style="max-width:900px;margin:0 auto;"><h1 class="page-title">Privacy Policy</h1><div style="background:#fff;padding:2rem;border-radius:12px;color:var(--dark);">Content coming soon...</div></div>`;
+  }
+}
+
+async function renderDisclaimer() {
+  const app = document.getElementById('app');
+  try {
+    const s = await api('/api/cms/disclaimer', { timeoutMs: 2000 });
+    const content = s?.content || 'Disclaimer content not set in admin panel yet.';
+    app.innerHTML = `
+    <div class="page-wrap" style="max-width:900px;margin:0 auto;">
+      <h1 class="page-title">Disclaimer</h1>
+      <div style="background:#fff;padding:2rem;border-radius:12px;color:var(--dark);line-height:1.8;font-size:0.95rem;">
+        ${content.replace(/\n/g, '<br>')}
+      </div>
+    </div>`;
+  } catch (e) {
+    app.innerHTML = `<div class="page-wrap" style="max-width:900px;margin:0 auto;"><h1 class="page-title">Disclaimer</h1><div style="background:#fff;padding:2rem;border-radius:12px;color:var(--dark);">Content coming soon...</div></div>`;
+  }
 }
 
 // ── SOCIAL SYNC ───────────────────────────────────────────

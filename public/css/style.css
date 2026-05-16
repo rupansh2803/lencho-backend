@@ -1313,6 +1313,27 @@ ul {
   .nav-close {
     display: block;
   }
+
+  /* Product page buttons - responsive */
+  .page-wrap > div:nth-child(2) {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1rem !important;
+    align-items: stretch !important;
+  }
+
+  .page-wrap > div:nth-child(2) > div:first-child {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+    order: 1;
+  }
+
+  .page-wrap > div:nth-child(2) > select {
+    width: 100% !important;
+    margin-left: 0 !important;
+    order: 2;
+  }
 }
 
 /* ── MOBILE NAV DROPDOWN ── */
@@ -3635,7 +3656,7 @@ tr:hover td {
   gap: .65rem;
   font-size: .875rem;
   color: rgba(255, 255, 255, .55);
-  margin-bottom: .75rem;
+  margin-bottom: 0.5rem;
   line-height: 1.5
 }
 
@@ -3771,8 +3792,11 @@ tr:hover td {
 }
 
 #auth-modal .modal-close {
-  top: 18px !important;
-  right: 18px !important;
+  top: 12px !important;
+  right: 12px !important;
+  width: 32px !important;
+  height: 32px !important;
+  font-size: 1.2rem !important;
 }
 
 #auth-modal .modal-logo {
@@ -4107,6 +4131,7 @@ label[for="captcha"],
   .footer-col {
     text-align: center;
     cursor: pointer;
+    width: 100% !important;
   }
 
   .footer-col h4 {
@@ -4114,16 +4139,24 @@ label[for="captcha"],
     align-items: center;
     justify-content: center;
     cursor: pointer;
+    width: 100%;
+  }
+
+  .footer-dropdown {
+    width: 100% !important;
   }
 
   .footer-dropdown .footer-col-menu {
     max-height: 500px;
     overflow: hidden;
-    transition: all 0.3s ease;
+    transition: max-height 0.3s ease;
+    padding: 0.5rem 0;
   }
 
   .footer-dropdown.closed .footer-col-menu {
-    max-height: 0;
+    max-height: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
   }
 
   .footer-dropdown.closed h4 i {
@@ -4132,6 +4165,10 @@ label[for="captcha"],
 
   .footer-dropdown.open h4 i {
     transform: rotate(180deg);
+  }
+
+  .footer-contact-menu {
+    padding: 0.5rem 0 !important;
   }
 
   .footer-col ul li:hover {

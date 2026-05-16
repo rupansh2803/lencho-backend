@@ -3564,6 +3564,68 @@ app.post('/api/admin/settings', requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── CMS PAGE MANAGEMENT ──────────────────────────────────────
+// Get CMS pages
+app.get('/api/cms/:pageType', async (req, res) => {
+  try {
+    const pageType = req.params.pageType.toLowerCase();
+    const allowedPages = ['terms', 'privacy', 'disclaimer'];
+    if (!allowedPages.includes(pageType)) {
+      return res.status(400).json({ error: 'Invalid page type' });
+    }
+
+    if (useDB) {
+      const settings = await Settings.findOne({ key: `cms_${pageType}` });
+      if (settings) {
+        return res.json({ content: settings.value || '' });
+      }
+    } else {
+      const settingsObj = getFallbackSettingsObject();
+      const content = settingsObj[`cms_${pageType}`];
+      if (content) {
+        return res.json({ content });
+      }
+    }
+
+    res.json({ content: '' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Update CMS pages (admin only)
+app.post('/api/admin/cms/:pageType', requireAdmin, async (req, res) => {
+  try {
+    const pageType = req.params.pageType.toLowerCase();
+    const { content } = req.body;
+    const allowedPages = ['terms', 'privacy', 'disclaimer'];
+    
+    if (!allowedPages.includes(pageType)) {
+      return res.status(400).json({ error: 'Invalid page type' });
+    }
+
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({ error: 'Content must be a non-empty string' });
+    }
+
+    if (useDB) {
+      await Settings.findOneAndUpdate(
+        { key: `cms_${pageType}` },
+        { value: content },
+        { upsert: true, new: true }
+      );
+    } else {
+      const settingsObj = getFallbackSettingsObject();
+      settingsObj[`cms_${pageType}`] = content;
+      saveFallbackSettingsObject(settingsObj);
+    }
+
+    res.json({ success: true, message: `${pageType.charAt(0).toUpperCase() + pageType.slice(1)} page updated` });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── PAGE ROUTES ──────────────────────────────────────────────
 const sendIndex = async (req, res) => {
   const host = String(req.headers.host || '').toLowerCase();
@@ -3585,7 +3647,7 @@ app.get('/debug', (req, res) => {
   res.send(`<div style="font-family:sans-serif;padding:2rem;text-align:center;"><h1 style="color:#c9748f;">✦ Lencho V3 Live Debug ✦</h1><p><b>Time:</b> ${new Date().toLocaleString('en-IN')}</p><p><b>Status:</b> Live!</p><button onclick="location.href='/'" style="padding:10px 20px;background:#c9748f;color:#fff;border:none;border-radius:5px;cursor:pointer;">Go to Home</button></div>`);
 });
 
-['products', 'product', 'cart', 'checkout', 'orders', 'track', 'dashboard', 'admin', 'login', 'signup', 'wishlist', 'contact', 'wishlist']
+['products', 'product', 'cart', 'checkout', 'orders', 'track', 'dashboard', 'admin', 'login', 'signup', 'wishlist', 'contact', 'terms', 'privacy', 'disclaimer']
   .forEach(page => { app.get(`/${page}`, sendIndex); app.get(`/${page}/:sub`, sendIndex); });
 
 // Catch-all for React Router - serve index.html for any other routes
