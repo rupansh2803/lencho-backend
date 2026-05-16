@@ -3626,6 +3626,166 @@ app.post('/api/admin/cms/:pageType', requireAdmin, async (req, res) => {
   }
 });
 
+// ─── BACKUP & VISITOR MANAGEMENT ──────────────────────────────
+const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
+if (!fs.existsSync(BACKUPS_DIR)) {
+  fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+}
+
+// Get visitor stats
+app.get('/api/admin/visitor-stats', requireAdmin, (req, res) => {
+  try {
+    const stats = getFallbackVisitorStats();
+    res.json(stats);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Update visitor count (admin only)
+app.put('/api/admin/visitor-count', requireAdmin, (req, res) => {
+  try {
+    const { totalVisitors, storeVisitors } = req.body;
+    const stats = getFallbackVisitorStats();
+    
+    if (totalVisitors !== undefined) stats.totalVisitors = Number(totalVisitors) || 0;
+    if (storeVisitors !== undefined) stats.storeVisitors = Number(storeVisitors) || 0;
+    
+    stats.lastUpdated = new Date().toISOString();
+    saveFallbackVisitorStats(stats);
+    
+    res.json({ success: true, message: 'Visitor count updated', stats });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Create code backup before GitHub push
+app.post('/api/admin/backups', requireAdmin, (req, res) => {
+  try {
+    const { description } = req.body;
+    const backupId = uuidv4();
+    const timestamp = new Date().toISOString();
+    const backupDir = path.join(BACKUPS_DIR, backupId);
+    
+    // Create backup directory
+    fs.mkdirSync(backupDir, { recursive: true });
+    
+    // Backup important files (code + data)
+    const filesToBackup = [
+      { src: 'public/css/style.css', dest: 'style.css' },
+      { src: 'public/js/app.js', dest: 'app.js' },
+      { src: 'server.js', dest: 'server.js' },
+      { src: 'models/index.js', dest: 'models.js' },
+      { src: 'public/index.html', dest: 'index.html' },
+      { src: 'package.json', dest: 'package.json' }
+    ];
+    
+    // Backup data files
+    const dataFiles = ['products.json', 'orders.json', 'users.json', 'carts.json', 'wishlists.json', 'visitor_stats.json'];
+    dataFiles.forEach(file => {
+      filesToBackup.push({ src: `data/${file}`, dest: `data_${file}` });
+    });
+    
+    // Copy files to backup directory
+    let filesBackedUp = 0;
+    filesToBackup.forEach(({ src, dest }) => {
+      const srcPath = path.join(__dirname, src);
+      const destPath = path.join(backupDir, dest);
+      if (fs.existsSync(srcPath)) {
+        fs.copyFileSync(srcPath, destPath);
+        filesBackedUp++;
+      }
+    });
+    
+    // Create backup metadata
+    const metadata = {
+      id: backupId,
+      timestamp,
+      description: description || 'Backup before GitHub push',
+      filesBackedUp,
+      byUser: req.session.user?.email || 'unknown'
+    };
+    
+    fs.writeFileSync(path.join(backupDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
+    
+    // Update backups list
+    const backupsList = getBackupsList();
+    backupsList.unshift(metadata);
+    if (backupsList.length > 50) backupsList.pop(); // Keep last 50 backups
+    fs.writeFileSync(path.join(BACKUPS_DIR, 'backups_list.json'), JSON.stringify(backupsList, null, 2));
+    
+    res.json({ success: true, message: 'Backup created successfully', backup: metadata });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// List all backups
+app.get('/api/admin/backups', requireAdmin, (req, res) => {
+  try {
+    const backupsList = getBackupsList();
+    res.json({ backups: backupsList });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Restore from backup
+app.post('/api/admin/backups/:id/restore', requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    const backupDir = path.join(BACKUPS_DIR, id);
+    
+    if (!fs.existsSync(backupDir)) {
+      return res.status(404).json({ error: 'Backup not found' });
+    }
+    
+    // Restore important files
+    const filesToRestore = [
+      { src: 'style.css', dest: 'public/css/style.css' },
+      { src: 'app.js', dest: 'public/js/app.js' },
+      { src: 'server.js', dest: 'server.js' },
+      { src: 'models.js', dest: 'models/index.js' },
+      { src: 'index.html', dest: 'public/index.html' }
+    ];
+    
+    // Restore data files
+    const dataFiles = ['products.json', 'orders.json', 'users.json', 'carts.json', 'wishlists.json', 'visitor_stats.json'];
+    dataFiles.forEach(file => {
+      filesToRestore.push({ src: `data_${file}`, dest: `data/${file}` });
+    });
+    
+    // Copy files from backup
+    let filesRestored = 0;
+    filesToRestore.forEach(({ src, dest }) => {
+      const srcPath = path.join(backupDir, src);
+      const destPath = path.join(__dirname, dest);
+      if (fs.existsSync(srcPath)) {
+        fs.copyFileSync(srcPath, destPath);
+        filesRestored++;
+      }
+    });
+    
+    res.json({ success: true, message: `Restored ${filesRestored} files from backup`, filesRestored });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Helper function to get backups list
+function getBackupsList() {
+  const listPath = path.join(BACKUPS_DIR, 'backups_list.json');
+  if (fs.existsSync(listPath)) {
+    try {
+      return JSON.parse(fs.readFileSync(listPath, 'utf8'));
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 // ─── PAGE ROUTES ──────────────────────────────────────────────
 const sendIndex = async (req, res) => {
   const host = String(req.headers.host || '').toLowerCase();

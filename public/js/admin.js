@@ -227,6 +227,7 @@ function buildAdminPanel() {
         <div class="admin-menu-item" id="am-delivery-manager" onclick="adminTab('delivery-manager')"><i class="fas fa-truck-fast" style="width:20px;"></i> Delivery Manager</div>
         <div class="admin-menu-item" id="am-site-manager" onclick="adminTab('site-manager')"><i class="fas fa-paint-brush" style="width:20px;"></i> Site Manager</div>
         <div class="admin-menu-item" id="am-settings" onclick="adminTab('settings')"><i class="fas fa-cog" style="width:20px;"></i> Business Settings</div>
+        <div class="admin-menu-item" id="am-backup" onclick="adminTab('backup')"><i class="fas fa-shield-alt" style="width:20px;"></i> Backup & Recovery</div>
         <div class="admin-menu-item" id="am-account" onclick="adminTab('account')"><i class="fas fa-user-shield" style="width:20px;"></i> Account Security</div>
         <div style="border-top:1px solid rgba(0,0,0,.05);margin-top:1rem;padding-top:1rem;">
           <div class="admin-menu-item" onclick="exitAdmin()"><i class="fas fa-home" style="width:20px;"></i> View Site</div>
@@ -294,6 +295,7 @@ function adminTab(tab) {
     if (typeof adminStoreSettings === 'function') adminStoreSettings();
     else adminSettings();
   }
+  if (tab === 'backup') adminBackupRecovery();
   if (tab === 'account') adminSecuritySettings();
 }
 
@@ -1611,3 +1613,194 @@ async function testDeliveryManagerWebhook() {
     box.innerHTML = `<span style="color:#166534;">Test success (HTTP ${r.upstreamStatus})</span><pre style="margin-top:.5rem;background:#111827;color:#e5e7eb;padding:10px;border-radius:8px;overflow:auto;max-height:240px;">${JSON.stringify(r.upstreamData || {}, null, 2)}</pre>`;
   }
 }
+
+// ─── BACKUP & RECOVERY SYSTEM ──────────────────────────────────
+async function adminBackupRecovery() {
+  try {
+    const statsResp = await api('/api/admin/visitor-stats');
+    const backupsResp = await api('/api/admin/backups');
+    const stats = statsResp || { totalVisitors: 0, storeVisitors: 0 };
+    const backups = (backupsResp?.backups || []).slice(0, 20); // Show last 20 backups
+
+    document.getElementById('admin-content').innerHTML = `
+      <div class="admin-header">
+        <h1 class="admin-page-title">
+          <i class="fas fa-shield-alt" style="margin-right:.5rem;"></i> Backup & Recovery System
+        </h1>
+        <button class="btn-primary" onclick="loadBackupRecovery()">
+          <i class="fas fa-sync"></i> Refresh
+        </button>
+      </div>
+
+      <!-- VISITOR COUNT MANAGEMENT -->
+      <div class="admin-form" style="margin-bottom:2rem;">
+        <h3 style="color:var(--rose-dark);margin-bottom:1.5rem;">
+          <i class="fas fa-chart-line"></i> Visitor Count Management
+        </h3>
+        <p style="color:var(--gray);margin-bottom:1rem;font-size:.9rem;">
+          ⚠️ Your current visitor count: <strong style="color:var(--rose);">${stats.totalVisitors?.toLocaleString() || 0}</strong> visitors | 
+          <strong style="color:var(--rose);">${stats.storeVisitors?.toLocaleString() || 0}</strong> store visitors
+        </p>
+        
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Total Website Visitors</label>
+            <input type="number" id="visitor-total" value="${stats.totalVisitors || 0}" placeholder="1000"/>
+          </div>
+          <div class="form-group">
+            <label>Store Visitors Count</label>
+            <input type="number" id="visitor-store" value="${stats.storeVisitors || 0}" placeholder="500"/>
+          </div>
+        </div>
+        <button class="btn-primary" onclick="saveVisitorCount()">
+          <i class="fas fa-save"></i> Save Visitor Count
+        </button>
+      </div>
+
+      <!-- CODE BACKUP SECTION -->
+      <div class="admin-form" style="margin-bottom:2rem;">
+        <h3 style="color:var(--rose-dark);margin-bottom:1.5rem;">
+          <i class="fas fa-database"></i> Create Code Backup
+        </h3>
+        <p style="color:var(--gray);margin-bottom:1rem;font-size:.9rem;">
+          Create a backup of your code before pushing to GitHub. This protects your visitor count and allows you to restore old versions.
+        </p>
+        <div class="form-group">
+          <label>Backup Description (optional)</label>
+          <input type="text" id="backup-desc" placeholder="e.g., Before pushing footer accordion fix to GitHub"/>
+        </div>
+        <button class="btn-primary" onclick="createNewBackup()">
+          <i class="fas fa-cloud-upload-alt"></i> Create Backup Now
+        </button>
+      </div>
+
+      <!-- BACKUPS LIST -->
+      <div class="admin-form">
+        <h3 style="color:var(--rose-dark);margin-bottom:1.5rem;">
+          <i class="fas fa-history"></i> Backup History (Last 20)
+        </h3>
+        ${backups.length === 0 ? `
+          <div style="text-align:center;padding:2rem;color:var(--gray);">
+            <i class="fas fa-inbox" style="font-size:2rem;margin-bottom:.5rem;display:block;opacity:.5;"></i>
+            <p>No backups yet. Create your first backup above.</p>
+          </div>
+        ` : `
+          <div style="overflow-x:auto;">
+            <table style="width:100%;font-size:.85rem;">
+              <thead style="background:rgba(201,106,138,.1);border-bottom:2px solid rgba(201,106,138,.3);">
+                <tr>
+                  <th style="padding:1rem;text-align:left;font-weight:700;">Description</th>
+                  <th style="padding:1rem;text-align:left;font-weight:700;">Files</th>
+                  <th style="padding:1rem;text-align:left;font-weight:700;">Date & Time</th>
+                  <th style="padding:1rem;text-align:left;font-weight:700;">By</th>
+                  <th style="padding:1rem;text-align:center;font-weight:700;">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${backups.map((b, i) => {
+                  const date = new Date(b.timestamp);
+                  const formattedDate = date.toLocaleDateString('en-IN') + ' ' + date.toLocaleTimeString('en-IN');
+                  return `
+                    <tr style="border-bottom:1px solid rgba(0,0,0,.05);${i % 2 === 0 ? 'background:rgba(0,0,0,.015);' : ''}">
+                      <td style="padding:1rem;"><strong>${b.description || 'Auto Backup'}</strong></td>
+                      <td style="padding:1rem;">${b.filesBackedUp || 0} files</td>
+                      <td style="padding:1rem;">${formattedDate}</td>
+                      <td style="padding:1rem;font-size:.8rem;color:var(--gray);">${b.byUser || '-'}</td>
+                      <td style="padding:1rem;text-align:center;">
+                        <button class="btn-outline" style="padding:.5rem 1rem;font-size:.8rem;" onclick="restoreBackup('${b.id}')">
+                          <i class="fas fa-undo"></i> Restore
+                        </button>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+
+      <div style="margin-top:2rem;padding:1.5rem;background:rgba(201,149,76,.08);border-radius:12px;border-left:4px solid var(--gold);color:var(--dark);font-size:.85rem;">
+        <p><strong>📌 How to use Backup & Recovery:</strong></p>
+        <ol style="margin:0.5rem 0 0 1.5rem;padding:0;">
+          <li style="margin:.3rem 0;">Update your visitor count if it resets</li>
+          <li style="margin:.3rem 0;">Create a backup with description before pushing code to GitHub</li>
+          <li style="margin:.3rem 0;">If something breaks, restore from any previous backup</li>
+          <li style="margin:.3rem 0;">Backups include code + data files (max 50 kept)</li>
+        </ol>
+      </div>
+    `;
+  } catch (err) {
+    document.getElementById('admin-content').innerHTML = `
+      <div style="padding:2rem;text-align:center;color:#991b1b;">
+        <i class="fas fa-exclamation-circle" style="font-size:2rem;margin-bottom:.5rem;display:block;"></i>
+        <p>Error loading backup system: ${err.message}</p>
+        <button class="btn-outline" onclick="adminTab('backup')">Try Again</button>
+      </div>
+    `;
+  }
+}
+
+async function saveVisitorCount() {
+  const total = Number(document.getElementById('visitor-total').value) || 0;
+  const store = Number(document.getElementById('visitor-store').value) || 0;
+
+  const r = await api('/api/admin/visitor-count', {
+    method: 'PUT',
+    body: { totalVisitors: total, storeVisitors: store }
+  });
+
+  if (r.success) {
+    toast(`✓ Visitor count updated! Total: ${total.toLocaleString()} | Store: ${store.toLocaleString()}`, 'success');
+    loadAdminVisitorCounter();
+  } else {
+    toast('Error updating visitor count: ' + (r.error || 'Unknown'), 'error');
+  }
+}
+
+async function createNewBackup() {
+  const desc = (document.getElementById('backup-desc')?.value || '').trim();
+  const btn = event.target;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner" style="animation:spin 1s linear infinite;"></i> Creating...';
+
+  const r = await api('/api/admin/backups', {
+    method: 'POST',
+    body: { description: desc || 'Manual Backup' }
+  });
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Create Backup Now';
+
+  if (r.success) {
+    toast('✓ Backup created with ' + r.backup.filesBackedUp + ' files!', 'success');
+    setTimeout(() => loadBackupRecovery(), 500);
+  } else {
+    toast('Error creating backup: ' + (r.error || 'Unknown'), 'error');
+  }
+}
+
+async function restoreBackup(backupId) {
+  if (!confirm('⚠️ This will restore your code and data from this backup. Continue?')) return;
+
+  const btn = event.target.closest('button');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner" style="animation:spin 1s linear infinite;"></i> Restoring...';
+
+  const r = await api(`/api/admin/backups/${backupId}/restore`, { method: 'POST' });
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-undo"></i> Restore';
+
+  if (r.success) {
+    toast(`✓ Restored ${r.filesRestored} files! Page will reload...`, 'success');
+    setTimeout(() => location.reload(), 1500);
+  } else {
+    toast('Error restoring backup: ' + (r.error || 'Unknown'), 'error');
+  }
+}
+
+function loadBackupRecovery() {
+  adminTab('backup');
+}
+
