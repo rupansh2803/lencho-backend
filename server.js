@@ -2101,13 +2101,14 @@ app.post('/api/otp/send-email', async (req, res) => {
     }
     try {
       const sendResult = await sendConfiguredEmailOTP(cleanEmail, otp, 'email_login');
-      console.log(`[auth] OTP email sent to ${cleanEmail} | messageId=${sendResult.messageId || 'n/a'}`);
+      console.log(`[auth] OTP email sent to ${cleanEmail} | messageId=${sendResult.messageId || 'n/a'} | OTP=${otp}`);
       return res.json({
         success: true,
         message: 'OTP sent! Check your inbox.',
         expiresIn: Math.floor(EMAIL_OTP_EXPIRY_MS / 1000),
         provider: 'gmail',
-        verifiedTransport: true
+        verifiedTransport: true,
+        debugOTP: process.env.NODE_ENV === 'development' ? otp : undefined
       });
     } catch (smtpErr) {
       console.error('[auth] OTP email send failed:', smtpErr.message);

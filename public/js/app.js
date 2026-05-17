@@ -549,11 +549,17 @@ async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '') {
     return;
   }
 
+  // Validate captcha answer before sending
+  if (!captchaAnswer || !captchaAnswer.trim()) {
+    err.textContent = 'Please enter the security code';
+    return;
+  }
+
   authOtpRequestInFlight = true;
   
   if (btn) { btn.disabled = true; btn.textContent = 'Sending OTP... ✦'; }
   
-  const resp = await api('/api/otp/send-email', { method: 'POST', body: { email, captchaAnswer }, timeoutMs: 30000 });
+  const resp = await api('/api/otp/send-email', { method: 'POST', body: { email: email.trim().toLowerCase(), captchaAnswer: captchaAnswer.trim() }, timeoutMs: 30000 });
   
   authOtpRequestInFlight = false;
   if (btn) { btn.disabled = false; btn.textContent = currentFormId === 'auth-login-form' ? 'Sign In' : 'Send OTP ✦'; }
