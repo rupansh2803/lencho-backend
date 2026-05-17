@@ -37,43 +37,50 @@ const CLOUDINARY_API_SECRET = String(process.env.CLOUDINARY_API_SECRET || '').tr
 const DEFAULT_EMAIL_FROM_NAME = 'Lencho';
 const DEFAULT_OTP_SUBJECT = 'Lencho OTP Code';
 const DEFAULT_OTP_BODY = `
-<div style="margin:0;padding:0;background:#f5f6fa;">
-  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f5f6fa;padding:24px 10px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px;background:#ffffff;border:1px solid #ececec;border-radius:14px;overflow:hidden;">
-          <tr>
-            <td style="background:linear-gradient(135deg,#c96a8a,#9b4065);padding:20px 24px;color:#ffffff;font-family:Arial,sans-serif;font-size:24px;font-weight:700;">
-              Lencho
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:26px 24px 12px;font-family:Arial,sans-serif;color:#222;">
-              <h2 style="margin:0 0 10px;font-size:28px;line-height:1.2;">Verify your account</h2>
-              <p style="margin:0;font-size:16px;line-height:1.6;color:#4a4a4a;">Use this 6-digit OTP to continue your signup or login.</p>
-            </td>
-          </tr>
-          <tr>
-            <td align="center" style="padding:10px 24px 6px;">
-              <div style="display:inline-block;background:#111827;color:#ffffff;font-family:Arial,sans-serif;font-size:34px;font-weight:700;letter-spacing:10px;padding:14px 26px;border-radius:12px;">{{otp}}</div>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:12px 24px 10px;font-family:Arial,sans-serif;color:#4a4a4a;">
-              <p style="margin:0 0 8px;font-size:15px;line-height:1.6;">This code is valid for <b>10 minutes</b>.</p>
-              <p style="margin:0;font-size:15px;line-height:1.6;">If you did not request this OTP, you can safely ignore this email.</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:16px 24px 22px;border-top:1px solid #efefef;font-family:Arial,sans-serif;color:#888;font-size:13px;line-height:1.5;">
-              © ${new Date().getFullYear()} Lencho. All rights reserved.
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</div>`;
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Lencho OTP Verification</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:30px 0;">
+<tr>
+<td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 4px 15px rgba(0,0,0,0.1);">
+<!-- TOP HEADER WITH LOGO -->
+<tr>
+<td style="background:linear-gradient(135deg,#ff4d6d,#ff758c);padding:35px;text-align:center;">
+<img src="https://cdn-icons-png.flaticon.com/512/1055/1055687.png" width="80" style="display:block;margin:auto;">
+<h1 style="color:white;margin-top:15px;font-size:32px;font-weight:700;font-family:Arial,sans-serif;">LENCHO</h1>
+<p style="color:white;font-size:16px;margin-top:5px;font-family:Arial,sans-serif;">Secure OTP Verification</p>
+</td>
+</tr>
+<!-- BODY -->
+<tr>
+<td style="padding:40px 35px;text-align:center;">
+<h2 style="color:#222;font-size:28px;margin-bottom:10px;font-family:Arial,sans-serif;">Hello 👋</h2>
+<p style="font-size:17px;color:#555;line-height:28px;font-family:Arial,sans-serif;">Use the OTP below to verify your account securely.</p>
+<!-- OTP BOX -->
+<div style="margin:35px auto;background:#fff0f3;border:2px dashed #ff4d6d;border-radius:15px;padding:25px;width:260px;">
+<p style="margin:0;color:#888;font-size:15px;font-family:Arial,sans-serif;">Your Verification Code</p>
+<h1 style="margin:12px 0 0 0;font-size:42px;letter-spacing:10px;color:#ff4d6d;font-weight:bold;font-family:Arial,sans-serif;">{{otp}}</h1>
+</div>
+<p style="font-size:15px;color:#666;line-height:26px;font-family:Arial,sans-serif;">This code is valid for <b>10 minutes</b> only.<br>Please do not share this code with anyone.</p>
+</td>
+</tr>
+<!-- FOOTER -->
+<tr>
+<td style="background:#fafafa;padding:25px;text-align:center;">
+<p style="margin:0;color:#888;font-size:14px;font-family:Arial,sans-serif;">© 2026 Lencho. All Rights Reserved.</p>
+<p style="margin-top:8px;color:#aaa;font-size:12px;font-family:Arial,sans-serif;">Made with ❤️ by Lencho Team</p>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>`;
 
 function sanitizeFromName(name) {
   return String(name || '').replace(/["<>\r\n]/g, '').trim();
@@ -1537,6 +1544,75 @@ app.post('/api/admin/settings', requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ──── TEST SMTP ENDPOINT ──────────────────────────────────────
+app.post('/api/admin/test-smtp', requireAdmin, async (req, res) => {
+  try {
+    const { testEmail } = req.body || {};
+    if (!testEmail) return res.status(400).json({ error: 'Test email address required' });
+
+    console.log('[SMTP TEST] Starting SMTP test...');
+    
+    const smtpConfig = getSmtpConfigFromSettings({
+      smtpHost: await getMeaningfulSetting('smtpHost', 'smtp.gmail.com'),
+      smtpPort: await getMeaningfulSetting('smtpPort', 465),
+      smtpUser: await getMeaningfulSetting('smtpUser', DEFAULT_SMTP_USER),
+      smtpPass: await getMeaningfulSetting('smtpPass', DEFAULT_SMTP_PASS),
+      storeName: await getMeaningfulSetting('storeName', DEFAULT_EMAIL_FROM_NAME),
+    });
+
+    console.log('[SMTP TEST] Config loaded:', {
+      host: smtpConfig.host,
+      port: smtpConfig.port,
+      user: smtpConfig.user ? '***' : 'EMPTY',
+      pass: smtpConfig.pass ? '***' : 'EMPTY'
+    });
+
+    if (isPlaceholderSMTP(smtpConfig.user) || isPlaceholderSMTP(smtpConfig.pass)) {
+      return res.status(400).json({
+        success: false,
+        error: 'SMTP credentials not configured',
+        message: 'Please set SMTP User (Gmail) and SMTP Pass (App Password) in Admin Settings'
+      });
+    }
+
+    // Try to create and verify transporter
+    const transporter = nodemailer.createTransport({
+      host: smtpConfig.host,
+      port: Number(smtpConfig.port) || 465,
+      secure: Number(smtpConfig.port) === 465,
+      auth: { user: smtpConfig.user, pass: smtpConfig.pass },
+      connectionTimeout: 10000,
+      socketTimeout: 10000,
+    });
+
+    console.log('[SMTP TEST] Verifying connection...');
+    await transporter.verify();
+
+    console.log('[SMTP TEST] Sending test email...');
+    const result = await transporter.sendMail({
+      from: `"${smtpConfig.storeName}" <${smtpConfig.user}>`,
+      to: testEmail,
+      subject: 'Lencho SMTP Test ✅',
+      html: `<h2>SMTP Configuration Working!</h2><p>Your SMTP settings are configured correctly. OTP emails should now be sent successfully.</p><p>Store: ${smtpConfig.storeName}</p><p>Sent from: ${smtpConfig.user}</p>`
+    });
+
+    console.log('[SMTP TEST] Success! MessageID:', result.messageId);
+    res.json({
+      success: true,
+      message: 'SMTP test email sent successfully!',
+      messageId: result.messageId,
+      config: { host: smtpConfig.host, port: smtpConfig.port, from: smtpConfig.user }
+    });
+  } catch (e) {
+    console.error('[SMTP TEST] Error:', e.message);
+    res.status(500).json({
+      success: false,
+      error: toFriendlySmtpError(e),
+      details: process.env.NODE_ENV === 'development' ? e.message : undefined
+    });
+  }
+});
+
 // ──── AUTH SETTINGS ROUTES ────────────────────────────────────
 const authSettingsRoutes = require('./routes/auth-settings');
 app.use('/api/auth-settings', authSettingsRoutes);
@@ -2034,10 +2110,13 @@ app.post('/api/otp/send-email', async (req, res) => {
         verifiedTransport: true
       });
     } catch (smtpErr) {
-      console.error('[auth] OTP email send failed:', smtpErr);
+      console.error('[auth] OTP email send failed:', smtpErr.message);
+      const errorMsg = toFriendlySmtpError(smtpErr);
+      console.error('[auth] Friendly error:', errorMsg);
       return res.status(500).json({
-        error: toFriendlySmtpError(smtpErr),
-        debug: process.env.NODE_ENV === 'development' ? String(smtpErr?.message || smtpErr) : undefined
+        error: errorMsg,
+        debug: process.env.NODE_ENV === 'development' ? String(smtpErr?.message || smtpErr) : undefined,
+        tip: 'If SMTP is not configured, configure it in Admin > Settings > SMTP Configuration, then test with /api/admin/test-smtp'
       });
     }
   } catch (e) { res.status(500).json({ error: toFriendlySmtpError(e) }); }
