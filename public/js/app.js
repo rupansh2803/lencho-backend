@@ -14,6 +14,8 @@ const API_CACHE_TTL_MS = 2 * 60 * 1000;
 const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 const SETTINGS_CACHE_KEY = 'lencho_public_settings_cache_v1';
+const JWT_TOKEN_KEY = 'lencho_jwt_token_v1';
+const JWT_USER_KEY = 'lencho_current_user_v1';
 const MEDIA_FALLBACKS = {
   earrings: '/images/earrings.png',
   necklace: '/images/necklace.png',
@@ -340,8 +342,15 @@ async function api(url, opts = {}) {
       if (hit && (Date.now() - hit.ts) < API_CACHE_TTL_MS) return hit.data;
     }
 
+    // Build headers with JWT token if available
+    const headers = { 'Content-Type': 'application/json' };
+    const token = getJWTToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const res = await fetch(url, { 
-      headers: { 'Content-Type': 'application/json' }, 
+      headers,
       credentials: 'include',
       signal: controller.signal,
       ...opts, 
@@ -354,6 +363,12 @@ async function api(url, opts = {}) {
       let errData;
       try { errData = JSON.parse(text); } catch(e) {}
       console.error(`API Error [${res.status}]:`, text);
+      
+      // If unauthorized, clear stored token
+      if (res.status === 401) {
+        clearAuth();
+      }
+      
       return { error: (errData && errData.error) || `Server Error: ${res.status}` };
     }
     
@@ -373,6 +388,58 @@ async function api(url, opts = {}) {
   }
 }
 // ── TOAST ─────────────────────────────────────────────────
+
+// ── JWT TOKEN MANAGEMENT ──────────────────────────────────
+function getJWTToken() {
+  try {
+    return localStorage.getItem(JWT_TOKEN_KEY) || null;
+  } catch(e) {
+    console.error('Error retrieving JWT token:', e);
+    return null;
+  }
+}
+
+function setJWTToken(token) {
+  try {
+    if (token) {
+      localStorage.setItem(JWT_TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(JWT_TOKEN_KEY);
+    }
+  } catch(e) {
+    console.error('Error storing JWT token:', e);
+  }
+}
+
+function saveCurrentUser(user) {
+  try {
+    if (user) {
+      localStorage.setItem(JWT_USER_KEY, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(JWT_USER_KEY);
+    }
+  } catch(e) {
+    console.error('Error storing user data:', e);
+  }
+}
+
+function getSavedUser() {
+  try {
+    const data = localStorage.getItem(JWT_USER_KEY);
+    return data ? JSON.parse(data) : null;
+  } catch(e) {
+    console.error('Error retrieving saved user:', e);
+    return null;
+  }
+}
+
+function clearAuth() {
+  setJWTToken(null);
+  saveCurrentUser(null);
+  currentUser = null;
+}
+
+// ── TOAST ─────────────────────────────────────────────────
 function toast(msg, type = 'info', dur = 3000) {
   const icons = { success: '✓', error: '✕', info: '✦', cart: '🛍️' };
   const t = document.createElement('div');
@@ -385,8 +452,37 @@ function toast(msg, type = 'info', dur = 3000) {
 // ── AUTH ──────────────────────────────────────────────────
 async function loadUser() {
   const r = await api('/api/me');
-  currentUser = r.user;
-  updateHeader();
+  if (r.user) {
+    currentUser = r.user;
+    updateHeader();
+  }
+}
+
+// Auto-login with saved JWT token on page load
+async function autoLoginWithToken() {
+  const token = getJWTToken();
+  const savedUser = getSavedUser();
+  
+  if (!token || !savedUser) {
+    currentUser = null;
+    return;
+  }
+  
+  try {
+    // Try to validate token and restore session
+    const r = await api('/api/me');
+    if (r.user) {
+      currentUser = r.user;
+      saveCurrentUser(r.user);
+      return;
+    } else {
+      // Token is invalid, clear auth
+      clearAuth();
+    }
+  } catch(e) {
+    console.error('Auto-login failed:', e);
+    currentUser = savedUser; // Use saved user as fallback
+  }
 }
 
 function updateHeader() {
@@ -661,7 +757,13 @@ async function verifyEmailOTP() {
   
   if (finalResp.error) { err.textContent = finalResp.error; return; }
   
+  // Save JWT token and user data
+  if (finalResp.token) {
+    setJWTToken(finalResp.token);
+  }
+  
   currentUser = finalResp.user;
+  saveCurrentUser(currentUser);
   updateHeader();
   closeAuthModal();
   toast(`Welcome ${currentUser.name}! ✦`, 'success');
@@ -710,7 +812,13 @@ async function completeSignupAfterOTP() {
   const finalResp = await api('/api/signup', { method: 'POST', body: payload });
   if (finalResp.error) { err.textContent = finalResp.error; return; }
 
+  // Save JWT token and user data
+  if (finalResp.token) {
+    setJWTToken(finalResp.token);
+  }
+  
   currentUser = finalResp.user;
+  saveCurrentUser(currentUser);
   updateHeader();
   closeAuthModal();
   toast(`Welcome ${currentUser.name}! ✦`, 'success');
@@ -751,7 +859,7 @@ function toggleSpec(el) {
 
 async function handleLogout() {
   await api('/api/logout', { method: 'POST' });
-  currentUser = null;
+  clearAuth();
   updateHeader();
   cartCount = 0;
   document.getElementById('cart-count').textContent = '0';
@@ -1775,8 +1883,8 @@ async function bootstrapApp() {
     // ✨ PARALLEL INITIALIZATION: Run non-blocking tasks together
     const initPromises = [];
     
-    // Critical path: Load user + init header (fast)
-    initPromises.push(loadUser().catch(e => console.error('loadUser error:', e)));
+    // Critical path: Auto-login with saved JWT + init header (fast)
+    initPromises.push(autoLoginWithToken().catch(e => console.error('autoLoginWithToken error:', e)));
     
     // Non-critical async tasks (run in background, don't block rendering)
     initPromises.push(updateCartCount().catch(e => console.error('updateCartCount error:', e)));
@@ -1980,9 +2088,18 @@ async function completeGoogleLogin(profile, btn) {
     return;
   }
   
+  // Save JWT token and user data
+  if (result.token) {
+    setJWTToken(result.token);
+  }
+  
   currentUser = result.user;
+  saveCurrentUser(currentUser);
   const sessionUser = await api('/api/me');
-  if (sessionUser && sessionUser.user) currentUser = sessionUser.user;
+  if (sessionUser && sessionUser.user) {
+    currentUser = sessionUser.user;
+    saveCurrentUser(currentUser);
+  }
   googleAuthInFlight = false;
   updateHeader();
   closeAuthModal();

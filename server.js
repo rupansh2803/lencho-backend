@@ -1012,7 +1012,30 @@ function seedProductsJSON() {
 
 // ─── MIDDLEWARE ────────────────────────────────────────────────
 app.use(compression({ level: 6, threshold: 512 }));  // Compress aggressively
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://checkout.razorpay.com", "https://accounts.google.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https://checkout.razorpay.com", "https://www.googleapis.com"],
+      frameSrc: ["https://checkout.razorpay.com"]
+    }
+  },
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: true,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  strictTransportSecurity: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  permissionsPolicy: {
+    geolocation: [],
+    microphone: [],
+    camera: [],
+    payment: ['*']
+  }
+}));
 app.use(morgan('tiny'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -3596,15 +3619,17 @@ app.post('/api/auth/google', async (req, res) => {
       }
     }
     
-    req.session.userId = user._id?.toString() || user.id;
+    const userId = user._id?.toString() || user.id;
+    req.session.userId = userId;
     req.session.role = user.role || 'user';
     const userName = user.name || name || email.split('@')[0] || 'User';
     await recordLoginActivity({ email, name: userName, status: 'success', method: 'google', role: user.role || 'user', ip, userAgent });
     
     res.json({ 
-      success: true, 
+      success: true,
+      token: generateToken(userId, user.role || 'user'),
       user: { 
-        id: user._id?.toString() || user.id, 
+        id: userId, 
         name: user.name, 
         email: user.email, 
         role: user.role || 'user', 
