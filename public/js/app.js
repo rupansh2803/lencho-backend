@@ -1093,24 +1093,8 @@ function displaySearchResults(products, query) {
   const resultsDiv = document.getElementById('search-results');
   if (!resultsDiv) return;
 
-  if (!products || products.length === 0) {
-    resultsDiv.innerHTML = `<div style="padding:1rem;text-align:center;color:var(--gray);">No products found for "${query}"</div>`;
-    resultsDiv.style.display = 'block';
-    return;
-  }
-
-  const html = products.slice(0, 5).map(p => `
-    <div onclick="navigate('/product/${p._id || p.id}'); toggleSearch();" style="padding:0.75rem 1rem;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.2s;display:flex;align-items:center;gap:0.75rem;" onmouseover="this.style.background='var(--light-gray)'" onmouseout="this.style.background='transparent'">
-      <img src="${safeImageUrl(p.images?.[0], p.category)}" alt="${p.name}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;"/>
-      <div style="flex:1;">
-        <div style="font-weight:600;font-size:0.85rem;color:var(--dark);">${p.name}</div>
-        <div style="font-size:0.75rem;color:var(--gray);">₹${p.price}</div>
-      </div>
-    </div>
-  `).join('');
-
-  resultsDiv.innerHTML = html;
-  resultsDiv.style.display = 'block';
+  // Hide search results dropdown - don't show cards
+  resultsDiv.style.display = 'none';
 }
 
 // Setup search listeners

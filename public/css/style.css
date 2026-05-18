@@ -1212,6 +1212,7 @@ ul {
 #search-results {
   max-width: 280px;
   border: 1px solid var(--border);
+  display: none !important;
 }
 
 .mobile-search {
