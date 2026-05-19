@@ -706,7 +706,7 @@ async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '') {
   
   if (btn) { btn.disabled = true; btn.textContent = 'Sending OTP... ✦'; }
   
-  const resp = await api('/api/otp/send-email', { method: 'POST', body: { email: email.trim().toLowerCase(), captchaAnswer: captchaAnswer.trim() }, timeoutMs: 30000 });
+  const resp = await api('/api/otp/send-email', { method: 'POST', body: { email: email.trim().toLowerCase(), captchaAnswer: captchaAnswer.trim() }, timeoutMs: 60000 });
   
   authOtpRequestInFlight = false;
   if (btn) { btn.disabled = false; btn.textContent = currentFormId === 'auth-login-form' ? 'Sign In' : 'Send OTP ✦'; }

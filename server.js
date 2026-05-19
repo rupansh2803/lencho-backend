@@ -1016,13 +1016,13 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://checkout.razorpay.com", "https://accounts.google.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://checkout.razorpay.com", "https://accounts.google.com", "https://accounts.google.com/gsi/client"],
       scriptSrcAttr: ["'unsafe-inline'"],  // Allow inline event handlers (onclick, onmouseover, etc)
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https://checkout.razorpay.com", "https://www.googleapis.com"],
-      frameSrc: ["https://checkout.razorpay.com"]
+      connectSrc: ["'self'", "https://checkout.razorpay.com", "https://www.googleapis.com", "https://accounts.google.com"],
+      frameSrc: ["https://checkout.razorpay.com", "https://accounts.google.com"]
     }
   },
   crossOriginEmbedderPolicy: false,
