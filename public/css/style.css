@@ -825,15 +825,29 @@ ul {
 
 .popup-close {
   position: absolute;
-  top: 16px;
-  right: 20px;
-  font-size: 1.6rem;
+  top: 12px;
+  right: 12px;
+  font-size: 2rem;
   color: var(--gray);
-  transition: var(--transition)
+  transition: var(--transition);
+  background: rgba(255, 255, 255, 0.8);
+  border: none;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+  padding: 0;
+  line-height: 1;
 }
 
 .popup-close:hover {
-  color: var(--rose)
+  background: rgba(255, 255, 255, 1);
+  color: var(--rose);
+  transform: scale(1.1);
 }
 
 .popup-badge {
@@ -1249,12 +1263,18 @@ ul {
 
 .search-box input {
   transition: all 0.3s;
+  color: white;
+}
+
+.search-box input::placeholder {
+  color: #888;
 }
 
 .search-box input:focus {
-  width: 240px !important;
+  width: 250px !important;
   border-color: var(--rose) !important;
-  box-shadow: 0 0 0 3px rgba(201, 106, 138, 0.1) !important;
+  box-shadow: 0 0 0 3px rgba(201, 106, 138, 0.2) !important;
+  background: #0a0a0a !important;
 }
 
 #search-results {

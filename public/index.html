@@ -134,7 +134,7 @@
   <!-- Discount Popup -->
   <div id="discount-popup" class="popup-overlay" style="display:none">
     <div class="popup-card">
-      <button class="popup-close" onclick="closePopup()">&times;</button>
+      <button class="popup-close" id="popup-close-btn">&times;</button>
       <div class="popup-badge">💎 EXCLUSIVE OFFER</div>
       <h2 class="popup-title">Get <span class="gold-text">10% OFF</span><br/>on Your First Order!</h2>
       <p class="popup-sub">Enter your email to claim your special discount code</p>
@@ -286,7 +286,7 @@
       <div class="header-actions">
         <!-- Desktop Search -->
         <div class="search-box" id="search-box" style="display:none;margin:0 0.5rem;">
-          <input type="text" id="header-search-input" placeholder="Search..." style="padding:0.5rem 1rem;border:1.5px solid var(--border);border-radius:99px;background:rgba(255,255,255,0.6);font-size:0.85rem;width:180px;transition:all 0.3s;"/>
+          <input type="text" id="header-search-input" placeholder="Search..." style="padding:0.75rem 1rem;border:2px solid var(--dark);border-radius:8px;background:#1a1a1a;color:#fff;font-size:0.9rem;width:200px;transition:all 0.3s;"/>
           <div id="search-results" style="position:absolute;top:100%;left:0;right:0;background:white;border-radius:12px;box-shadow:var(--shadow-md);max-height:300px;overflow-y:auto;z-index:100;margin-top:0.5rem;display:none;"></div>
         </div>
         <button class="icon-btn" onclick="toggleSearch()" title="Search" id="header-search-btn"><i class="fas fa-search"></i><span style="font-size:1.2rem;font-weight:bold;">🔍</span></button>

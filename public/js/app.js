@@ -1127,6 +1127,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (resultsDiv) resultsDiv.style.display = 'none';
     }
   });
+
+  // Popup close button handler
+  const popupCloseBtn = document.getElementById('popup-close-btn');
+  if (popupCloseBtn) {
+    popupCloseBtn.addEventListener('click', closePopup);
+  }
 });
 
 // Close mobile dropdown when clicking outside
