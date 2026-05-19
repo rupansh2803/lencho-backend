@@ -80,6 +80,12 @@ document.addEventListener('click', (e) => {
     resendEmailOTP();
     return;
   }
+  
+  // Create Account button
+  if (e.target.closest('[onclick*="completeSignupAfterOTP"]')) {
+    completeSignupAfterOTP();
+    return;
+  }
 });
 
 function readCachedPublicSettings() {
@@ -798,6 +804,9 @@ async function verifyEmailOTP() {
   
   const resp = await api('/api/otp/verify-email', { method: 'POST', body: { email, otp } });
   if (resp.error) { err.textContent = resp.error; return; }
+
+  // Clear error on success
+  err.textContent = '';
 
   const p = window.pendingAuth;
   if (p.type === 'signup') {
