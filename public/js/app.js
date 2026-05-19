@@ -31,6 +31,13 @@ const MEDIA_FALLBACKS = {
 };
 let currentPageContext = { route: '/', category: '', product: null };
 
+// Global event delegation for popup close button (works even with CSP blocking inline handlers)
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.popup-close')) {
+    closePopup();
+  }
+});
+
 function readCachedPublicSettings() {
   if (cachedPublicSettings && typeof cachedPublicSettings === 'object') return cachedPublicSettings;
   try {
@@ -1127,12 +1134,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (resultsDiv) resultsDiv.style.display = 'none';
     }
   });
-
-  // Popup close button handler
-  const popupCloseBtn = document.getElementById('popup-close-btn');
-  if (popupCloseBtn) {
-    popupCloseBtn.addEventListener('click', closePopup);
-  }
 });
 
 // Close mobile dropdown when clicking outside
