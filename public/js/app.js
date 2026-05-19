@@ -31,10 +31,54 @@ const MEDIA_FALLBACKS = {
 };
 let currentPageContext = { route: '/', category: '', product: null };
 
-// Global event delegation for popup close button (works even with CSP blocking inline handlers)
+// Global event delegation for all critical buttons (works even with CSP blocking inline handlers)
 document.addEventListener('click', (e) => {
+  // Popup close button
   if (e.target.closest('.popup-close')) {
     closePopup();
+    return;
+  }
+  
+  // Header search button
+  if (e.target.closest('#header-search-btn')) {
+    toggleSearch();
+    return;
+  }
+  
+  // Modal close button
+  if (e.target.closest('.modal-close')) {
+    closeAuthModal();
+    return;
+  }
+  
+  // Claim discount button
+  if (e.target.closest('[onclick*="claimDiscount"]')) {
+    claimDiscount();
+    return;
+  }
+  
+  // Login button
+  if (e.target.closest('#login-btn')) {
+    handleLogin();
+    return;
+  }
+  
+  // Signup button
+  if (e.target.closest('#signup-btn')) {
+    handleSignup();
+    return;
+  }
+  
+  // OTP verify button
+  if (e.target.closest('#verify-otp-btn')) {
+    verifyEmailOTP();
+    return;
+  }
+  
+  // Resend OTP
+  if (e.target.closest('#resend-otp-btn')) {
+    resendEmailOTP();
+    return;
   }
 });
 
