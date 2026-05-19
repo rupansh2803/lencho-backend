@@ -1209,6 +1209,18 @@ async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
       smtpPass: await getMeaningfulSetting('smtpPass', DEFAULT_SMTP_PASS),
       storeName: await getMeaningfulSetting('storeName', DEFAULT_EMAIL_FROM_NAME),
     });
+
+    // Check if SMTP is properly configured
+    if (!smtpConfig.user || !smtpConfig.pass) {
+      console.warn(`⚠️  SMTP credentials not configured. OTP: ${otp}`);
+      // In development, allow OTP requests to succeed with visible OTP
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`\n📧 DEV MODE: OTP for ${targetEmail}: ${otp}\n`);
+        return { sent: true, via: 'dev-console', messageId: 'dev-' + Date.now(), devOtp: otp };
+      }
+      throw new Error('SMTP credentials not configured. Please set SMTP_USER and SMTP_PASS in environment.');
+    }
+
     const transporter = await getVerifiedSmtpTransporter(smtpConfig);
 
     const result = await sendEmailWithRetry(transporter, {
@@ -2128,11 +2140,12 @@ app.post('/api/otp/send-email', async (req, res) => {
       console.log(`[auth] OTP email sent to ${cleanEmail} | messageId=${sendResult.messageId || 'n/a'} | OTP=${otp}`);
       return res.json({
         success: true,
-        message: 'OTP sent! Check your inbox.',
+        message: sendResult.via === 'dev-console' ? `DEV MODE: OTP is ${otp}` : 'OTP sent! Check your inbox.',
         expiresIn: Math.floor(EMAIL_OTP_EXPIRY_MS / 1000),
-        provider: 'gmail',
+        provider: sendResult.via || 'gmail',
         verifiedTransport: true,
-        debugOTP: process.env.NODE_ENV === 'development' ? otp : undefined
+        debugOTP: process.env.NODE_ENV === 'development' ? otp : undefined,
+        devOtp: sendResult.devOtp
       });
     } catch (smtpErr) {
       console.error('[auth] OTP email send failed:', smtpErr.message);

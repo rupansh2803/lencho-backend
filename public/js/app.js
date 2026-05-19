@@ -752,6 +752,14 @@ async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '') {
   document.getElementById('otp-title').textContent = 'Verify Email';
   document.getElementById('otp-subtitle').textContent = `We've sent a 6-digit code to ${email}`;
   document.getElementById('verify-otp-btn').onclick = () => verifyEmailOTP();
+  
+  // Show OTP in dev mode if available
+  if (resp.debugOTP || resp.devOtp) {
+    const devMsg = `DEV MODE: Your OTP is ${resp.debugOTP || resp.devOtp}. This will only show in development.`;
+    document.getElementById('otp-error').textContent = devMsg;
+    console.log(devMsg);
+  }
+  
   toast('OTP sent to your email! 📧', 'success');
 }
 
