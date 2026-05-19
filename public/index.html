@@ -289,14 +289,16 @@
           <input type="text" id="header-search-input" placeholder="Search..." style="padding:0.5rem 1rem;border:1.5px solid var(--border);border-radius:99px;background:rgba(255,255,255,0.6);font-size:0.85rem;width:180px;transition:all 0.3s;"/>
           <div id="search-results" style="position:absolute;top:100%;left:0;right:0;background:white;border-radius:12px;box-shadow:var(--shadow-md);max-height:300px;overflow-y:auto;z-index:100;margin-top:0.5rem;display:none;"></div>
         </div>
-        <button class="icon-btn" onclick="toggleSearch()" title="Search" id="header-search-btn"><i class="fas fa-search"></i></button>
-        <button class="icon-btn" onclick="navigate('/wishlist')" title="Wishlist" id="header-wishlist-btn"><i class="fas fa-heart"></i></button>
+        <button class="icon-btn" onclick="toggleSearch()" title="Search" id="header-search-btn"><i class="fas fa-search"></i><span style="font-size:1.2rem;font-weight:bold;">🔍</span></button>
+        <button class="icon-btn" onclick="navigate('/wishlist')" title="Wishlist" id="header-wishlist-btn"><i class="fas fa-heart"></i><span style="font-size:1.2rem;font-weight:bold;">❤️</span></button>
         <button class="icon-btn cart-btn" onclick="navigate('/cart')" title="Cart" id="header-cart-btn">
           <i class="fas fa-shopping-bag"></i>
+          <span style="font-size:1.2rem;font-weight:bold;">🛍️</span>
           <span class="cart-badge" id="cart-count">0</span>
         </button>
         <button class="icon-btn user-btn" onclick="handleUserClick()" title="Account" id="header-user-btn">
           <i class="fas fa-user"></i>
+          <span style="font-size:1.2rem;font-weight:bold;">👤</span>
         </button>
       </div>
     </div>

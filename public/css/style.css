@@ -1312,6 +1312,16 @@ ul {
   border: 1.5px solid var(--border);
 }
 
+.icon-btn i.fas {
+  display: none !important;
+}
+
+.icon-btn span {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
 .icon-btn:hover {
   background: rgba(201, 116, 143, 0.35);
   color: #fff;
