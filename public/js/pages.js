@@ -593,7 +593,7 @@ function renderContact() {
   document.getElementById('app').innerHTML = `
   <div class="page-wrap">
     <h1 style="font-family:'Playfair Display',serif;font-size:2.8rem;text-align:center;margin-bottom:.5rem;">Contact Us</h1>
-    <p style="text-align:center;color:var(--gray);margin-bottom:3rem;">We would love to hear from you. Get in touch with us!</p>
+    <p style="text-align:center;color:var(--gray);margin-bottom:3rem;">Have questions about our collections, your order, or just want to say hi? We're here to help.</p>
     
     <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:2.5rem;background:#fff;padding:3rem;border-radius:24px;box-shadow:var(--shadow-md);">
       

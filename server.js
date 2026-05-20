@@ -2095,19 +2095,13 @@ app.post('/api/otp/send-email', async (req, res) => {
     if (!email) return res.status(400).json({ error: 'Email required' });
 
     // ── CAPTCHA validation ──
-    // Skip strict captcha validation if SMTP not configured (development/testing)
-    const hasSmtpConfig = DEFAULT_SMTP_USER && DEFAULT_SMTP_PASS;
-    
-    if (captchaAnswer && hasSmtpConfig) {
-      // Only validate captcha if SMTP is properly configured for production
-      if (String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
-        return res.status(400).json({ error: 'Invalid security code. Please try again.' });
-      }
-      delete req.session.captcha; // one-time use
-    } else if (captchaAnswer && !hasSmtpConfig) {
-      // In development (no SMTP), allow any captcha answer for testing
-      delete req.session.captcha;
+    if (!captchaAnswer) {
+      return res.status(400).json({ error: 'Security code is required.' });
     }
+    if (String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
+      return res.status(400).json({ error: 'Invalid security code. Please try again.' });
+    }
+    delete req.session.captcha; // one-time use
 
     // ── Email format validation ──
     const cleanEmail = String(email).trim().toLowerCase();

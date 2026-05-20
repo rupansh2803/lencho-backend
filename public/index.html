@@ -289,16 +289,14 @@
           <input type="text" id="header-search-input" placeholder="Search..." style="padding:0.75rem 1rem;border:2px solid var(--dark);border-radius:8px;background:#1a1a1a;color:#fff;font-size:0.9rem;width:200px;transition:all 0.3s;"/>
           <div id="search-results" style="position:absolute;top:100%;left:0;right:0;background:white;border-radius:12px;box-shadow:var(--shadow-md);max-height:300px;overflow-y:auto;z-index:100;margin-top:0.5rem;display:none;"></div>
         </div>
-        <button class="icon-btn" onclick="toggleSearch()" title="Search" id="header-search-btn"><i class="fas fa-search"></i><span style="font-size:1.2rem;font-weight:bold;">🔍</span></button>
-        <button class="icon-btn" onclick="navigate('/wishlist')" title="Wishlist" id="header-wishlist-btn"><i class="fas fa-heart"></i><span style="font-size:1.2rem;font-weight:bold;">❤️</span></button>
+        <button class="icon-btn" onclick="toggleSearch()" title="Search" id="header-search-btn"><i class="fas fa-search"></i></button>
+        <button class="icon-btn" onclick="navigate('/wishlist')" title="Wishlist" id="header-wishlist-btn"><i class="fas fa-heart"></i></button>
         <button class="icon-btn cart-btn" onclick="navigate('/cart')" title="Cart" id="header-cart-btn">
           <i class="fas fa-shopping-bag"></i>
-          <span style="font-size:1.2rem;font-weight:bold;">🛍️</span>
           <span class="cart-badge" id="cart-count">0</span>
         </button>
         <button class="icon-btn user-btn" onclick="handleUserClick()" title="Account" id="header-user-btn">
           <i class="fas fa-user"></i>
-          <span style="font-size:1.2rem;font-weight:bold;">👤</span>
         </button>
       </div>
     </div>
@@ -314,10 +312,11 @@
         <div class="footer-logo">✦ Lencho ✦</div>
         <p class="footer-desc">Crafting elegance for the modern woman. Premium artificial jewellery that celebrates your unique style.</p>
         <div class="social-links">
-          <a href="#" class="social-icon"><i class="fab fa-instagram"></i></a>
-          <a href="#" class="social-icon"><i class="fab fa-facebook-f"></i></a>
-          <a href="#" class="social-icon"><i class="fab fa-whatsapp"></i></a>
-          <a href="#" class="social-icon"><i class="fab fa-youtube"></i></a>
+          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer"><i class="fab fa-instagram"></i></a>
+          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer"><i class="fab fa-facebook-f"></i></a>
+          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer"><i class="fab fa-whatsapp"></i></a>
+          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer"><i class="fab fa-x-twitter"></i></a>
+          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer"><i class="fab fa-pinterest-p"></i></a>
         </div>
       </div>
       <div class="footer-col footer-dropdown" onclick="toggleFooterDropdown(this)">

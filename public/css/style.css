@@ -1332,14 +1332,17 @@ ul {
   border: 1.5px solid var(--border);
 }
 
-.icon-btn i.fas {
-  display: none !important;
+.icon-btn i.fas,
+.icon-btn i.far,
+.icon-btn i.fal,
+.icon-btn i.fab {
+  display: inline-flex !important;
+  color: inherit;
+  font-size: 1.1rem;
 }
 
 .icon-btn span {
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
+  display: none !important;
 }
 
 .icon-btn:hover {
@@ -4619,6 +4622,12 @@ label[for="captcha"],
   cursor: pointer;
   box-shadow: 0 6px 24px rgba(201, 116, 143, .5);
   transition: var(--transition);
+  overflow: visible;
+}
+
+#chatbot-bubble i {
+  color: #fff !important;
+  font-size: 1.5rem !important;
 }
 
 #chatbot-bubble:hover {
@@ -4958,6 +4967,10 @@ label[for="captcha"],
   font-size: .85rem;
   transition: var(--transition);
   flex-shrink: 0;
+}
+
+.chat-input-row button i {
+  color: #fff !important;
 }
 
 /* ── TESTIMONIAL MARQUEE ─────────────────────────────────── */

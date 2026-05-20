@@ -531,6 +531,7 @@ async function autoLoginWithToken() {
     if (r.user) {
       currentUser = r.user;
       saveCurrentUser(r.user);
+      updateHeader();
       return;
     } else {
       // Token is invalid, clear auth
@@ -539,6 +540,7 @@ async function autoLoginWithToken() {
   } catch(e) {
     console.error('Auto-login failed:', e);
     currentUser = savedUser; // Use saved user as fallback
+    updateHeader();
   }
 }
 
@@ -712,29 +714,32 @@ async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '') {
   
   if (btn) { btn.disabled = true; btn.textContent = 'Sending OTP... ✦'; }
   
-  const resp = await api('/api/otp/send-email', { method: 'POST', body: { email: email.trim().toLowerCase(), captchaAnswer: captchaAnswer.trim() }, timeoutMs: 60000 });
-  
-  authOtpRequestInFlight = false;
-  if (btn) { btn.disabled = false; btn.textContent = currentFormId === 'auth-login-form' ? 'Sign In' : 'Send OTP ✦'; }
-  
-  if (resp.error) {
-    const raw = String(resp.error || '');
-    // Refresh captcha on any error so user can retry
-    await loadAuthCaptcha();
-    if (/535|badcredentials|invalid login|username and password not accepted/i.test(raw)) {
-      err.textContent = 'Email OTP service is not configured correctly. Please try Google login or contact support.';
-    } else {
-      err.textContent = raw;
+  try {
+    const resp = await api('/api/otp/send-email', { method: 'POST', body: { email: email.trim().toLowerCase(), captchaAnswer: captchaAnswer.trim() }, timeoutMs: 10000 });
+    
+    authOtpRequestInFlight = false;
+    if (btn) { btn.disabled = false; btn.textContent = currentFormId === 'auth-login-form' ? 'Sign In' : 'Send OTP ✦'; }
+    
+    if (resp.error) {
+      const raw = String(resp.error || '');
+      // Refresh captcha on any error so user can retry
+      await loadAuthCaptcha();
+      if (/535|badcredentials|invalid login|username and password not accepted/i.test(raw)) {
+        err.textContent = 'Email OTP service is not configured correctly. Please try Google login or contact support.';
+      } else {
+        err.textContent = raw;
+        toast(raw, 'error');
+      }
+      return;
     }
-    return;
-  }
 
-  authOtpResendEndsAt = Date.now() + 60000;
-  const resendBtn = document.getElementById('resend-otp-btn');
-  if (resendBtn) {
-    resendBtn.style.pointerEvents = 'none';
-    resendBtn.style.opacity = '0.55';
-  }
+    toast('OTP sent successfully! ✦', 'success');
+    authOtpResendEndsAt = Date.now() + 30000;
+    const resendBtn = document.getElementById('resend-otp-btn');
+    if (resendBtn) {
+      resendBtn.style.pointerEvents = 'none';
+      resendBtn.style.opacity = '0.55';
+    }
   if (authOtpResendTimer) clearInterval(authOtpResendTimer);
   authOtpResendTimer = setInterval(() => {
     const remaining = Math.max(0, Math.ceil((authOtpResendEndsAt - Date.now()) / 1000));
@@ -758,6 +763,13 @@ async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '') {
   document.getElementById('otp-title').textContent = 'Verify Email';
   document.getElementById('otp-subtitle').textContent = `We've sent a 6-digit code to ${email}`;
   document.getElementById('verify-otp-btn').onclick = () => verifyEmailOTP();
+  } catch (error) {
+    authOtpRequestInFlight = false;
+    if (btn) { btn.disabled = false; btn.textContent = currentFormId === 'auth-login-form' ? 'Sign In' : 'Send OTP ✦'; }
+    err.textContent = 'Network error or timeout. Please try again.';
+    toast('Network error or timeout. Please try again.', 'error');
+    await loadAuthCaptcha();
+  }
   
   // Show OTP in dev mode if available
   if (resp.debugOTP || resp.devOtp) {
@@ -1955,6 +1967,7 @@ async function bootstrapApp() {
     
     // Wait for background tasks to complete (non-blocking)
     await Promise.allSettled(initPromises);
+    updateHeader(); // Ensure header correctly reflects auth state after async auto-login
 
     // Warm common read-only endpoints for snappier next navigation.
     Promise.allSettled([
