@@ -837,9 +837,13 @@ async function verifyEmailOTP() {
   
   if (finalResp.error) { err.textContent = finalResp.error; return; }
   
-  // Save JWT token and user data
+  // Save JWT token and user data with persistent session
   if (finalResp.token) {
     setJWTToken(finalResp.token);
+    localStorage.setItem('authToken', finalResp.token);
+    localStorage.setItem('loginTime', Date.now());
+    localStorage.setItem('sessionId', finalResp.sessionId || uuidv4());
+    localStorage.setItem('otpLoginSource', 'email');
   }
   
   currentUser = finalResp.user;
@@ -2153,9 +2157,13 @@ async function completeGoogleLogin(profile, btn) {
     return;
   }
   
-  // Save JWT token and user data
+  // Save JWT token and user data with persistent session
   if (result.token) {
     setJWTToken(result.token);
+    localStorage.setItem('authToken', result.token);
+    localStorage.setItem('googleLoginSource', 'lencho');
+    localStorage.setItem('loginTime', Date.now());
+    localStorage.setItem('sessionId', result.sessionId || uuidv4());
   }
   
   currentUser = result.user;

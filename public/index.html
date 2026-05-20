@@ -50,7 +50,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=Jost:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&display=swap" rel="stylesheet"/>
   
   <!-- Font Awesome Icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer"/>
   
   <!-- Stylesheets -->
   <link rel="stylesheet" href="/css/style.css?v=4.5"/>
@@ -289,13 +289,13 @@
           <input type="text" id="header-search-input" placeholder="Search..." style="padding:0.75rem 1rem;border:2px solid var(--dark);border-radius:8px;background:#1a1a1a;color:#fff;font-size:0.9rem;width:200px;transition:all 0.3s;"/>
           <div id="search-results" style="position:absolute;top:100%;left:0;right:0;background:white;border-radius:12px;box-shadow:var(--shadow-md);max-height:300px;overflow-y:auto;z-index:100;margin-top:0.5rem;display:none;"></div>
         </div>
-        <button class="icon-btn" onclick="toggleSearch()" title="Search" id="header-search-btn"><i class="fas fa-search"></i></button>
-        <button class="icon-btn" onclick="navigate('/wishlist')" title="Wishlist" id="header-wishlist-btn"><i class="fas fa-heart"></i></button>
-        <button class="icon-btn cart-btn" onclick="navigate('/cart')" title="Cart" id="header-cart-btn">
+        <button class="icon-btn" onclick="toggleSearch()" title="Search" id="header-search-btn" aria-label="Search products"><i class="fas fa-search"></i></button>
+        <button class="icon-btn" onclick="navigate('/wishlist')" title="Wishlist" id="header-wishlist-btn" aria-label="Open wishlist"><i class="fas fa-heart"></i></button>
+        <button class="icon-btn cart-btn" onclick="navigate('/cart')" title="Cart" id="header-cart-btn" aria-label="Open shopping cart">
           <i class="fas fa-shopping-bag"></i>
           <span class="cart-badge" id="cart-count">0</span>
         </button>
-        <button class="icon-btn user-btn" onclick="handleUserClick()" title="Account" id="header-user-btn">
+        <button class="icon-btn user-btn" onclick="handleUserClick()" title="Account" id="header-user-btn" aria-label="Open account menu">
           <i class="fas fa-user"></i>
         </button>
       </div>
@@ -312,11 +312,11 @@
         <div class="footer-logo">✦ Lencho ✦</div>
         <p class="footer-desc">Crafting elegance for the modern woman. Premium artificial jewellery that celebrates your unique style.</p>
         <div class="social-links">
-          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer"><i class="fab fa-instagram"></i></a>
-          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer"><i class="fab fa-facebook-f"></i></a>
-          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer"><i class="fab fa-whatsapp"></i></a>
-          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer"><i class="fab fa-x-twitter"></i></a>
-          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer"><i class="fab fa-pinterest-p"></i></a>
+          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Follow us on Instagram" title="Instagram"><i class="fab fa-instagram"></i></a>
+          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Like us on Facebook" title="Facebook"><i class="fab fa-facebook-f"></i></a>
+          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Chat with us on WhatsApp" title="WhatsApp"><i class="fab fa-whatsapp"></i></a>
+          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Follow us on Twitter" title="Twitter"><i class="fab fa-x-twitter"></i></a>
+          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Follow us on Pinterest" title="Pinterest"><i class="fab fa-pinterest-p"></i></a>
         </div>
       </div>
       <div class="footer-col footer-dropdown" onclick="toggleFooterDropdown(this)">
@@ -365,7 +365,7 @@
     </div>
   </footer>
   <!-- LENCHO CHATBOT WIDGET -->
-  <div id="chatbot-bubble" onclick="toggleChat()" title="Chat with Lencho">
+  <div id="chatbot-bubble" onclick="toggleChat()" title="Chat with Lencho" role="button" tabindex="0" aria-label="Open chat with Lencho">
     <i class="fas fa-comment-dots" id="chat-open-icon"></i>
     <i class="fas fa-times" id="chat-close-icon" style="display:none;"></i>
     <span class="chat-ping"></span>
@@ -374,7 +374,7 @@
     <div class="chat-header">
       <div class="chat-avatar">L</div>
       <div><div class="chat-name">Lencho ✦</div><div class="chat-status">Online – Here to help!</div></div>
-      <button onclick="toggleChat()" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,.7);font-size:1.1rem;cursor:pointer;"><i class="fas fa-times"></i></button>
+      <button onclick="toggleChat()" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,.7);font-size:1.1rem;cursor:pointer;" aria-label="Close chat window" title="Close chat"><i class="fas fa-times"></i></button>
     </div>
     <div class="chat-messages" id="chat-messages">
       <div class="chat-msg bot"><div class="chat-bubble">Namaste! 🙏 Main <b>Lencho</b> hoon, Lencho ka virtual assistant!<br/>Aap kya dhundh rahi hain aaj? 💍</div></div>
@@ -387,7 +387,7 @@
     </div>
     <div class="chat-input-row">
       <input id="chat-input" placeholder="Type karo..." onkeydown="if(event.key==='Enter')sendChat()"/>
-      <button onclick="sendChat()"><i class="fas fa-paper-plane"></i></button>
+      <button onclick="sendChat()" aria-label="Send message" title="Send message"><i class="fas fa-paper-plane"></i></button>
     </div>
   </div>
 

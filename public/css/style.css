@@ -3668,16 +3668,27 @@ tr:hover td {
   align-items: center;
   justify-content: center;
   color: rgba(255, 255, 255, .6);
-  font-size: .9rem;
+  font-size: 1rem;
   transition: var(--transition);
-  border: 1px solid rgba(255, 255, 255, .1)
+  border: 1px solid rgba(255, 255, 255, .1);
+  cursor: pointer;
+  text-decoration: none;
 }
 
 .social-icon:hover {
   background: var(--rose);
   color: #fff;
   border-color: var(--rose);
-  transform: translateY(-3px)
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(201, 116, 143, 0.4);
+}
+
+.social-icon i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
 }
 
 .footer-col h4 {
@@ -4541,8 +4552,8 @@ label[for="captcha"],
 }
 
 #whatsapp-btn:hover {
-  transform: scale(1.12);
-  box-shadow: 0 8px 28px rgba(37, 211, 102, .65)
+  transform: scale(1.12) translateY(-3px);
+  box-shadow: 0 8px 28px rgba(37, 211, 102, .65);
 }
 
 /* ── OTP INPUT ────────────────────────────────────────────── */
