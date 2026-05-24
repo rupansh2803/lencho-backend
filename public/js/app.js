@@ -2176,17 +2176,25 @@ async function completeGoogleLogin(profile, btn) {
   const { email, name, picture, sub: googleId } = profile;
   if (!email) { toast('Could not get email from Google', 'error'); resetBtn(btn); return; }
   
-  const result = await api('/api/auth/google', {
-    method: 'POST',
-    body: { email, name, picture, googleId }
-  });
-  
-  if (result.error) {
-    console.error('Backend Google auth failed:', result.error, 'profile:', profile);
-    toast(result.error, 'error');
-    resetBtn(btn);
-    return;
-  }
+  try {
+    const result = await api('/api/auth/google', {
+      method: 'POST',
+      body: { email, name, picture, googleId }
+    });
+    
+    if (result.error) {
+      console.error('Backend Google auth failed:', result.error, 'profile:', profile);
+      // Show user-friendly error
+      if (result.error.includes('SMTP')) {
+        toast('Account created! Please login with your email.', 'success');
+        // Redirect to login
+        switchToLogin();
+        return;
+      }
+      toast(result.error, 'error');
+      resetBtn(btn);
+      return;
+    }
   
   // Save JWT token and user data with persistent session
   if (result.token) {
