@@ -13,6 +13,8 @@ const apiGetCache = new Map();
 const API_CACHE_TTL_MS = 2 * 60 * 1000;
 const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+try { window.__appLoaded = true; } catch {}
+
 const SETTINGS_CACHE_KEY = 'lencho_public_settings_cache_v1';
 const JWT_TOKEN_KEY = 'lencho_jwt_token_v1';
 const JWT_USER_KEY = 'lencho_current_user_v1';
@@ -520,8 +522,9 @@ async function autoLoginWithToken() {
   const token = getJWTToken();
   const savedUser = getSavedUser();
   
-  if (!token || !savedUser) {
+  if (!token) {
     currentUser = null;
+    updateHeader();
     return;
   }
   
@@ -534,12 +537,13 @@ async function autoLoginWithToken() {
       updateHeader();
       return;
     } else {
-      // Token is invalid, clear auth
+      // Token is invalid or expired, clear auth
       clearAuth();
+      updateHeader();
     }
   } catch(e) {
     console.error('Auto-login failed:', e);
-    currentUser = savedUser; // Use saved user as fallback
+    currentUser = savedUser || null; // Graceful UI fallback when network is temporarily unavailable
     updateHeader();
   }
 }
@@ -1976,6 +1980,33 @@ async function syncSocialLinks() {
   else if (s.whatsappNumber && wa) wa.href = `https://wa.me/${s.whatsappNumber}`;
 }
 
+try {
+  Object.assign(window, {
+    navigate,
+    handleUserClick,
+    openAuthModal,
+    closeAuthModal,
+    switchToSignup,
+    switchToLogin,
+    switchLoginType,
+    handleLogin,
+    handleSignup,
+    verifyEmailOTP,
+    resendEmailOTP,
+    completeSignupAfterOTP,
+    handleLogout,
+    claimDiscount,
+    toggleSearch,
+    toggleNavDropdown,
+    signInWithGoogle,
+    completeGoogleLogin,
+    handlePhoneLogin,
+    bootstrapApp
+  });
+} catch (e) {
+  console.warn('Failed to attach global handlers:', e);
+}
+
 // ── INIT ──────────────────────────────────────────────────
 async function bootstrapApp() {
   try {
@@ -2054,34 +2085,6 @@ function doGoogleSignIn(btn) {
       toast('Google Client ID missing/invalid', 'error');
       console.error('Invalid GOOGLE_CLIENT_ID:', GOOGLE_CLIENT_ID);
       resetBtn(btn);
-      return;
-    }
-
-    // Prefer ID flow first (fewer moving parts). If unavailable, fallback to OAuth token flow.
-    if (google.accounts && google.accounts.id) {
-      google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: (response) => {
-          if (!response || !response.credential) {
-            startGoogleTokenFlow(btn);
-            return;
-          }
-          handleGoogleCredential(response, btn);
-        },
-        auto_select: false,
-        cancel_on_tap_outside: true,
-        use_fedcm_for_prompt: true
-      });
-
-      google.accounts.id.prompt((notification) => {
-        const blocked = (notification.isNotDisplayed && notification.isNotDisplayed()) ||
-          (notification.isSkippedMoment && notification.isSkippedMoment());
-
-        if (blocked) {
-          console.warn('Google ID prompt unavailable, switching to token flow. Origin:', window.location.origin, notification.getNotDisplayedReason ? notification.getNotDisplayedReason() : 'unknown');
-          startGoogleTokenFlow(btn);
-        }
-      });
       return;
     }
 
@@ -2223,4 +2226,35 @@ async function completeGoogleLogin(profile, btn) {
   } else {
     navigate('/');
   }
+  } catch (e) {
+    console.error('completeGoogleLogin failed:', e);
+    toast('Google login failed: ' + e.message, 'error');
+    resetBtn(btn);
+  }
+}
+
+try {
+  Object.assign(window, {
+    navigate,
+    handleUserClick,
+    openAuthModal,
+    closeAuthModal,
+    switchToSignup,
+    switchToLogin,
+    switchLoginType,
+    handleLogin,
+    handleSignup,
+    verifyEmailOTP,
+    resendEmailOTP,
+    completeSignupAfterOTP,
+    handleLogout,
+    claimDiscount,
+    toggleSearch,
+    toggleNavDropdown,
+    signInWithGoogle,
+    completeGoogleLogin,
+    handlePhoneLogin
+  });
+} catch (e) {
+  console.warn('Failed to attach global handlers:', e);
 }

@@ -608,6 +608,43 @@ a {
   cursor: pointer
 }
 
+a,
+button,
+[role="button"],
+[onclick],
+.clickable,
+.icon-btn,
+.nav-link,
+.nav-dropdown-menu a,
+.product-card,
+.category-card,
+.footer-col ul li a,
+.social-icon,
+.btn-primary,
+.btn-outline,
+.btn-gold {
+  cursor: pointer;
+  transition: transform .2s ease, box-shadow .2s ease, opacity .2s ease, filter .2s ease, background-color .2s ease, color .2s ease;
+}
+
+a:hover,
+button:hover,
+[role="button"]:hover,
+[onclick]:hover,
+.clickable:hover,
+.icon-btn:hover,
+.nav-link:hover,
+.nav-dropdown-menu a:hover,
+.product-card:hover,
+.category-card:hover,
+.footer-col ul li a:hover,
+.social-icon:hover,
+.btn-primary:hover,
+.btn-outline:hover,
+.btn-gold:hover {
+  filter: brightness(1.02);
+}
+
 img {
   max-width: 100%;
   display: block
@@ -938,7 +975,8 @@ ul {
   border-radius: 24px;
   padding: 2.5rem;
   max-width: 420px;
-  width: 90%;
+  width: min(420px, calc(100vw - 24px));
+  box-sizing: border-box;
   position: relative;
   animation: popIn .4s cubic-bezier(.175, .885, .32, 1.275);
   max-height: 90vh;
@@ -4690,10 +4728,16 @@ label[for="captcha"],
 /* ── AUTH MODAL MOBILE RESPONSIVE FIX ── */
 @media (max-width: 768px) {
   #auth-modal .modal-card {
-    max-width: 95vw !important;
-    width: 95vw !important;
+    max-width: calc(100vw - 20px) !important;
+    width: calc(100vw - 20px) !important;
     padding: 1.25rem !important;
     margin: 0 auto;
+    box-sizing: border-box;
+  }
+
+  #auth-modal .form-row {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
   }
 
   #auth-modal .modal-close {
@@ -4754,12 +4798,18 @@ label[for="captcha"],
 
 @media (max-width: 480px) {
   #auth-modal .modal-card {
-    max-width: 92vw !important;
-    width: 92vw !important;
+    max-width: calc(100vw - 16px) !important;
+    width: calc(100vw - 16px) !important;
     padding: 1rem !important;
     border-radius: 12px;
     max-height: 90vh;
     margin: auto !important;
+    box-sizing: border-box;
+  }
+
+  #auth-modal .form-row {
+    grid-template-columns: 1fr !important;
+    gap: 0.6rem !important;
   }
 
   #auth-modal .modal-close {
@@ -4826,9 +4876,6 @@ label[for="captcha"],
     padding: 10px 8px !important;
     letter-spacing: 6px !important;
   }
-}
-  overflow: hidden;
-  animation: slideUp .3s cubic-bezier(.175, .885, .32, 1.275);
 }
 
 @keyframes slideUp {

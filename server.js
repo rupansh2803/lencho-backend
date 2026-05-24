@@ -12,6 +12,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const mongoose = require('mongoose');
 const axios = require('axios');
+const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
@@ -171,6 +172,41 @@ function isValidEmailFormat(email) {
   return /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(String(email || '').trim());
 }
 let cachedSmtpSignature = '';
+
+function getJwtAuthPayload(req) {
+  const authHeader = String(req.headers.authorization || '').trim();
+  if (!authHeader.startsWith('Bearer ')) return null;
+
+  const token = authHeader.slice(7).trim();
+  if (!token) return null;
+
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+  } catch {
+    return null;
+  }
+}
+
+function getAuthContext(req) {
+  if (req.session?.userId) {
+    return {
+      userId: req.session.userId,
+      role: req.session.role || 'user',
+      source: 'session'
+    };
+  }
+
+  const jwtPayload = getJwtAuthPayload(req);
+  if (jwtPayload) {
+    return {
+      userId: jwtPayload.userId || jwtPayload.id || null,
+      role: jwtPayload.role || 'user',
+      source: 'jwt'
+    };
+  }
+
+  return { userId: null, role: 'user', source: null };
+}
 
 function getSmtpConfigFromSettings(settings = null) {
   const resolved = settings || {};
@@ -410,10 +446,11 @@ app.get('/health', (req, res) => {
 
 app.get('/api/auth/me', async (req, res) => {
   try {
-    if (!req.session?.userId) return res.json({ user: null });
+    const auth = getAuthContext(req);
+    if (!auth.userId) return res.json({ user: null });
 
     if (useDB) {
-      const user = await User.findById(req.session.userId).lean();
+      const user = await User.findById(auth.userId).lean();
       if (!user) return res.json({ user: null });
       return res.json({
         user: {
@@ -428,7 +465,7 @@ app.get('/api/auth/me', async (req, res) => {
     }
 
     const users = readJson(FILES.users);
-    const user = users.find(entry => String(entry.id) === String(req.session.userId));
+  const user = users.find(entry => String(entry.id) === String(auth.userId));
     if (!user) return res.json({ user: null });
     return res.json({
       user: {
@@ -1018,7 +1055,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://checkout.razorpay.com", "https://accounts.google.com", "https://accounts.google.com/gsi/client", "https://cdnjs.cloudflare.com"],
       scriptSrcAttr: ["'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://fonts.gstatic.com", "https://accounts.google.com", "https://accounts.google.com/gsi/style", "https://cdnjs.cloudflare.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com", "data:"],
       imgSrc: ["'self'", "data:", "https:"],
       connectSrc: ["'self'", "https://checkout.razorpay.com", "https://www.googleapis.com", "https://accounts.google.com"],
@@ -1077,8 +1114,18 @@ const upload = multer({
 });
 
 // ─── AUTH MIDDLEWARE ──────────────────────────────────────────
-const requireAuth = (req, res, next) => { if (!req.session.userId) return res.status(401).json({ error: 'Please login first' }); next(); };
-const requireAdmin = (req, res, next) => { if (!req.session.userId || req.session.role !== 'admin') return res.status(403).json({ error: 'Admin access only' }); next(); };
+const requireAuth = (req, res, next) => {
+  const auth = getAuthContext(req);
+  if (!auth.userId) return res.status(401).json({ error: 'Please login first' });
+  req.auth = auth;
+  next();
+};
+const requireAdmin = (req, res, next) => {
+  const auth = getAuthContext(req);
+  if (!auth.userId || auth.role !== 'admin') return res.status(403).json({ error: 'Admin access only' });
+  req.auth = auth;
+  next();
+};
 
 // ─── SECURITY HELPERS ─────────────────────────────────────────
 function generateCaptcha() {
@@ -1210,13 +1257,8 @@ async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
       storeName: await getMeaningfulSetting('storeName', DEFAULT_EMAIL_FROM_NAME),
     });
 
-    // Check if SMTP is properly configured
     if (!smtpConfig.user || !smtpConfig.pass) {
-      console.warn(`⚠️  SMTP credentials not configured. OTP: ${otp}`);
-      // When SMTP is not configured, allow OTP to work for testing
-      // Log OTP to console for development testing
-      console.log(`\n📧 DEV OTP for ${targetEmail}: ${otp}\n`);
-      return { sent: true, via: 'dev-console', messageId: 'dev-' + Date.now(), devOtp: otp };
+      throw new Error('SMTP credentials not configured');
     }
 
     const transporter = await getVerifiedSmtpTransporter(smtpConfig);
@@ -2524,14 +2566,15 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ success: true }); });
 
 app.get('/api/me', async (req, res) => {
-  if (!req.session.userId) return res.json({ user: null });
+  const auth = getAuthContext(req);
+  if (!auth.userId) return res.json({ user: null });
   try {
     if (useDB) {
-      const user = await User.findById(req.session.userId).select('-password');
+      const user = await User.findById(auth.userId).select('-password');
       return res.json({ user: user ? { id: user._id, ...user.toObject() } : null });
     }
     const users = readJson(FILES.users);
-    const user = users.find(u => u.id === req.session.userId);
+    const user = users.find(u => String(u.id) === String(auth.userId));
     if (!user) return res.json({ user: null });
     const { password, ...safe } = user;
     res.json({ user: safe });
