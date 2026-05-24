@@ -942,11 +942,42 @@ function toggleSpec(el) {
 }
 
 async function handleLogout() {
-  await api('/api/logout', { method: 'POST' });
+  try {
+    await api('/api/logout', { method: 'POST' });
+  } catch (e) {
+    console.warn('Logout API call failed:', e);
+  }
+  
+  // Clear all authentication data
   clearAuth();
-  updateHeader();
+  
+  // Clear all localStorage auth data (including all variations)
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  localStorage.removeItem('currentUser');
+  localStorage.removeItem('googleLoginSource');
+  localStorage.removeItem('loginTime');
+  localStorage.removeItem('sessionId');
+  localStorage.removeItem('jwtToken');
+  localStorage.removeItem(JWT_TOKEN_KEY);
+  localStorage.removeItem(JWT_USER_KEY);
+  
+  // Clear session data
+  if (window.sessionStorage) {
+    sessionStorage.removeItem('authToken');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
+    sessionStorage.clear();
+  }
+  
+  // Reset global state
+  currentUser = null;
   cartCount = 0;
-  document.getElementById('cart-count').textContent = '0';
+  updateHeader();
+  const cartCountEl = document.getElementById('cart-count');
+  if (cartCountEl) cartCountEl.textContent = '0';
+  
   toast('Logged out successfully', 'info');
   navigate('/');
 }
