@@ -82,7 +82,7 @@ async function handleAdminSetup() {
 }
 
 async function showAdminLogin() {
-  const captcha = await api('/api/captcha');
+  const captcha = await api(`/api/captcha?ts=${Date.now()}`);
   document.getElementById('app').innerHTML = `
   <div style="min-height:100vh;background:var(--dark);display:flex;align-items:center;justify-content:center;padding:2rem;">
     <div style="background:#fff;border-radius:24px;padding:2.5rem;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);">

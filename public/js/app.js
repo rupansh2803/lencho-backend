@@ -582,6 +582,7 @@ async function openAuthModal() {
   // Do NOT hide header — modal uses z-index to overlay it
   document.body.style.overflow = 'hidden';
   document.documentElement.style.overflow = 'hidden';
+  renderGoogleButtons();
   const otpInput = document.getElementById('auth-otp-input');
   if (otpInput) {
     otpInput.value = '';
@@ -622,6 +623,7 @@ function switchToSignup() {
   const signupPasswordStep = document.getElementById('auth-signup-password-step');
   if (signupPasswordStep) signupPasswordStep.style.display = 'none';
   document.getElementById('auth-signup-form').style.display = 'block';
+  renderGoogleButtons();
 }
 
 function switchLoginType(type) {
@@ -644,6 +646,7 @@ function switchToLogin() {
   document.getElementById('auth-login-form').style.display = 'block';
   window.loginType = 'email';
   switchLoginType('email');
+  renderGoogleButtons();
 }
 
 // ── CAPTCHA HELPERS ──────────────────────────────────────
@@ -2024,6 +2027,7 @@ async function bootstrapApp() {
     // Render page IMMEDIATELY (don't wait for all promises)
     navigate(location.pathname + location.search, false);
     if (typeof initHeader === 'function') initHeader();
+    renderGoogleButtons();
     
     // Hide loading screen fast (after minimal delay)
     const ls = document.getElementById('loading-screen');
@@ -2047,36 +2051,139 @@ async function bootstrapApp() {
   }
 }
 
+function startBootstrapWhenReady() {
+  if (window.__lenchoScriptsReady) {
+    bootstrapApp();
+    return;
+  }
+
+  window.addEventListener('lencho-scripts-ready', bootstrapApp, { once: true });
+}
+
 if (document.readyState === 'loading') {
-  window.addEventListener('DOMContentLoaded', bootstrapApp, { once: true });
+  window.addEventListener('DOMContentLoaded', startBootstrapWhenReady, { once: true });
 } else {
-  bootstrapApp();
+  startBootstrapWhenReady();
 }
 
 // ── GOOGLE OAUTH ─────────────────────────────────────────────
 const GOOGLE_CLIENT_ID = '1074667694021-1b9v8blpaq6l6ik0na3fq6c8prg9hm3q.apps.googleusercontent.com';
 let googleAuthInFlight = false;
+var googleIdClientInitialized = false;
+var googleButtonsRendered = false;
+
+function initGoogleIdentityClient() {
+  if (!window.google?.accounts?.id || googleIdClientInitialized) return;
+
+  try {
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: (response) => handleGoogleCredential(response, null),
+      auto_select: false,
+      cancel_on_tap_outside: true,
+      // FedCM prompts are brittle in some harnesses/browsers; disable by default
+      use_fedcm_for_prompt: false
+    });
+  } catch (e) {
+    console.error('Google accounts initialization failed:', e);
+  }
+
+  googleIdClientInitialized = true;
+}
+
+function renderGoogleButtons() {
+  if (!window.google?.accounts?.id) return;
+  initGoogleIdentityClient();
+
+  const loginSlot = document.getElementById('google-auth-login');
+  const signupSlot = document.getElementById('google-auth-signup');
+  const slots = [loginSlot, signupSlot].filter(Boolean);
+
+  if (!slots.length) return;
+
+  slots.forEach((slot) => {
+    slot.innerHTML = '';
+    try {
+      google.accounts.id.renderButton(slot, {
+        theme: 'outline',
+        size: 'large',
+        width: Math.max(260, Math.floor(slot.getBoundingClientRect().width || 320)),
+        text: 'continue_with',
+        shape: 'pill',
+        logo_alignment: 'center'
+      });
+    } catch (err) {
+      console.error('Google renderButton failed:', err);
+      const warn = document.createElement('div');
+      warn.style.fontSize = '.9rem';
+      warn.style.color = '#b91c1c';
+      warn.style.marginTop = '.5rem';
+      warn.textContent = 'Google Sign-in unavailable here — add this origin to your Google OAuth client (Console → Credentials → Authorized JavaScript origins).';
+      slot.appendChild(warn);
+    }
+  });
+
+  // Add redirect fallback link
+  slots.forEach((slot) => {
+    const fallback = document.createElement('div');
+    fallback.style.fontSize = '.85rem';
+    fallback.style.marginTop = '.6rem';
+    fallback.innerHTML = `<a href="#" onclick="startGoogleRedirect();return false;" style="color:var(--rose);text-decoration:underline;">Use alternate Google login (redirect)</a>`;
+    slot.appendChild(fallback);
+  });
+
+  googleButtonsRendered = true;
+}
+
+async function startGoogleRedirect() {
+  try {
+    // generate code_verifier
+    function rand(len = 64) {
+      const arr = new Uint8Array(len);
+      window.crypto.getRandomValues(arr);
+      return Array.from(arr).map(n => ('0' + n.toString(16)).slice(-2)).join('');
+    }
+    const code_verifier = rand(32);
+
+    // send verifier to server and get auth URL
+    const res = await fetch('/api/auth/google/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code_verifier, redirectTo: location.pathname + location.search }) });
+    const data = await res.json();
+    if (!res.ok || !data.url) {
+      toast(data.error || 'Google redirect start failed', 'error');
+      return;
+    }
+    // Navigate to Google auth
+    window.location = data.url;
+  } catch (e) {
+    console.error('startGoogleRedirect error:', e);
+    toast('Could not start Google redirect login', 'error');
+  }
+}
 
 function signInWithGoogle(event) {
   if (googleAuthInFlight) return;
   const btn = event && event.currentTarget ? event.currentTarget : null;
   googleAuthInFlight = true;
   if (btn) { btn.disabled = true; }
-  
-  // Load Google Identity Services library
+
   if (!window.google || !window.google.accounts) {
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
-    script.onload = () => doGoogleSignIn(btn);
+    script.onload = () => {
+      renderGoogleButtons();
+      resetBtn(btn);
+    };
     script.onerror = () => {
       toast('Could not load Google SDK. Check internet/adblock.', 'error');
       console.error('Google SDK failed to load from https://accounts.google.com/gsi/client');
       resetBtn(btn);
     };
     document.head.appendChild(script);
-  } else {
-    doGoogleSignIn(btn);
+    return;
   }
+
+  renderGoogleButtons();
+  resetBtn(btn);
 }
 
 function doGoogleSignIn(btn) {
@@ -2088,7 +2195,7 @@ function doGoogleSignIn(btn) {
       return;
     }
 
-    startGoogleTokenFlow(btn);
+    renderGoogleButtons();
   } catch (e) {
     toast('Google login failed: ' + e.message, 'error');
     resetBtn(btn);
@@ -2159,7 +2266,8 @@ function handleGoogleCredential(response, btn) {
       email: payload.email,
       name: payload.name,
       picture: payload.picture,
-      sub: payload.sub
+      sub: payload.sub,
+      idToken: response.credential
     }, btn);
   } catch(e) {
     toast('Failed to process Google credential', 'error');
@@ -2176,13 +2284,13 @@ function resetBtn(btn) {
 }
 
 async function completeGoogleLogin(profile, btn) {
-  const { email, name, picture, sub: googleId } = profile;
+  const { email, name, picture, sub: googleId, idToken } = profile;
   if (!email) { toast('Could not get email from Google', 'error'); resetBtn(btn); return; }
   
   try {
     const result = await api('/api/auth/google', {
       method: 'POST',
-      body: { email, name, picture, googleId }
+      body: { email, name, picture, googleId, idToken }
     });
     
     if (result.error) {

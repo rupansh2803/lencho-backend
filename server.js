@@ -24,6 +24,7 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
 const DEFAULT_SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || '';
 const DEFAULT_SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
+const DEFAULT_GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '1074667694021-1b9v8blpaq6l6ik0na3fq6c8prg9hm3q.apps.googleusercontent.com';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://lencho.in';
 const SITE_URL = process.env.SITE_URL || FRONTEND_URL;
 const MONGODB_URI = String(process.env.MONGODB_URI || '').trim();
@@ -272,6 +273,33 @@ async function sendEmailWithRetry(transporter, payload, attempts = 2) {
   }
 
   throw lastError || new Error('SMTP send failed');
+}
+
+async function verifyGoogleIdToken(idToken) {
+  if (!idToken) {
+    throw new Error('Google token missing');
+  }
+
+  const response = await axios.get('https://oauth2.googleapis.com/tokeninfo', {
+    params: { id_token: idToken },
+    timeout: 10000
+  });
+
+  const payload = response.data || {};
+  if (payload.aud !== DEFAULT_GOOGLE_CLIENT_ID) {
+    throw new Error('Google token audience mismatch');
+  }
+  if (String(payload.email_verified || '').toLowerCase() !== 'true') {
+    throw new Error('Google account email is not verified');
+  }
+
+  return {
+    email: payload.email,
+    name: payload.name || payload.email?.split('@')?.[0] || 'User',
+    picture: payload.picture || '',
+    googleId: payload.sub || '',
+    emailVerified: true
+  };
 }
 
 async function warmupSmtpTransporter() {
@@ -1919,6 +1947,8 @@ app.delete('/api/admin/testimonials/:id', requireAdmin, async (req, res) => {
 
 // ─── SECURITY & CAPTCHA ───────────────────────────────────────
 app.get('/api/captcha', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
   const { q, a } = generateCaptcha();
   req.session.captcha = a;
   res.json({ question: q });
@@ -3636,22 +3666,33 @@ app.get('/api/ai/trending', async (req, res) => {
 // ─── GOOGLE OAUTH ROUTE ──────────────────────────────────────
 app.post('/api/auth/google', async (req, res) => {
   try {
-    const { email, name, picture, googleId } = req.body;
+    const { email, name, picture, googleId, idToken } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
-    if (!email) return res.status(400).json({ error: 'Email is required from Google' });
+    let verifiedGoogle = null;
+
+    if (idToken) {
+      verifiedGoogle = await verifyGoogleIdToken(idToken);
+    }
+
+    const finalEmail = verifiedGoogle?.email || email;
+    const finalName = verifiedGoogle?.name || name;
+    const finalPicture = verifiedGoogle?.picture || picture;
+    const finalGoogleId = verifiedGoogle?.googleId || googleId;
+
+    if (!finalEmail) return res.status(400).json({ error: 'Email is required from Google' });
     
     let user;
     if (useDB) {
-      user = await User.findOne({ email }).lean();
+      user = await User.findOne({ email: finalEmail }).lean();
       if (!user) {
         // New user — create account automatically
         const newUser = new User({ 
-          name: name || email.split('@')[0], 
-          email, 
-          password: 'GOOGLE_' + (googleId || Date.now()),
-          googleId,
-          avatar: picture,
+          name: finalName || finalEmail.split('@')[0], 
+          email: finalEmail, 
+          password: 'GOOGLE_' + (finalGoogleId || Date.now()),
+          googleId: finalGoogleId,
+          avatar: finalPicture,
           role: 'user',
           verified: true,
           phone: ''
@@ -3661,12 +3702,12 @@ app.post('/api/auth/google', async (req, res) => {
       }
     } else {
       const users = readJson(FILES.users);
-      user = users.find(u => u.email === email);
+      user = users.find(u => u.email === finalEmail);
       if (!user) {
         user = { 
           id: Date.now().toString(), 
-          name: name || email.split('@')[0], 
-          email, googleId, 
+          name: finalName || finalEmail.split('@')[0], 
+          email: finalEmail, googleId: finalGoogleId, 
           role: 'user', 
           verified: true 
         };
@@ -3678,8 +3719,8 @@ app.post('/api/auth/google', async (req, res) => {
     const userId = user._id?.toString() || user.id;
     req.session.userId = userId;
     req.session.role = user.role || 'user';
-    const userName = user.name || name || email.split('@')[0] || 'User';
-    await recordLoginActivity({ email, name: userName, status: 'success', method: 'google', role: user.role || 'user', ip, userAgent });
+    const userName = user.name || finalName || finalEmail.split('@')[0] || 'User';
+    await recordLoginActivity({ email: finalEmail, name: userName, status: 'success', method: 'google', role: user.role || 'user', ip, userAgent });
     
     res.json({ 
       success: true,
@@ -3689,13 +3730,97 @@ app.post('/api/auth/google', async (req, res) => {
         name: user.name, 
         email: user.email, 
         role: user.role || 'user', 
-        avatar: user.avatar || picture 
+        avatar: user.avatar || finalPicture 
       } 
     });
   } catch (e) { 
     console.error('Google Auth Error:', e.message);
     await recordLoginActivity({ email: req.body?.email || '', status: 'failed', method: 'google', role: 'user', ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress || '', userAgent: req.headers['user-agent'] || '' });
     res.status(500).json({ error: 'Google login failed: ' + e.message }); 
+  }
+});
+
+// ─── GOOGLE OAUTH (Redirect + PKCE) ─────────────────────────
+app.post('/api/auth/google/start', (req, res) => {
+  try {
+    const { code_verifier, redirectTo } = req.body || {};
+    if (!code_verifier) return res.status(400).json({ error: 'code_verifier required' });
+    const state = uuidv4();
+    // compute code_challenge
+    const hash = crypto.createHash('sha256').update(code_verifier).digest('base64');
+    const code_challenge = hash.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    req.session.google_oauth = { state, code_verifier, redirectTo: redirectTo || '/' };
+    const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${DEFAULT_GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('openid email profile')}&state=${state}&code_challenge=${code_challenge}&code_challenge_method=S256&prompt=select_account`;
+    res.json({ url: authUrl });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/auth/google/callback', async (req, res) => {
+  try {
+    const { code, state } = req.query || {};
+    if (!code || !state) return res.status(400).send('Missing code/state');
+    const sessionData = req.session.google_oauth || {};
+    if (!sessionData || sessionData.state !== state) return res.status(400).send('Invalid OAuth state');
+
+    const code_verifier = sessionData.code_verifier;
+    const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+
+    // Exchange code for tokens
+    const params = new URLSearchParams();
+    params.append('code', String(code));
+    params.append('client_id', DEFAULT_GOOGLE_CLIENT_ID);
+    params.append('grant_type', 'authorization_code');
+    params.append('redirect_uri', redirectUri);
+    params.append('code_verifier', code_verifier);
+
+    const tokenResp = await axios.post('https://oauth2.googleapis.com/token', params.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+
+    const tokenData = tokenResp.data || {};
+    const idToken = tokenData.id_token;
+    if (!idToken) return res.status(400).send('Failed to obtain id_token from Google');
+
+    const verified = await verifyGoogleIdToken(idToken);
+    if (!verified || !verified.email) return res.status(400).send('Google verification failed');
+
+    // Reuse existing google auth logic to create user + session
+    const finalEmail = verified.email;
+    const finalName = verified.name;
+    const finalPicture = verified.picture;
+    const finalGoogleId = verified.googleId;
+
+    let user;
+    if (useDB) {
+      user = await User.findOne({ email: finalEmail }).lean();
+      if (!user) {
+        const newUser = new User({ name: finalName || finalEmail.split('@')[0], email: finalEmail, password: 'GOOGLE_' + (finalGoogleId || Date.now()), googleId: finalGoogleId, avatar: finalPicture, role: 'user', verified: true, phone: '' });
+        await newUser.save();
+        user = newUser.toObject();
+      }
+    } else {
+      const users = readJson(FILES.users);
+      user = users.find(u => u.email === finalEmail);
+      if (!user) {
+        user = { id: Date.now().toString(), name: finalName || finalEmail.split('@')[0], email: finalEmail, googleId: finalGoogleId, role: 'user', verified: true };
+        users.push(user);
+        writeJson(FILES.users, users);
+      }
+    }
+
+    const userId = user._id?.toString() || user.id;
+    req.session.userId = userId;
+    req.session.role = user.role || 'user';
+    const userName = user.name || finalName || finalEmail.split('@')[0] || 'User';
+    await recordLoginActivity({ email: finalEmail, name: userName, status: 'success', method: 'google', role: user.role || 'user', ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress || '', userAgent: req.headers['user-agent'] || '' });
+
+    const redirectTo = sessionData.redirectTo || '/';
+    delete req.session.google_oauth;
+    return res.redirect(302, redirectTo);
+  } catch (e) {
+    console.error('Google callback error:', e.message);
+    return res.status(500).send('Google OAuth callback error: ' + e.message);
   }
 });
 

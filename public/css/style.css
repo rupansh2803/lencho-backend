@@ -645,6 +645,17 @@ button:hover,
   filter: brightness(1.02);
 }
 
+.google-auth-slot {
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 1rem;
+}
+
+.google-auth-slot > div,
+.google-auth-slot iframe {
+  width: 100% !important;
+}
+
 img {
   max-width: 100%;
   display: block
