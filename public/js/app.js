@@ -562,80 +562,34 @@ function updateHeader() {
   }
 }
 
-function handleUserClick() {
-  const nav = document.getElementById('main-nav');
-  const isMobileMenuOpen = window.innerWidth <= 768 && nav && nav.classList.contains('open');
-  if (isMobileMenuOpen) nav.classList.remove('open');
+function switchLoginType(type = 'email') {
+  window.loginType = type;
+  const emailBtn = document.getElementById('email-login-type-btn');
+  const googleBtn = document.getElementById('google-login-type-btn');
+  const emailForm = document.getElementById('auth-login-form');
 
-  if (currentUser) {
-    if (currentUser.role === 'admin') navigate('/admin');
-    else navigate('/dashboard');
-  } else {
-    openAuthModal();
-    // From mobile side menu, jump directly to signup step.
-    if (isMobileMenuOpen) switchToSignup();
+  if (type === 'email') {
+    if (emailBtn) {
+      emailBtn.style.color = 'var(--rose)';
+      emailBtn.style.borderBottomColor = 'var(--rose)';
+    }
+    if (googleBtn) {
+      googleBtn.style.color = '';
+      googleBtn.style.borderBottomColor = '';
+    }
+    if (emailForm) emailForm.style.display = 'block';
+    return;
   }
-}
 
-async function openAuthModal() {
-  document.getElementById('auth-modal').style.display = 'flex';
-  // Do NOT hide header — modal uses z-index to overlay it
-  document.body.style.overflow = 'hidden';
-  document.documentElement.style.overflow = 'hidden';
-  renderGoogleButtons();
-  const otpInput = document.getElementById('auth-otp-input');
-  if (otpInput) {
-    otpInput.value = '';
-    otpInput.type = 'password';
-    otpInput.setAttribute('placeholder', 'XXXXXX');
+  if (emailBtn) {
+    emailBtn.style.color = '';
+    emailBtn.style.borderBottomColor = '';
   }
-  // Load CAPTCHA for login + signup forms
-  await loadAuthCaptcha();
-}
-function closeAuthModal() {
-  document.getElementById('auth-modal').style.display = 'none';
-  // Always ensure header is visible after modal closes
-  const header = document.getElementById('site-header');
-  if (header) header.style.display = '';
-  document.body.style.overflow = '';
-  document.documentElement.style.overflow = '';
-  authOtpRequestInFlight = false;
-  authOtpResendEndsAt = 0;
-  if (authOtpResendTimer) {
-    clearInterval(authOtpResendTimer);
-    authOtpResendTimer = null;
+  if (googleBtn) {
+    googleBtn.style.color = 'var(--rose)';
+    googleBtn.style.borderBottomColor = 'var(--rose)';
   }
-  window.pendingAuth = null;
-  document.getElementById('auth-otp-step').style.display = 'none';
-  const signupPasswordStep = document.getElementById('auth-signup-password-step');
-  if (signupPasswordStep) signupPasswordStep.style.display = 'none';
-  document.getElementById('auth-signup-form').style.display = 'none';
-  document.getElementById('auth-login-form').style.display = 'block';
-  // Clear captcha inputs
-  const loginCaptcha = document.getElementById('login-captcha');
-  const signupCaptcha = document.getElementById('signup-captcha');
-  if (loginCaptcha) loginCaptcha.value = '';
-  if (signupCaptcha) signupCaptcha.value = '';
-}
-function switchToSignup() {
-  document.getElementById('auth-login-form').style.display = 'none';
-  document.getElementById('auth-otp-step').style.display = 'none';
-  const signupPasswordStep = document.getElementById('auth-signup-password-step');
-  if (signupPasswordStep) signupPasswordStep.style.display = 'none';
-  document.getElementById('auth-signup-form').style.display = 'block';
-  renderGoogleButtons();
-}
-
-function switchLoginType(type) {
-  // Enforce email-only login UI. Phone login has been removed.
-  window.loginType = 'email';
-  const emailFields = document.getElementById('email-login-fields');
-  if (emailFields) emailFields.style.display = 'block';
-  // hide phone fields if present (defensive)
-  const phoneFields = document.getElementById('phone-login-fields');
-  if (phoneFields) phoneFields.style.display = 'none';
-  const emailBtn = document.getElementById('login-type-email');
-  if (emailBtn) { emailBtn.style.color = 'var(--rose)'; emailBtn.style.borderBottomColor = 'var(--rose)'; }
+  if (emailForm) emailForm.style.display = 'none';
 }
 
 function switchToLogin() {
@@ -2015,6 +1969,24 @@ async function bootstrapApp() {
   try {
     // ✨ PARALLEL INITIALIZATION: Run non-blocking tasks together
     const initPromises = [];
+
+    const loginSuccessToken = (() => {
+      try {
+        const current = new URL(window.location.href);
+        if (current.pathname === '/login-success') {
+          return current.searchParams.get('token');
+        }
+      } catch (e) {}
+      return null;
+    })();
+
+    if (loginSuccessToken) {
+      setJWTToken(loginSuccessToken);
+      localStorage.setItem('authToken', loginSuccessToken);
+      localStorage.setItem('googleLoginSource', 'lencho');
+      localStorage.setItem('loginTime', Date.now());
+      history.replaceState({}, '', '/');
+    }
     
     // Critical path: Auto-login with saved JWT + init header (fast)
     initPromises.push(autoLoginWithToken().catch(e => console.error('autoLoginWithToken error:', e)));

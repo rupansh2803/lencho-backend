@@ -436,7 +436,8 @@ const DEFAULT_FALLBACK_SETTINGS = {
 };
 
 const app = express();
-const GOOGLE_CALLBACK_PATH = '/auth/google/callback';
+const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || 'https://lencho.in/auth/google/callback';
+const GOOGLE_CALLBACK_PATH = new URL(GOOGLE_CALLBACK_URL).pathname;
 const GOOGLE_START_PATH = '/auth/google/start';
 
 // CORS Configuration for Production
@@ -1098,7 +1099,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://fonts.gstatic.com", "https://accounts.google.com", "https://accounts.google.com/gsi/style", "https://cdnjs.cloudflare.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com", "data:"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https://checkout.razorpay.com", "https://www.googleapis.com", "https://accounts.google.com"],
+      connectSrc: ["'self'", "https://checkout.razorpay.com", "https://www.googleapis.com", "https://oauth2.googleapis.com", "https://accounts.google.com"],
       frameSrc: ["https://checkout.razorpay.com", "https://accounts.google.com"]
     }
   },
@@ -3765,7 +3766,7 @@ function buildGoogleAuthStart(req, res, redirectTo, codeVerifier) {
   const hash = crypto.createHash('sha256').update(verifier).digest('base64');
   const code_challenge = hash.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   req.session.google_oauth = { state, code_verifier: verifier, redirectTo: redirectTo || '/' };
-  const redirectUri = `${req.protocol}://${req.get('host')}${GOOGLE_CALLBACK_PATH}`;
+  const redirectUri = GOOGLE_CALLBACK_URL;
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${DEFAULT_GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('openid email profile')}&state=${state}&code_challenge=${code_challenge}&code_challenge_method=S256&prompt=select_account`;
   return authUrl;
 }
@@ -3779,19 +3780,6 @@ app.get(GOOGLE_START_PATH, async (req, res) => {
   } catch (e) { return res.status(500).send('Google redirect start failed: ' + e.message); }
 });
 
-app.get('/api/auth/google/start', async (req, res) => {
-  const redirectTo = req.query?.redirectTo || '/';
-  return res.redirect(302, `${GOOGLE_START_PATH}?redirectTo=${encodeURIComponent(redirectTo)}`);
-});
-
-app.post('/api/auth/google/start', (req, res) => {
-  try {
-    const { code_verifier, redirectTo } = req.body || {};
-    const authUrl = buildGoogleAuthStart(req, res, redirectTo, code_verifier);
-    return res.json({ url: authUrl });
-  } catch (e) { return res.status(500).json({ error: e.message }); }
-});
-
 app.get(GOOGLE_CALLBACK_PATH, async (req, res) => {
   try {
     const { code, state } = req.query || {};
@@ -3800,7 +3788,7 @@ app.get(GOOGLE_CALLBACK_PATH, async (req, res) => {
     if (!sessionData || sessionData.state !== state) return res.status(400).send('Invalid OAuth state');
 
     const code_verifier = sessionData.code_verifier;
-    const redirectUri = `${req.protocol}://${req.get('host')}${GOOGLE_CALLBACK_PATH}`;
+    const redirectUri = GOOGLE_CALLBACK_URL;
 
     // Exchange code for tokens
     const params = new URLSearchParams();
@@ -3864,23 +3852,17 @@ app.get(GOOGLE_CALLBACK_PATH, async (req, res) => {
     const userName = user.name || finalName || finalEmail.split('@')[0] || 'User';
     await recordLoginActivity({ email: finalEmail, name: userName, status: 'success', method: 'google', role: user.role || 'user', ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress || '', userAgent: req.headers['user-agent'] || '' });
 
-    const redirectTo = sessionData.redirectTo || '/';
+    const loginSuccessUrl = new URL('/login-success', SITE_URL);
+    loginSuccessUrl.searchParams.set('token', generateToken(userId, user.role || 'user'));
+    loginSuccessUrl.searchParams.set('redirectTo', sessionData.redirectTo || '/');
     delete req.session.google_oauth;
     await saveSessionAsync(req);
-    return res.redirect(302, redirectTo);
+    return res.redirect(302, loginSuccessUrl.toString());
   } catch (e) {
     const tokenError = e?.response?.data ? ` | ${typeof e.response.data === 'string' ? e.response.data : JSON.stringify(e.response.data)}` : '';
     console.error('Google callback error:', e.message + tokenError);
     return res.status(500).send('Google OAuth callback error: ' + e.message + tokenError);
   }
-});
-
-// Compatibility redirect: some Google Console setups use `/auth/google/callback`.
-// Forward to the API callback handler preserving query and session.
-app.get('/api/auth/google/callback', (req, res) => {
-  const qs = new URLSearchParams(req.query || {}).toString();
-  const target = GOOGLE_CALLBACK_PATH + (qs ? ('?' + qs) : '');
-  return res.redirect(302, target);
 });
 
 // ─── SETTINGS API (before page wildcards!) ────────────────────
