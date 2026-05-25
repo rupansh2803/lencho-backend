@@ -2069,32 +2069,8 @@ if (document.readyState === 'loading') {
 // ── GOOGLE OAUTH ─────────────────────────────────────────────
 const GOOGLE_CLIENT_ID = '1074667694021-1b9v8blpaq6l6ik0na3fq6c8prg9hm3q.apps.googleusercontent.com';
 let googleAuthInFlight = false;
-var googleIdClientInitialized = false;
-var googleButtonsRendered = false;
-
-function initGoogleIdentityClient() {
-  if (!window.google?.accounts?.id || googleIdClientInitialized) return;
-
-  try {
-    google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: (response) => handleGoogleCredential(response, null),
-      auto_select: false,
-      cancel_on_tap_outside: true,
-      // FedCM prompts are brittle in some harnesses/browsers; disable by default
-      use_fedcm_for_prompt: false
-    });
-  } catch (e) {
-    console.error('Google accounts initialization failed:', e);
-  }
-
-  googleIdClientInitialized = true;
-}
 
 function renderGoogleButtons() {
-  if (!window.google?.accounts?.id) return;
-  initGoogleIdentityClient();
-
   const loginSlot = document.getElementById('google-auth-login');
   const signupSlot = document.getElementById('google-auth-signup');
   const slots = [loginSlot, signupSlot].filter(Boolean);
@@ -2103,57 +2079,34 @@ function renderGoogleButtons() {
 
   slots.forEach((slot) => {
     slot.innerHTML = '';
-    try {
-      google.accounts.id.renderButton(slot, {
-        theme: 'outline',
-        size: 'large',
-        width: Math.max(260, Math.floor(slot.getBoundingClientRect().width || 320)),
-        text: 'continue_with',
-        shape: 'pill',
-        logo_alignment: 'center'
-      });
-    } catch (err) {
-      console.error('Google renderButton failed:', err);
-      const warn = document.createElement('div');
-      warn.style.fontSize = '.9rem';
-      warn.style.color = '#b91c1c';
-      warn.style.marginTop = '.5rem';
-      warn.textContent = 'Google Sign-in unavailable here — add this origin to your Google OAuth client (Console → Credentials → Authorized JavaScript origins).';
-      slot.appendChild(warn);
-    }
+    // Use a custom button that triggers our redirect+PKCE flow to avoid the GSI transform popup
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'google-auth-btn';
+    btn.style.display = 'inline-flex';
+    btn.style.alignItems = 'center';
+    btn.style.justifyContent = 'center';
+    btn.style.gap = '12px';
+    btn.style.width = '100%';
+    btn.style.maxWidth = Math.max(260, Math.floor(slot.getBoundingClientRect().width || 320)) + 'px';
+    btn.style.padding = '10px 16px';
+    btn.style.borderRadius = '999px';
+    btn.style.border = '1px solid rgba(0,0,0,0.08)';
+    btn.style.background = '#fff';
+    btn.style.cursor = 'pointer';
+    btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.9 0 7.1 1.3 9.3 3.1l7-7C35.6 2.6 30.1 0 24 0 14.7 0 6.7 4.7 2.6 11.5l8.1 6.3C12.8 13.1 18 9.5 24 9.5z"></path><path fill="#34A853" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.6H24v9.1h12.6c-.6 3.2-2.6 5.9-5.6 7.6l8.6 6.6C43.9 38.1 46.5 31.7 46.5 24.5z"></path><path fill="#4A90E2" d="M10.7 28.1C9.7 25.9 9.2 23.6 9.2 21.2s.5-4.7 1.5-6.9L2.6 8.1C.9 11.1 0 14.9 0 18.9c0 4 1 7.8 2.6 10.8l8.1-1.6z"></path><path fill="#FBBC05" d="M24 48c6.1 0 11.6-2 15.6-5.4l-8.6-6.6c-2.4 1.6-5.5 2.5-8.9 2.5-6 0-11.2-3.6-13.1-8.7L2.6 36.5C6.7 43.3 14.7 48 24 48z"></path></svg><span>Continue with Google</span>';
+    btn.onclick = function (e) {
+      e.preventDefault();
+      startGoogleRedirect();
+    };
+    slot.appendChild(btn);
   });
-
-  // Add redirect fallback link
-  slots.forEach((slot) => {
-    const fallback = document.createElement('div');
-    fallback.style.fontSize = '.85rem';
-    fallback.style.marginTop = '.6rem';
-    fallback.innerHTML = `<a href="#" onclick="startGoogleRedirect();return false;" style="color:var(--rose);text-decoration:underline;">Use alternate Google login (redirect)</a>`;
-    slot.appendChild(fallback);
-  });
-
-  googleButtonsRendered = true;
 }
 
 async function startGoogleRedirect() {
   try {
-    // generate code_verifier
-    function rand(len = 64) {
-      const arr = new Uint8Array(len);
-      window.crypto.getRandomValues(arr);
-      return Array.from(arr).map(n => ('0' + n.toString(16)).slice(-2)).join('');
-    }
-    const code_verifier = rand(32);
-
-    // send verifier to server and get auth URL
-    const res = await fetch('/api/auth/google/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code_verifier, redirectTo: location.pathname + location.search }) });
-    const data = await res.json();
-    if (!res.ok || !data.url) {
-      toast(data.error || 'Google redirect start failed', 'error');
-      return;
-    }
-    // Navigate to Google auth
-    window.location = data.url;
+    const redirectTo = encodeURIComponent(location.pathname + location.search);
+    window.location.href = `/auth/google/start?redirectTo=${redirectTo}`;
   } catch (e) {
     console.error('startGoogleRedirect error:', e);
     toast('Could not start Google redirect login', 'error');
@@ -2165,24 +2118,7 @@ function signInWithGoogle(event) {
   const btn = event && event.currentTarget ? event.currentTarget : null;
   googleAuthInFlight = true;
   if (btn) { btn.disabled = true; }
-
-  if (!window.google || !window.google.accounts) {
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.onload = () => {
-      renderGoogleButtons();
-      resetBtn(btn);
-    };
-    script.onerror = () => {
-      toast('Could not load Google SDK. Check internet/adblock.', 'error');
-      console.error('Google SDK failed to load from https://accounts.google.com/gsi/client');
-      resetBtn(btn);
-    };
-    document.head.appendChild(script);
-    return;
-  }
-
-  renderGoogleButtons();
+  startGoogleRedirect();
   resetBtn(btn);
 }
 

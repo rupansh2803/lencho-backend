@@ -649,11 +649,23 @@ button:hover,
   width: 100%;
   min-height: 44px;
   margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .google-auth-slot > div,
 .google-auth-slot iframe {
-  width: 100% !important;
+  width: auto !important;
+  max-width: 360px;
+}
+
+@media (max-width: 480px) {
+  .google-auth-slot > div,
+  .google-auth-slot iframe {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
 }
 
 img {
