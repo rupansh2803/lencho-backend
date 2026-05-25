@@ -603,6 +603,46 @@ function switchToLogin() {
   renderGoogleButtons();
 }
 
+function switchToSignup() {
+  const authLoginForm = document.getElementById('auth-login-form');
+  const authSignupForm = document.getElementById('auth-signup-form');
+  const authOtpStep = document.getElementById('auth-otp-step');
+  const signupPasswordStep = document.getElementById('auth-signup-password-step');
+  if (authOtpStep) authOtpStep.style.display = 'none';
+  if (signupPasswordStep) signupPasswordStep.style.display = 'none';
+  if (authLoginForm) authLoginForm.style.display = 'none';
+  if (authSignupForm) authSignupForm.style.display = 'block';
+  window.loginType = 'email';
+  switchLoginType('email');
+  renderGoogleButtons();
+}
+
+function openAuthModal() {
+  const modal = document.getElementById('auth-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  document.documentElement.style.overflow = 'hidden';
+  renderGoogleButtons();
+  switchToLogin();
+}
+
+function closeAuthModal() {
+  const modal = document.getElementById('auth-modal');
+  if (!modal) return;
+  modal.style.display = 'none';
+  document.body.style.overflow = '';
+  document.documentElement.style.overflow = '';
+}
+
+function handleUserClick() {
+  if (currentUser) {
+    navigate(currentUser.role === 'admin' ? '/admin' : '/dashboard');
+    return;
+  }
+  openAuthModal();
+}
+
 // ── CAPTCHA HELPERS ──────────────────────────────────────
 async function loadAuthCaptcha() {
   try {
