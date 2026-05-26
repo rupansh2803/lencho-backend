@@ -343,6 +343,11 @@ async function fetchPublicSettings(options = {}) {
   return data;
 }
 
+async function getGoogleClientId() {
+  const settings = await fetchPublicSettings({ timeoutMs: 2000 });
+  return String(settings.googleClientId || '').trim();
+}
+
 function getHeaderOffset() {
   return window.innerWidth <= 768 ? '110px' : '72px';
 }
@@ -2080,7 +2085,6 @@ if (document.readyState === 'loading') {
 }
 
 // ── GOOGLE OAUTH ─────────────────────────────────────────────
-const GOOGLE_CLIENT_ID = '1074667694021-1b9v8blpaq6l6ik0na3fq6c8prg9hm3q.apps.googleusercontent.com';
 let googleAuthInFlight = false;
 
 function renderGoogleButtons() {
@@ -2137,13 +2141,6 @@ function signInWithGoogle(event) {
 
 function doGoogleSignIn(btn) {
   try {
-    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_ID.includes('.apps.googleusercontent.com')) {
-      toast('Google Client ID missing/invalid', 'error');
-      console.error('Invalid GOOGLE_CLIENT_ID:', GOOGLE_CLIENT_ID);
-      resetBtn(btn);
-      return;
-    }
-
     renderGoogleButtons();
   } catch (e) {
     toast('Google login failed: ' + e.message, 'error');
@@ -2151,7 +2148,7 @@ function doGoogleSignIn(btn) {
   }
 }
 
-function startGoogleTokenFlow(btn) {
+async function startGoogleTokenFlow(btn) {
   try {
     if (!google.accounts || !google.accounts.oauth2) {
       toast('Google Sign-In is unavailable right now', 'error');
@@ -2159,8 +2156,16 @@ function startGoogleTokenFlow(btn) {
       return;
     }
 
+    const googleClientId = await getGoogleClientId();
+    if (!googleClientId || !googleClientId.includes('.apps.googleusercontent.com')) {
+      toast('Google Client ID missing/invalid', 'error');
+      console.error('Invalid googleClientId from public settings:', googleClientId);
+      resetBtn(btn);
+      return;
+    }
+
     const tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
+      client_id: googleClientId,
       scope: 'openid email profile',
       callback: async (tokenResponse) => {
         if (tokenResponse.error) {

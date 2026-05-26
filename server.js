@@ -24,10 +24,15 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
 const DEFAULT_SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || '';
 const DEFAULT_SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
-const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '1074667694021-1b9v8blpaq6l6ik0na3fq6c8prg9hm3q.apps.googleusercontent.com').trim();
+const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '').trim();
 const GOOGLE_CLIENT_SECRET = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+const GOOGLE_CALLBACK_URL = String(process.env.GOOGLE_CALLBACK_URL || 'https://lencho.in/auth/google/callback').trim();
+const GOOGLE_OAUTH_REDIRECT_ENABLED = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_CALLBACK_URL);
+if (!GOOGLE_CLIENT_ID) {
+  console.warn('[auth][google] GOOGLE_CLIENT_ID is missing. Google OAuth will be disabled until the environment is fixed.');
+}
 if (!GOOGLE_CLIENT_SECRET) {
-  throw new Error('GOOGLE_CLIENT_SECRET missing in environment');
+  console.warn('[auth][google] GOOGLE_CLIENT_SECRET is missing. Redirect-based Google OAuth will be disabled until the environment is fixed.');
 }
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://lencho.in';
 const SITE_URL = process.env.SITE_URL || FRONTEND_URL;
@@ -283,6 +288,9 @@ async function verifyGoogleIdToken(idToken) {
   if (!idToken) {
     throw new Error('Google token missing');
   }
+  if (!GOOGLE_CLIENT_ID) {
+    throw new Error('GOOGLE_CLIENT_ID missing in environment');
+  }
 
   let payload = null;
   try {
@@ -435,13 +443,44 @@ const DEFAULT_FALLBACK_SETTINGS = {
   aiChatWelcome: 'Namaste! Main Lencho assistant hoon. Product, offers, shipping, ya order help ke liye message bhejiye.',
   aiSystemPrompt: 'You are Lencho\'s premium jewelry shopping assistant. Recommend only products that fit the catalog context. Be concise, friendly, and practical.',
   aiHandoffWhatsappNumber: '919999999999',
-  razorpayKeyId: process.env.RAZORPAY_KEY_ID || ''
+  razorpayKeyId: process.env.RAZORPAY_KEY_ID || '',
+  googleClientId: GOOGLE_CLIENT_ID,
+  googleOAuthEnabled: GOOGLE_OAUTH_REDIRECT_ENABLED
 };
 
 const app = express();
-const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || 'https://lencho.in/auth/google/callback';
 const GOOGLE_CALLBACK_PATH = new URL(GOOGLE_CALLBACK_URL).pathname;
 const GOOGLE_START_PATH = '/auth/google/start';
+
+function sendGoogleOAuthError(res, statusCode, message) {
+  const safeMessage = String(message || 'Google authentication is temporarily unavailable');
+  const backUrl = `${FRONTEND_URL.replace(/\/+$/, '')}/login`;
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Google Login Unavailable</title>
+  <style>
+    body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(135deg,#fff7f9,#fff);color:#222;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px;}
+    .card{max-width:560px;width:100%;background:#fff;border:1px solid #f0dbe1;border-radius:18px;box-shadow:0 16px 40px rgba(0,0,0,.08);padding:28px;}
+    h1{margin:0 0 12px;font-size:28px;color:#b83c58;}
+    p{margin:0 0 14px;line-height:1.6;font-size:16px;}
+    a{display:inline-block;margin-top:8px;background:#b83c58;color:#fff;text-decoration:none;padding:12px 18px;border-radius:999px;font-weight:700;}
+    .hint{color:#666;font-size:14px;}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Google login is unavailable</h1>
+    <p>${safeMessage}</p>
+    <p class="hint">Please use email login for now, or ask the administrator to verify the Render environment variables and Google OAuth callback settings.</p>
+    <a href="${backUrl}">Back to login</a>
+  </div>
+</body>
+</html>`;
+  return res.status(statusCode).type('html').set('Cache-Control', 'no-store').send(html);
+}
 
 // CORS Configuration for Production
 const allowedOrigins = [
@@ -3688,6 +3727,9 @@ app.get('/api/ai/trending', async (req, res) => {
 // ─── GOOGLE OAUTH ROUTE ──────────────────────────────────────
 app.post('/api/auth/google', async (req, res) => {
   try {
+    if (!GOOGLE_CLIENT_ID) {
+      return res.status(503).json({ error: 'Google OAuth client ID is not configured on the server' });
+    }
     const { email, name, picture, googleId, idToken } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
@@ -3764,6 +3806,9 @@ app.post('/api/auth/google', async (req, res) => {
 
 // ─── GOOGLE OAUTH (Redirect + PKCE) ─────────────────────────
 function buildGoogleAuthStart(req, res, redirectTo, codeVerifier) {
+  if (!GOOGLE_OAUTH_REDIRECT_ENABLED) {
+    throw new Error('Google OAuth redirect flow is disabled because required environment variables are missing');
+  }
   const state = uuidv4();
   const verifier = codeVerifier || crypto.randomBytes(32).toString('hex');
   const hash = crypto.createHash('sha256').update(verifier).digest('base64');
@@ -3776,15 +3821,26 @@ function buildGoogleAuthStart(req, res, redirectTo, codeVerifier) {
 
 app.get(GOOGLE_START_PATH, async (req, res) => {
   try {
+    if (!GOOGLE_OAUTH_REDIRECT_ENABLED) {
+      console.error('[auth][google] Redirect start requested but Google OAuth is not fully configured');
+      return sendGoogleOAuthError(res, 503, 'Google OAuth is not configured on the server yet.');
+    }
     const redirectTo = req.query?.redirectTo || '/';
     const authUrl = buildGoogleAuthStart(req, res, redirectTo);
     await saveSessionAsync(req);
     return res.redirect(302, authUrl);
-  } catch (e) { return res.status(500).send('Google redirect start failed: ' + e.message); }
+  } catch (e) {
+    console.error('[auth][google] redirect start failed:', e.message);
+    return sendGoogleOAuthError(res, 500, 'Google redirect start failed.');
+  }
 });
 
 app.get(GOOGLE_CALLBACK_PATH, async (req, res) => {
   try {
+    if (!GOOGLE_OAUTH_REDIRECT_ENABLED) {
+      console.error('[auth][google] Callback requested but Google OAuth is not fully configured');
+      return sendGoogleOAuthError(res, 503, 'Google OAuth callback is not configured on the server yet.');
+    }
     const { code, state } = req.query || {};
     if (!code || !state) return res.status(400).send('Missing code/state');
     const sessionData = req.session.google_oauth || {};
@@ -3812,8 +3868,8 @@ app.get(GOOGLE_CALLBACK_PATH, async (req, res) => {
       const message = details
         ? `Google token exchange failed: ${typeof details === 'string' ? details : JSON.stringify(details)}`
         : `Google token exchange failed: ${tokenError.message}`;
-      console.error(message);
-      return res.status(500).send(message);
+      console.error('[auth][google] ' + message);
+      return sendGoogleOAuthError(res, 500, 'Google sign-in could not be completed right now.');
     }
 
     const tokenData = tokenResp.data || {};
@@ -3861,8 +3917,8 @@ app.get(GOOGLE_CALLBACK_PATH, async (req, res) => {
     return res.redirect(302, loginSuccessUrl.toString());
   } catch (e) {
     const tokenError = e?.response?.data ? ` | ${typeof e.response.data === 'string' ? e.response.data : JSON.stringify(e.response.data)}` : '';
-    console.error('Google callback error:', e.message + tokenError);
-    return res.status(500).send('Google OAuth callback error: ' + e.message + tokenError);
+    console.error('[auth][google] callback error:', e.message + tokenError);
+    return sendGoogleOAuthError(res, 500, 'Google sign-in callback failed.');
   }
 });
 
