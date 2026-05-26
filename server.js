@@ -2378,16 +2378,18 @@ app.post('/api/admin/login/request-otp', async (req, res) => {
     const isDev = process.env.NODE_ENV !== 'production';
     let otpSent = { via: 'console', message: 'OTP sent to admin email. Valid for 5 minutes.' };
 
-    // Always show OTP in development for testing
+    // Always show OTP in development for testing/fallback
     console.log(`\n📱 ADMIN OTP for ${email}: ${otp}  ← (visible in development mode)\n`);
 
-    // In production, try email first, then SMS fallback
-    if (!isDev) {
-      try {
-        await sendConfiguredEmailOTP(email, otp, 'admin_login');
-        otpSent = { via: 'email', message: 'OTP sent to your admin email. Valid for 5 minutes.' };
-      } catch (emailErr) {
-        console.log('⚠️  Email OTP failed, attempting SMS fallback:', emailErr.message);
+    // Try to send Email OTP first (both in development and production)
+    try {
+      await sendConfiguredEmailOTP(email, otp, 'admin_login');
+      otpSent = { via: 'email', message: 'OTP sent to your admin email. Valid for 5 minutes.' };
+    } catch (emailErr) {
+      console.log('⚠️  Email OTP failed, attempting fallback:', emailErr.message);
+      if (isDev) {
+        otpSent = { via: 'console', message: 'Email OTP failed. Under dev mode, OTP printed to console.' };
+      } else {
         try {
           await sendSMSOTP(email.replace(/@.*/, '7404217625'), otp);
           otpSent = { via: 'sms', message: 'OTP sent via SMS. Valid for 5 minutes.' };

@@ -361,13 +361,18 @@ async function adminStoreSettings() {
     <div style="background:#fefce8;padding:1rem;border-radius:8px;border:1px solid #fef08a;margin-bottom:1rem;font-size:0.8rem;color:#854d0e;">
       <b>Note:</b> For Gmail, use an "App Password" from your Google Account security settings. Regular passwords will not work.
     </div>
-    <button class="btn-primary" onclick="saveSMTPSettings()">
-      <i class="fas fa-envelope-lock"></i> Save Email Security Settings
-    </button>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn-primary" onclick="saveSMTPSettings()">
+        <i class="fas fa-envelope-lock"></i> Save Email Security Settings
+      </button>
+      <button class="btn-secondary" onclick="testSMTPSettings()" style="background:#b83c58;color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:opacity 0.2s;">
+        <i class="fas fa-paper-plane"></i> Test SMTP (Send OTP to Admin)
+      </button>
+    </div>
   </div>`;
 }
 
-async function saveSMTPSettings() {
+async function saveSMTPSettings(silent = false) {
   const data = {
     smtpHost: document.getElementById('s-smtp-host')?.value || 'smtp.gmail.com',
     smtpPort: parseInt(document.getElementById('s-smtp-port')?.value) || 465,
@@ -377,8 +382,39 @@ async function saveSMTPSettings() {
     otpBody: document.getElementById('s-otp-body')?.value || ''
   };
   const r = await api('/api/admin/settings', { method: 'POST', body: data });
-  if (r.error) toast('Error saving SMTP: ' + r.error, 'error');
-  else toast('✅ SMTP Security settings saved!', 'success');
+  if (r.error) {
+    toast('Error saving SMTP: ' + r.error, 'error');
+    throw new Error(r.error);
+  } else {
+    if (!silent) toast('✅ SMTP Security settings saved!', 'success');
+  }
+}
+
+async function testSMTPSettings() {
+  const testEmail = document.getElementById('s-smtp-user')?.value || '';
+  if (!testEmail) {
+    toast('⚠️ Please enter a Gmail/SMTP User email address first.', 'warning');
+    return;
+  }
+  
+  try {
+    toast('Saving settings first...', 'info');
+    await saveSMTPSettings(true);
+    
+    toast('📧 Sending test OTP to ' + testEmail + '...', 'info');
+    const r = await api('/api/admin/test-smtp', {
+      method: 'POST',
+      body: { testEmail }
+    });
+    
+    if (r.error) {
+      toast('❌ SMTP Test Failed: ' + r.error, 'error');
+    } else {
+      toast('✅ SMTP Test Successful! OTP sent to ' + testEmail, 'success');
+    }
+  } catch (err) {
+    console.error('SMTP test failed during save:', err);
+  }
 }
 
 async function saveShippingSettings() {
