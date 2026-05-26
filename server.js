@@ -26,6 +26,9 @@ const DEFAULT_SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || '';
 const DEFAULT_SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
 const DEFAULT_GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '1074667694021-1b9v8blpaq6l6ik0na3fq6c8prg9hm3q.apps.googleusercontent.com';
 const DEFAULT_GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+if (!DEFAULT_GOOGLE_CLIENT_SECRET) {
+  console.warn('⚠️ GOOGLE_CLIENT_SECRET is not configured. Google login will fail until the real secret is added to the runtime environment.');
+}
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://lencho.in';
 const SITE_URL = process.env.SITE_URL || FRONTEND_URL;
 const MONGODB_URI = String(process.env.MONGODB_URI || '').trim();

@@ -624,6 +624,7 @@ function openAuthModal() {
   document.body.style.overflow = 'hidden';
   document.documentElement.style.overflow = 'hidden';
   renderGoogleButtons();
+  loadAuthCaptcha();
   switchToLogin();
 }
 
