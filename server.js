@@ -4206,4 +4206,8 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`📌 Environment: ${NODE_ENV}`);
   console.log(`   Admin Panel → /admin`);
   console.log(`   MongoDB: ${useDB ? '✅ Connected' : '⚠️  Using JSON fallback'}\n`);
+  console.log(`   Google OAuth: ${GOOGLE_OAUTH_REDIRECT_ENABLED ? '✅ Enabled' : '⚠️ Disabled (missing env vars)'}`);
+  console.log(`   FRONTEND_URL: ${FRONTEND_URL}`);
+  console.log(`   SESSION_SECRET: ${process.env.SESSION_SECRET ? '✅ Set' : '⚠️ Missing (using fallback)'}`);
+  console.log(`   JWT_SECRET: ${process.env.JWT_SECRET ? '✅ Set' : '⚠️ Missing (using fallback)'}`);
 });
