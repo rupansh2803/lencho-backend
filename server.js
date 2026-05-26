@@ -24,10 +24,10 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
 const DEFAULT_SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || '';
 const DEFAULT_SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
-const DEFAULT_GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '1074667694021-1b9v8blpaq6l6ik0na3fq6c8prg9hm3q.apps.googleusercontent.com';
-const DEFAULT_GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
-if (!DEFAULT_GOOGLE_CLIENT_SECRET) {
-  console.warn('⚠️ GOOGLE_CLIENT_SECRET is not configured. Google login will fail until the real secret is added to the runtime environment.');
+const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '1074667694021-1b9v8blpaq6l6ik0na3fq6c8prg9hm3q.apps.googleusercontent.com').trim();
+const GOOGLE_CLIENT_SECRET = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+if (!GOOGLE_CLIENT_SECRET) {
+  throw new Error('GOOGLE_CLIENT_SECRET missing in environment');
 }
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://lencho.in';
 const SITE_URL = process.env.SITE_URL || FRONTEND_URL;
@@ -299,7 +299,7 @@ async function verifyGoogleIdToken(idToken) {
     payload = decoded;
   }
 
-  if (payload.aud !== DEFAULT_GOOGLE_CLIENT_ID) {
+  if (payload.aud !== GOOGLE_CLIENT_ID) {
     throw new Error('Google token audience mismatch');
   }
   if (String(payload.email_verified || '').toLowerCase() !== 'true') {
@@ -3770,7 +3770,7 @@ function buildGoogleAuthStart(req, res, redirectTo, codeVerifier) {
   const code_challenge = hash.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   req.session.google_oauth = { state, code_verifier: verifier, redirectTo: redirectTo || '/' };
   const redirectUri = GOOGLE_CALLBACK_URL;
-  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${DEFAULT_GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('openid email profile')}&state=${state}&code_challenge=${code_challenge}&code_challenge_method=S256&prompt=select_account`;
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('openid email profile')}&state=${state}&code_challenge=${code_challenge}&code_challenge_method=S256&prompt=select_account`;
   return authUrl;
 }
 
@@ -3796,10 +3796,8 @@ app.get(GOOGLE_CALLBACK_PATH, async (req, res) => {
     // Exchange code for tokens
     const params = new URLSearchParams();
     params.append('code', String(code));
-    params.append('client_id', DEFAULT_GOOGLE_CLIENT_ID);
-    if (DEFAULT_GOOGLE_CLIENT_SECRET) {
-      params.append('client_secret', DEFAULT_GOOGLE_CLIENT_SECRET);
-    }
+    params.append('client_id', GOOGLE_CLIENT_ID);
+    params.append('client_secret', GOOGLE_CLIENT_SECRET);
     params.append('grant_type', 'authorization_code');
     params.append('redirect_uri', redirectUri);
     params.append('code_verifier', code_verifier);
