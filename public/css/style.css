@@ -660,11 +660,65 @@ button:hover,
   max-width: 360px;
 }
 
+/* ── Google Auth Custom Button ── */
+.google-auth-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100% !important;
+  max-width: 100% !important;
+  padding: 12px 20px;
+  border-radius: 999px;
+  border: 1.5px solid #dadce0;
+  background: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #3c4043;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+  box-sizing: border-box;
+  line-height: 1.4;
+}
+
+.google-auth-btn:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  border-color: #adb5bd;
+  transform: translateY(-1px);
+}
+
+.google-auth-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.google-auth-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.google-auth-btn svg {
+  flex-shrink: 0;
+}
+
+.google-auth-btn span {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 @media (max-width: 480px) {
   .google-auth-slot > div,
   .google-auth-slot iframe {
     width: 100% !important;
     max-width: 100% !important;
+  }
+
+  .google-auth-btn {
+    font-size: 0.9rem;
+    padding: 11px 16px;
+    gap: 10px;
   }
 }
 
@@ -3952,15 +4006,27 @@ tr:hover td {
   user-select: none;
   -webkit-user-select: none;
   max-width: 420px;
+  width: 100%;
   max-height: 85vh;
   overflow-y: auto;
+  position: relative;
+  margin: auto;
+  box-sizing: border-box;
 }
 
-#auth-modal .modal-overlay {
+#auth-modal.modal-overlay {
   display: flex !important;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 16px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 #auth-modal .modal-close {
@@ -4825,9 +4891,11 @@ label[for="captcha"],
     width: calc(100vw - 16px) !important;
     padding: 1rem !important;
     border-radius: 12px;
-    max-height: 90vh;
+    max-height: 88vh;
     margin: auto !important;
     box-sizing: border-box;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   #auth-modal .form-row {

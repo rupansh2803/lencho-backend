@@ -29,10 +29,16 @@ const GOOGLE_CLIENT_SECRET = String(process.env.GOOGLE_CLIENT_SECRET || '').trim
 const GOOGLE_CALLBACK_URL = String(process.env.GOOGLE_CALLBACK_URL || 'https://lencho.in/auth/google/callback').trim();
 const GOOGLE_OAUTH_REDIRECT_ENABLED = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_CALLBACK_URL);
 if (!GOOGLE_CLIENT_ID) {
-  console.warn('[auth][google] GOOGLE_CLIENT_ID is missing. Google OAuth will be disabled until the environment is fixed.');
+  console.error('❌ [auth][google] GOOGLE_CLIENT_ID is MISSING. Google OAuth will be completely disabled.');
 }
 if (!GOOGLE_CLIENT_SECRET) {
-  console.warn('[auth][google] GOOGLE_CLIENT_SECRET is missing. Redirect-based Google OAuth will be disabled until the environment is fixed.');
+  console.error('❌ [auth][google] GOOGLE_CLIENT_SECRET is MISSING. Google OAuth redirect flow will fail. Add it to your environment variables.');
+}
+if (isProduction && !process.env.JWT_SECRET) {
+  console.warn('⚠️ JWT_SECRET is not set in production. Using fallback — this is insecure.');
+}
+if (isProduction && !process.env.SESSION_SECRET) {
+  console.warn('⚠️ SESSION_SECRET is not set in production. Using fallback — this is insecure.');
 }
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://lencho.in';
 const SITE_URL = process.env.SITE_URL || FRONTEND_URL;
@@ -1146,7 +1152,7 @@ app.use(helmet({
     }
   },
   crossOriginEmbedderPolicy: false,
-  crossOriginOpenerPolicy: true,
+  crossOriginOpenerPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   strictTransportSecurity: { maxAge: 31536000, includeSubDomains: true, preload: true },
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
@@ -1185,7 +1191,7 @@ app.use(session({
   cookie: {
     maxAge: 7 * 24 * 60 * 60 * 1000,
     httpOnly: true,
-    sameSite: isProduction ? 'none' : 'lax',
+    sameSite: 'lax',
     secure: isProduction
   }
 }));
@@ -3844,7 +3850,10 @@ app.get(GOOGLE_CALLBACK_PATH, async (req, res) => {
     const { code, state } = req.query || {};
     if (!code || !state) return res.status(400).send('Missing code/state');
     const sessionData = req.session.google_oauth || {};
-    if (!sessionData || sessionData.state !== state) return res.status(400).send('Invalid OAuth state');
+    if (!sessionData || !sessionData.state || sessionData.state !== state) {
+      console.error('[auth][google] OAuth state mismatch — session may have expired or cookies were blocked.', { expected: sessionData.state, received: state });
+      return sendGoogleOAuthError(res, 400, 'Your sign-in session expired. Please close this window and try Google Login again. If the problem persists, clear your browser cookies and retry.');
+    }
 
     const code_verifier = sessionData.code_verifier;
     const redirectUri = GOOGLE_CALLBACK_URL;

@@ -2096,21 +2096,9 @@ function renderGoogleButtons() {
 
   slots.forEach((slot) => {
     slot.innerHTML = '';
-    // Use a custom button that triggers our redirect+PKCE flow to avoid the GSI transform popup
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'google-auth-btn';
-    btn.style.display = 'inline-flex';
-    btn.style.alignItems = 'center';
-    btn.style.justifyContent = 'center';
-    btn.style.gap = '12px';
-    btn.style.width = '100%';
-    btn.style.maxWidth = Math.max(260, Math.floor(slot.getBoundingClientRect().width || 320)) + 'px';
-    btn.style.padding = '10px 16px';
-    btn.style.borderRadius = '999px';
-    btn.style.border = '1px solid rgba(0,0,0,0.08)';
-    btn.style.background = '#fff';
-    btn.style.cursor = 'pointer';
     btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.9 0 7.1 1.3 9.3 3.1l7-7C35.6 2.6 30.1 0 24 0 14.7 0 6.7 4.7 2.6 11.5l8.1 6.3C12.8 13.1 18 9.5 24 9.5z"></path><path fill="#34A853" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.6H24v9.1h12.6c-.6 3.2-2.6 5.9-5.6 7.6l8.6 6.6C43.9 38.1 46.5 31.7 46.5 24.5z"></path><path fill="#4A90E2" d="M10.7 28.1C9.7 25.9 9.2 23.6 9.2 21.2s.5-4.7 1.5-6.9L2.6 8.1C.9 11.1 0 14.9 0 18.9c0 4 1 7.8 2.6 10.8l8.1-1.6z"></path><path fill="#FBBC05" d="M24 48c6.1 0 11.6-2 15.6-5.4l-8.6-6.6c-2.4 1.6-5.5 2.5-8.9 2.5-6 0-11.2-3.6-13.1-8.7L2.6 36.5C6.7 43.3 14.7 48 24 48z"></path></svg><span>Continue with Google</span>';
     btn.onclick = function (e) {
       e.preventDefault();
