@@ -1,5 +1,5 @@
 
-require('dotenv').config();
+const dotenvResult = require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const cors = require('cors');
@@ -20,14 +20,77 @@ const { v4: uuidv4 } = require('uuid');
 const { generateToken } = require('./middleware/auth');
 const { User, Product, Order, Cart, Wishlist, Settings, OTPLog, Testimonial, Category, Inquiry, LoginEvent } = require('./models');
 
+function cleanEnvValue(value) {
+  if (value === undefined || value === null) return '';
+  const str = String(value).trim();
+  if (!str) return '';
+  return str.replace(/^['"]|['"]$/g, '').trim();
+}
+
+function readEnvVar(primaryKey, aliasKeys = [], fallback = '') {
+  const keys = [primaryKey, ...(Array.isArray(aliasKeys) ? aliasKeys : [])];
+  for (const key of keys) {
+    const value = cleanEnvValue(process.env[key]);
+    if (value) return value;
+  }
+  return cleanEnvValue(fallback);
+}
+
+function parseBooleanEnv(value, fallback = false) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
+function resolveGoogleCallbackUrl(rawCallbackUrl, siteUrl) {
+  const fallbackUrl = 'https://lencho.in/auth/google/callback';
+  const candidate = cleanEnvValue(rawCallbackUrl);
+  if (!candidate) return fallbackUrl;
+
+  if (candidate.startsWith('/')) {
+    try {
+      return new URL(candidate, siteUrl || 'https://lencho.in').toString();
+    } catch {
+      return fallbackUrl;
+    }
+  }
+
+  try {
+    return new URL(candidate).toString();
+  } catch {
+    console.error(`[auth][google] Invalid GOOGLE_CALLBACK_URL: ${candidate}. Falling back to ${fallbackUrl}`);
+    return fallbackUrl;
+  }
+}
+
+function maskSecret(value) {
+  const str = String(value || '');
+  if (!str) return 'missing';
+  if (str.length <= 8) return '*'.repeat(str.length);
+  return `${str.slice(0, 4)}...${str.slice(-4)}`;
+}
+
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
 const DEFAULT_SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || '';
 const DEFAULT_SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
-const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '').trim();
-const GOOGLE_CLIENT_SECRET = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
-const GOOGLE_CALLBACK_URL = String(process.env.GOOGLE_CALLBACK_URL || 'https://lencho.in/auth/google/callback').trim();
+const FRONTEND_URL = readEnvVar('FRONTEND_URL', ['APP_URL', 'PUBLIC_URL'], 'https://lencho.in').replace(/\/+$/, '');
+const SITE_URL = readEnvVar('SITE_URL', ['FRONTEND_URL'], FRONTEND_URL);
+const JWT_SECRET_RESOLVED = readEnvVar('JWT_SECRET', [], 'your-secret-key');
+const SESSION_SECRET_RESOLVED = readEnvVar('SESSION_SECRET', [], 'lencho-secret');
+const GOOGLE_CLIENT_ID = readEnvVar('GOOGLE_CLIENT_ID', ['GOOGLE_OAUTH_CLIENT_ID']);
+const GOOGLE_CLIENT_SECRET = readEnvVar('GOOGLE_CLIENT_SECRET', ['GOOGLE_OAUTH_CLIENT_SECRET']);
+const GOOGLE_CALLBACK_URL = resolveGoogleCallbackUrl(readEnvVar('GOOGLE_CALLBACK_URL', [], '/auth/google/callback'), SITE_URL);
+const MONGODB_URI = readEnvVar('MONGODB_URI', ['MONGO_URI', 'DATABASE_URL']);
+const REQUIRE_MONGODB = parseBooleanEnv(readEnvVar('REQUIRE_MONGODB', [], 'false'), false);
 const GOOGLE_OAUTH_REDIRECT_ENABLED = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_CALLBACK_URL);
+
+if (!dotenvResult?.error) {
+  console.log('[boot] Loaded .env file for local development');
+}
+console.log(`[boot] NODE_ENV=${NODE_ENV} FRONTEND_URL=${FRONTEND_URL}`);
 if (!GOOGLE_CLIENT_ID) {
   console.error('❌ [auth][google] GOOGLE_CLIENT_ID is MISSING. Google OAuth will be completely disabled.');
 }
@@ -40,12 +103,21 @@ if (isProduction && !process.env.JWT_SECRET) {
 if (isProduction && !process.env.SESSION_SECRET) {
   console.warn('⚠️ SESSION_SECRET is not set in production. Using fallback — this is insecure.');
 }
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://lencho.in';
-const SITE_URL = process.env.SITE_URL || FRONTEND_URL;
-const MONGODB_URI = String(process.env.MONGODB_URI || '').trim();
-const REQUIRE_MONGODB = process.env.REQUIRE_MONGODB
-  ? process.env.REQUIRE_MONGODB === 'true'
-  : false;  // Allow JSON fallback even in production if MongoDB not configured
+
+console.log('[auth][google] OAuth bootstrap:', {
+  clientIdLoaded: Boolean(GOOGLE_CLIENT_ID),
+  clientIdPreview: maskSecret(GOOGLE_CLIENT_ID),
+  clientSecretLoaded: Boolean(GOOGLE_CLIENT_SECRET),
+  callbackUrl: GOOGLE_CALLBACK_URL,
+  redirectEnabled: GOOGLE_OAUTH_REDIRECT_ENABLED
+});
+console.log('[boot] Environment validation:', {
+  frontendUrl: FRONTEND_URL,
+  nodeEnv: NODE_ENV,
+  jwtSecretLoaded: Boolean(cleanEnvValue(process.env.JWT_SECRET)),
+  sessionSecretLoaded: Boolean(cleanEnvValue(process.env.SESSION_SECRET)),
+  mongodbUriLoaded: Boolean(MONGODB_URI)
+});
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
 const OPENAI_MODEL = String(process.env.OPENAI_MODEL || 'gpt-5.2').trim();
 const CLOUDINARY_CLOUD_NAME = String(process.env.CLOUDINARY_CLOUD_NAME || '').trim();
@@ -197,7 +269,7 @@ function getJwtAuthPayload(req) {
   if (!token) return null;
 
   try {
-    return jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    return jwt.verify(token, JWT_SECRET_RESOLVED);
   } catch {
     return null;
   }
@@ -490,15 +562,20 @@ function sendGoogleOAuthError(res, statusCode, message) {
 
 // CORS Configuration for Production
 const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:30054',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:30054',
   'https://lencho.in',
   'https://www.lencho.in',
-  'https://lencho.netlify.app',
   'https://api.lencho.in'
 ];
+
+if (!isProduction) {
+  allowedOrigins.push(
+    'http://localhost:3000',
+    'http://localhost:30054',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:30054',
+    'https://lencho.netlify.app'
+  );
+}
 
 const configuredFrontendOrigin = String(FRONTEND_URL || '').replace(/\/+$/, '');
 const allowedOriginSet = new Set([
@@ -531,6 +608,22 @@ app.use(cors({
 app.get('/health', (req, res) => {
   res.set('Cache-Control', 'no-cache');
   res.json({ status: 'ok', timestamp: new Date().toISOString(), db: useDB ? 'connected' : 'fallback' });
+});
+
+app.get('/api/auth/google/status', (req, res) => {
+  const missing = [];
+  if (!GOOGLE_CLIENT_ID) missing.push('GOOGLE_CLIENT_ID');
+  if (!GOOGLE_CLIENT_SECRET) missing.push('GOOGLE_CLIENT_SECRET');
+
+  res.set('Cache-Control', 'no-store');
+  return res.json({
+    enabled: GOOGLE_OAUTH_REDIRECT_ENABLED,
+    callbackPath: GOOGLE_CALLBACK_PATH,
+    callbackUrl: GOOGLE_CALLBACK_URL,
+    frontendUrl: FRONTEND_URL,
+    missing,
+    nodeEnv: NODE_ENV
+  });
 });
 
 app.get('/api/auth/me', async (req, res) => {
@@ -1186,7 +1279,7 @@ app.set('trust proxy', 1);
 app.disable('x-powered-by');  // Hide express version
 
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'lencho-secret',
+  secret: SESSION_SECRET_RESOLVED,
   resave: false, saveUninitialized: false,
   cookie: {
     maxAge: 7 * 24 * 60 * 60 * 1000,
@@ -4219,6 +4312,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`   MongoDB: ${useDB ? '✅ Connected' : '⚠️  Using JSON fallback'}\n`);
   console.log(`   Google OAuth: ${GOOGLE_OAUTH_REDIRECT_ENABLED ? '✅ Enabled' : '⚠️ Disabled (missing env vars)'}`);
   console.log(`   FRONTEND_URL: ${FRONTEND_URL}`);
-  console.log(`   SESSION_SECRET: ${process.env.SESSION_SECRET ? '✅ Set' : '⚠️ Missing (using fallback)'}`);
-  console.log(`   JWT_SECRET: ${process.env.JWT_SECRET ? '✅ Set' : '⚠️ Missing (using fallback)'}`);
+  console.log(`   SESSION_SECRET: ${cleanEnvValue(process.env.SESSION_SECRET) ? '✅ Set' : '⚠️ Missing (using fallback)'}`);
+  console.log(`   JWT_SECRET: ${cleanEnvValue(process.env.JWT_SECRET) ? '✅ Set' : '⚠️ Missing (using fallback)'}`);
 });
