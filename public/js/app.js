@@ -498,6 +498,43 @@ function clearAuth() {
   currentUser = null;
 }
 
+function generateClientSessionId() {
+  if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+    return window.crypto.randomUUID();
+  }
+
+  const bytes = new Uint8Array(16);
+  if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0'));
+  return [
+    hex.slice(0, 4).join(''),
+    hex.slice(4, 6).join(''),
+    hex.slice(6, 8).join(''),
+    hex.slice(8, 10).join(''),
+    hex.slice(10, 16).join('')
+  ].join('-');
+}
+
+function getFirebaseAuthErrorMessage(error) {
+  const code = String(error?.code || '').toLowerCase();
+  if (code === 'auth/popup-blocked') return 'Google popup was blocked by your browser. Please allow popups and try again.';
+  if (code === 'auth/popup-closed-by-user') return 'Google sign-in was cancelled.';
+  if (code === 'auth/unauthorized-domain') return 'This domain is not authorized for Firebase Google login yet.';
+  if (code === 'auth/network-request-failed') return 'Network error during Google sign-in. Please try again.';
+  if (code === 'auth/cancelled-popup-request') return 'Google sign-in request was replaced. Please try again.';
+  return String(error?.message || 'Google login failed. Please try again.');
+}
+
 // ── TOAST ─────────────────────────────────────────────────
 function toast(msg, type = 'info', dur = 3000) {
   const icons = { success: '✓', error: '✕', info: '✦', cart: '🛍️' };
@@ -895,7 +932,7 @@ async function verifyEmailOTP() {
     setJWTToken(finalResp.token);
     localStorage.setItem('authToken', finalResp.token);
     localStorage.setItem('loginTime', Date.now());
-    localStorage.setItem('sessionId', finalResp.sessionId || uuidv4());
+    localStorage.setItem('sessionId', finalResp.sessionId || generateClientSessionId());
     localStorage.setItem('otpLoginSource', 'email');
   }
   
@@ -2185,10 +2222,11 @@ async function signInWithGoogle(event) {
     const authResult = await firebaseClient.signInWithGooglePopup();
     await completeGoogleLogin(authResult, btn);
   } catch (e) {
-    const code = String(e?.code || '');
-    if (!/popup-closed-by-user/i.test(code)) {
-      toast('Google login failed. Please try again.', 'error');
-      console.error('Firebase Google sign-in failed:', e);
+    console.error(e?.code);
+    console.error(e?.message);
+    console.error('Firebase Google sign-in failed:', e);
+    if (String(e?.code || '').toLowerCase() !== 'auth/popup-closed-by-user') {
+      toast(getFirebaseAuthErrorMessage(e), 'error');
     }
   } finally {
     googleAuthInFlight = false;
@@ -2255,7 +2293,7 @@ async function completeGoogleLogin(authResult, btn) {
     localStorage.setItem('authToken', result.token);
     localStorage.setItem('googleLoginSource', 'lencho');
     localStorage.setItem('loginTime', Date.now());
-    localStorage.setItem('sessionId', result.sessionId || uuidv4());
+    localStorage.setItem('sessionId', result.sessionId || generateClientSessionId());
   }
   
   currentUser = result.user;
