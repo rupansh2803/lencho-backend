@@ -571,7 +571,7 @@ function switchLoginType(type = 'email') {
   window.loginType = type;
   const emailBtn = document.getElementById('email-login-type-btn');
   const googleBtn = document.getElementById('google-login-type-btn');
-  const emailForm = document.getElementById('auth-login-form');
+  const emailFields = document.getElementById('email-login-fields');
 
   if (type === 'email') {
     if (emailBtn) {
@@ -582,7 +582,7 @@ function switchLoginType(type = 'email') {
       googleBtn.style.color = '';
       googleBtn.style.borderBottomColor = '';
     }
-    if (emailForm) emailForm.style.display = 'block';
+    if (emailFields) emailFields.style.display = 'block';
     return;
   }
 
@@ -594,21 +594,24 @@ function switchLoginType(type = 'email') {
     googleBtn.style.color = 'var(--rose)';
     googleBtn.style.borderBottomColor = 'var(--rose)';
   }
-  if (emailForm) emailForm.style.display = 'none';
+  if (emailFields) emailFields.style.display = 'none';
 }
 
 function switchToLogin() {
+  const modalCard = document.querySelector('#auth-modal .modal-card');
   document.getElementById('auth-otp-step').style.display = 'none';
   const signupPasswordStep = document.getElementById('auth-signup-password-step');
   if (signupPasswordStep) signupPasswordStep.style.display = 'none';
   document.getElementById('auth-signup-form').style.display = 'none';
   document.getElementById('auth-login-form').style.display = 'block';
+  if (modalCard) modalCard.scrollTop = 0;
   window.loginType = 'email';
   switchLoginType('email');
   renderGoogleButtons();
 }
 
 function switchToSignup() {
+  const modalCard = document.querySelector('#auth-modal .modal-card');
   const authLoginForm = document.getElementById('auth-login-form');
   const authSignupForm = document.getElementById('auth-signup-form');
   const authOtpStep = document.getElementById('auth-otp-step');
@@ -617,6 +620,7 @@ function switchToSignup() {
   if (signupPasswordStep) signupPasswordStep.style.display = 'none';
   if (authLoginForm) authLoginForm.style.display = 'none';
   if (authSignupForm) authSignupForm.style.display = 'block';
+  if (modalCard) modalCard.scrollTop = 0;
   window.loginType = 'email';
   switchLoginType('email');
   renderGoogleButtons();
@@ -651,10 +655,12 @@ function resetAuthModalState() {
 
 function openAuthModal() {
   const modal = document.getElementById('auth-modal');
+  const modalCard = document.querySelector('#auth-modal .modal-card');
   if (!modal) return;
   modal.style.display = 'flex';
   document.body.style.overflow = 'hidden';
   document.documentElement.style.overflow = 'hidden';
+  if (modalCard) modalCard.scrollTop = 0;
   renderGoogleButtons();
   loadAuthCaptcha();
   switchToLogin();
