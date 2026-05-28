@@ -343,11 +343,6 @@ async function fetchPublicSettings(options = {}) {
   return data;
 }
 
-async function getGoogleClientId() {
-  const settings = await fetchPublicSettings({ timeoutMs: 2000 });
-  return String(settings.googleClientId || '').trim();
-}
-
 function getHeaderOffset() {
   return window.innerWidth <= 768 ? '110px' : '72px';
 }
@@ -557,7 +552,12 @@ function updateHeader() {
   const btn = document.getElementById('header-user-btn');
   if (currentUser) {
     const firstName = String(currentUser.name || 'User').trim().split(/\s+/)[0];
-    btn.innerHTML = `<i class="fas fa-user-check"></i><span class="header-user-label">Hi, ${firstName}</span>`;
+    const avatar = String(currentUser.avatar || '').trim();
+    if (avatar) {
+      btn.innerHTML = `<img src="${avatar}" alt="${firstName}" class="header-user-avatar"/><span class="header-user-label">Hi, ${firstName}</span>`;
+    } else {
+      btn.innerHTML = `<i class="fas fa-user-check"></i><span class="header-user-label">Hi, ${firstName}</span>`;
+    }
     btn.classList.add('signed-in');
     btn.style.color = 'var(--rose)';
   } else {
@@ -949,6 +949,14 @@ function toggleSpec(el) {
 }
 
 async function handleLogout() {
+  try {
+    if (window.lenchoFirebaseAuth && typeof window.lenchoFirebaseAuth.signOut === 'function') {
+      await window.lenchoFirebaseAuth.signOut();
+    }
+  } catch (e) {
+    console.warn('Firebase sign out failed:', e);
+  }
+
   try {
     await api('/api/logout', { method: 'POST' });
   } catch (e) {
@@ -2015,24 +2023,6 @@ async function bootstrapApp() {
   try {
     // ✨ PARALLEL INITIALIZATION: Run non-blocking tasks together
     const initPromises = [];
-
-    const loginSuccessToken = (() => {
-      try {
-        const current = new URL(window.location.href);
-        if (current.pathname === '/login-success') {
-          return current.searchParams.get('token');
-        }
-      } catch (e) {}
-      return null;
-    })();
-
-    if (loginSuccessToken) {
-      setJWTToken(loginSuccessToken);
-      localStorage.setItem('authToken', loginSuccessToken);
-      localStorage.setItem('googleLoginSource', 'lencho');
-      localStorage.setItem('loginTime', Date.now());
-      history.replaceState({}, '', '/');
-    }
     
     // Critical path: Auto-login with saved JWT + init header (fast)
     initPromises.push(autoLoginWithToken().catch(e => console.error('autoLoginWithToken error:', e)));
@@ -2046,6 +2036,7 @@ async function bootstrapApp() {
     navigate(location.pathname + location.search, false);
     if (typeof initHeader === 'function') initHeader();
     renderGoogleButtons();
+    initPromises.push(handleFirebaseRedirectAuth().catch(e => console.error('handleFirebaseRedirectAuth error:', e)));
     
     // Hide loading screen fast (after minimal delay)
     const ls = document.getElementById('loading-screen');
@@ -2084,7 +2075,7 @@ if (document.readyState === 'loading') {
   startBootstrapWhenReady();
 }
 
-// ── GOOGLE OAUTH ─────────────────────────────────────────────
+// ── FIREBASE GOOGLE AUTH ──────────────────────────────────────
 let googleAuthInFlight = false;
 
 function renderGoogleButtons() {
@@ -2102,137 +2093,102 @@ function renderGoogleButtons() {
     btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.9 0 7.1 1.3 9.3 3.1l7-7C35.6 2.6 30.1 0 24 0 14.7 0 6.7 4.7 2.6 11.5l8.1 6.3C12.8 13.1 18 9.5 24 9.5z"></path><path fill="#34A853" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.6H24v9.1h12.6c-.6 3.2-2.6 5.9-5.6 7.6l8.6 6.6C43.9 38.1 46.5 31.7 46.5 24.5z"></path><path fill="#4A90E2" d="M10.7 28.1C9.7 25.9 9.2 23.6 9.2 21.2s.5-4.7 1.5-6.9L2.6 8.1C.9 11.1 0 14.9 0 18.9c0 4 1 7.8 2.6 10.8l8.1-1.6z"></path><path fill="#FBBC05" d="M24 48c6.1 0 11.6-2 15.6-5.4l-8.6-6.6c-2.4 1.6-5.5 2.5-8.9 2.5-6 0-11.2-3.6-13.1-8.7L2.6 36.5C6.7 43.3 14.7 48 24 48z"></path></svg><span>Continue with Google</span>';
     btn.onclick = function (e) {
       e.preventDefault();
-      startGoogleRedirect();
+      signInWithGoogle({ currentTarget: btn });
     };
     slot.appendChild(btn);
   });
 }
 
-async function startGoogleRedirect() {
-  try {
-    const redirectTo = encodeURIComponent(location.pathname + location.search);
-    window.location.href = `/auth/google/start?redirectTo=${redirectTo}`;
-  } catch (e) {
-    console.error('startGoogleRedirect error:', e);
-    toast('Could not start Google redirect login', 'error');
-  }
+function getFirebaseAuthClient() {
+  return window.lenchoFirebaseAuth || null;
 }
 
-function signInWithGoogle(event) {
+function setGoogleBtnLoading(btn, loading, label) {
+  if (!btn) return;
+  if (loading) {
+    btn.disabled = true;
+    btn.classList.add('loading');
+    btn.innerHTML = `<span class="google-auth-spinner" aria-hidden="true"></span><span>${label || 'Signing in...'}</span>`;
+    return;
+  }
+
+  btn.disabled = false;
+  btn.classList.remove('loading');
+  btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.9 0 7.1 1.3 9.3 3.1l7-7C35.6 2.6 30.1 0 24 0 14.7 0 6.7 4.7 2.6 11.5l8.1 6.3C12.8 13.1 18 9.5 24 9.5z"></path><path fill="#34A853" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.6H24v9.1h12.6c-.6 3.2-2.6 5.9-5.6 7.6l8.6 6.6C43.9 38.1 46.5 31.7 46.5 24.5z"></path><path fill="#4A90E2" d="M10.7 28.1C9.7 25.9 9.2 23.6 9.2 21.2s.5-4.7 1.5-6.9L2.6 8.1C.9 11.1 0 14.9 0 18.9c0 4 1 7.8 2.6 10.8l8.1-1.6z"></path><path fill="#FBBC05" d="M24 48c6.1 0 11.6-2 15.6-5.4l-8.6-6.6c-2.4 1.6-5.5 2.5-8.9 2.5-6 0-11.2-3.6-13.1-8.7L2.6 36.5C6.7 43.3 14.7 48 24 48z"></path></svg><span>Continue with Google</span>';
+}
+
+async function signInWithGoogle(event) {
   if (googleAuthInFlight) return;
   const btn = event && event.currentTarget ? event.currentTarget : null;
+  const firebaseClient = getFirebaseAuthClient();
+  if (!firebaseClient || !firebaseClient.isReady || !firebaseClient.isReady()) {
+    toast('Google login is temporarily unavailable. Please try again in a moment.', 'error');
+    return;
+  }
+
   googleAuthInFlight = true;
-  if (btn) { btn.disabled = true; }
-  startGoogleRedirect();
-  resetBtn(btn);
-}
-
-function doGoogleSignIn(btn) {
   try {
-    renderGoogleButtons();
-  } catch (e) {
-    toast('Google login failed: ' + e.message, 'error');
-    resetBtn(btn);
-  }
-}
-
-async function startGoogleTokenFlow(btn) {
-  try {
-    if (!google.accounts || !google.accounts.oauth2) {
-      toast('Google Sign-In is unavailable right now', 'error');
-      resetBtn(btn);
+    const isMobileFlow = firebaseClient.isMobileDevice();
+    if (isMobileFlow) {
+      setGoogleBtnLoading(btn, true, 'Opening Google...');
+      await firebaseClient.startGoogleRedirectLogin();
       return;
     }
 
-    const googleClientId = await getGoogleClientId();
-    if (!googleClientId || !googleClientId.includes('.apps.googleusercontent.com')) {
-      toast('Google Client ID missing/invalid', 'error');
-      console.error('Invalid googleClientId from public settings:', googleClientId);
-      resetBtn(btn);
-      return;
-    }
-
-    const tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: googleClientId,
-      scope: 'openid email profile',
-      callback: async (tokenResponse) => {
-        if (tokenResponse.error) {
-          console.error('Google token callback error:', tokenResponse);
-          if (tokenResponse.error !== 'popup_closed_by_user') {
-            toast('Google: ' + (tokenResponse.error_description || tokenResponse.error), 'error');
-          }
-          resetBtn(btn);
-          return;
-        }
-        try {
-          const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
-          });
-          if (!resp.ok) {
-            const failText = await resp.text();
-            console.error('Google userinfo failed:', resp.status, failText);
-            toast(`Google profile fetch failed (${resp.status})`, 'error');
-            resetBtn(btn);
-            return;
-          }
-          const profile = await resp.json();
-          await completeGoogleLogin(profile, btn);
-        } catch(e) {
-          console.error('Google profile request error:', e);
-          toast('Failed to get Google profile', 'error');
-          resetBtn(btn);
-        }
-      },
-      error_callback: (err) => {
-        const t = err?.type || '';
-        console.error('Google OAuth error callback:', err, 'origin:', window.location.origin);
-        if (!t.includes('popup_closed') && !t.includes('access_denied')) {
-          toast('Google sign-in blocked. Check authorized origins for ' + window.location.origin, 'error');
-        }
-        resetBtn(btn);
-      }
-    });
-    tokenClient.requestAccessToken({ prompt: 'select_account' });
+    setGoogleBtnLoading(btn, true, 'Signing in with Google...');
+    const authResult = await firebaseClient.signInWithGooglePopup();
+    await completeGoogleLogin(authResult, btn);
   } catch (e) {
-    toast('Google login failed: ' + e.message, 'error');
-    console.error('startGoogleTokenFlow failed:', e, 'origin:', window.location.origin);
-    resetBtn(btn);
+    const code = String(e?.code || '');
+    if (!/popup-closed-by-user/i.test(code)) {
+      toast('Google login failed. Please try again.', 'error');
+      console.error('Firebase Google sign-in failed:', e);
+    }
+  } finally {
+    googleAuthInFlight = false;
+    setGoogleBtnLoading(btn, false);
   }
 }
 
-function handleGoogleCredential(response, btn) {
-  // Decode the JWT credential to get user info
+async function handleFirebaseRedirectAuth() {
+  const firebaseClient = getFirebaseAuthClient();
+  if (!firebaseClient || !firebaseClient.isReady || !firebaseClient.isReady()) return;
+
   try {
-    const payload = JSON.parse(atob(response.credential.split('.')[1]));
-    completeGoogleLogin({
-      email: payload.email,
-      name: payload.name,
-      picture: payload.picture,
-      sub: payload.sub,
-      idToken: response.credential
-    }, btn);
-  } catch(e) {
-    toast('Failed to process Google credential', 'error');
-    resetBtn(btn);
+    const authResult = await firebaseClient.consumeRedirectResult();
+    if (!authResult) return;
+    await completeGoogleLogin(authResult, null);
+  } catch (e) {
+    console.error('Firebase redirect result failed:', e);
+    toast('Google redirect login failed. Please try again.', 'error');
   }
 }
 
-function resetBtn(btn) {
-  googleAuthInFlight = false;
-  if (btn) {
-    btn.disabled = false;
-    btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg> Continue with Google`;
-  }
-}
+async function completeGoogleLogin(authResult, btn) {
+  const user = authResult?.user || authResult;
+  const firebaseClient = getFirebaseAuthClient();
+  const googleIdToken = authResult?.googleIdToken || '';
+  const firebaseId = user?.uid || '';
+  const email = user?.email || authResult?.email || '';
+  const name = user?.displayName || authResult?.name || email.split('@')[0] || 'User';
+  const picture = user?.photoURL || authResult?.picture || '';
 
-async function completeGoogleLogin(profile, btn) {
-  const { email, name, picture, sub: googleId, idToken } = profile;
-  if (!email) { toast('Could not get email from Google', 'error'); resetBtn(btn); return; }
+  if (!email) {
+    toast('Could not fetch Google account email.', 'error');
+    return;
+  }
   
   try {
-    const result = await api('/api/auth/google', {
+    const result = await api('/api/auth/firebase/google', {
       method: 'POST',
-      body: { email, name, picture, googleId, idToken }
+      body: {
+        email,
+        name,
+        picture,
+        googleId: firebaseId,
+        idToken: googleIdToken,
+        firebaseUid: firebaseId
+      }
     });
     
     if (result.error) {
@@ -2240,12 +2196,10 @@ async function completeGoogleLogin(profile, btn) {
       // Show user-friendly error
       if (result.error.includes('SMTP')) {
         toast('Account created! Please login with your email.', 'success');
-        // Redirect to login
         switchToLogin();
         return;
       }
       toast(result.error, 'error');
-      resetBtn(btn);
       return;
     }
   
@@ -2265,7 +2219,6 @@ async function completeGoogleLogin(profile, btn) {
     currentUser = sessionUser.user;
     saveCurrentUser(currentUser);
   }
-  googleAuthInFlight = false;
   updateHeader();
   closeAuthModal();
   await updateCartCount();
@@ -2279,7 +2232,9 @@ async function completeGoogleLogin(profile, btn) {
   } catch (e) {
     console.error('completeGoogleLogin failed:', e);
     toast('Google login failed: ' + e.message, 'error');
-    resetBtn(btn);
+    if (firebaseClient && typeof firebaseClient.signOut === 'function') {
+      await firebaseClient.signOut();
+    }
   }
 }
 

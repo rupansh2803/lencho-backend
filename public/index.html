@@ -52,8 +52,9 @@
   <!-- Font Awesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer"/>
   
-  <!-- Google Sign-In SDK -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- Firebase SDK (Google Auth only) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   
   <!-- Stylesheets -->
   <link rel="stylesheet" href="/css/style.css?v=4.6"/>
@@ -391,6 +392,7 @@
   <script>
     (async () => {
       const scripts = [
+        '/js/firebase.js?v=1.0',
         '/js/app.js?v=4.6',
         '/js/pages.js?v=4.4',
         '/js/dashboard.js?v=4.4',

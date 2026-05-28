@@ -44,34 +44,6 @@ function parseBooleanEnv(value, fallback = false) {
   return fallback;
 }
 
-function resolveGoogleCallbackUrl(rawCallbackUrl, siteUrl) {
-  const fallbackUrl = 'https://lencho.in/auth/google/callback';
-  const candidate = cleanEnvValue(rawCallbackUrl);
-  if (!candidate) return fallbackUrl;
-
-  if (candidate.startsWith('/')) {
-    try {
-      return new URL(candidate, siteUrl || 'https://lencho.in').toString();
-    } catch {
-      return fallbackUrl;
-    }
-  }
-
-  try {
-    return new URL(candidate).toString();
-  } catch {
-    console.error(`[auth][google] Invalid GOOGLE_CALLBACK_URL: ${candidate}. Falling back to ${fallbackUrl}`);
-    return fallbackUrl;
-  }
-}
-
-function maskSecret(value) {
-  const str = String(value || '');
-  if (!str) return 'missing';
-  if (str.length <= 8) return '*'.repeat(str.length);
-  return `${str.slice(0, 4)}...${str.slice(-4)}`;
-}
-
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
 const DEFAULT_SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || '';
@@ -80,37 +52,19 @@ const FRONTEND_URL = readEnvVar('FRONTEND_URL', ['APP_URL', 'PUBLIC_URL'], 'http
 const SITE_URL = readEnvVar('SITE_URL', ['FRONTEND_URL'], FRONTEND_URL);
 const JWT_SECRET_RESOLVED = readEnvVar('JWT_SECRET', [], 'your-secret-key');
 const SESSION_SECRET_RESOLVED = readEnvVar('SESSION_SECRET', [], 'lencho-secret');
-const GOOGLE_CLIENT_ID = readEnvVar('GOOGLE_CLIENT_ID', ['GOOGLE_OAUTH_CLIENT_ID']);
-const GOOGLE_CLIENT_SECRET = readEnvVar('GOOGLE_CLIENT_SECRET', ['GOOGLE_OAUTH_CLIENT_SECRET']);
-const GOOGLE_CALLBACK_URL = resolveGoogleCallbackUrl(readEnvVar('GOOGLE_CALLBACK_URL', [], '/auth/google/callback'), SITE_URL);
 const MONGODB_URI = readEnvVar('MONGODB_URI', ['MONGO_URI', 'DATABASE_URL']);
 const REQUIRE_MONGODB = parseBooleanEnv(readEnvVar('REQUIRE_MONGODB', [], 'false'), false);
-const GOOGLE_OAUTH_REDIRECT_ENABLED = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_CALLBACK_URL);
 
 if (!dotenvResult?.error) {
   console.log('[boot] Loaded .env file for local development');
 }
 console.log(`[boot] NODE_ENV=${NODE_ENV} FRONTEND_URL=${FRONTEND_URL}`);
-if (!GOOGLE_CLIENT_ID) {
-  console.error('❌ [auth][google] GOOGLE_CLIENT_ID is MISSING. Google OAuth will be completely disabled.');
-}
-if (!GOOGLE_CLIENT_SECRET) {
-  console.error('❌ [auth][google] GOOGLE_CLIENT_SECRET is MISSING. Google OAuth redirect flow will fail. Add it to your environment variables.');
-}
 if (isProduction && !process.env.JWT_SECRET) {
   console.warn('⚠️ JWT_SECRET is not set in production. Using fallback — this is insecure.');
 }
 if (isProduction && !process.env.SESSION_SECRET) {
   console.warn('⚠️ SESSION_SECRET is not set in production. Using fallback — this is insecure.');
 }
-
-console.log('[auth][google] OAuth bootstrap:', {
-  clientIdLoaded: Boolean(GOOGLE_CLIENT_ID),
-  clientIdPreview: maskSecret(GOOGLE_CLIENT_ID),
-  clientSecretLoaded: Boolean(GOOGLE_CLIENT_SECRET),
-  callbackUrl: GOOGLE_CALLBACK_URL,
-  redirectEnabled: GOOGLE_OAUTH_REDIRECT_ENABLED
-});
 console.log('[boot] Environment validation:', {
   frontendUrl: FRONTEND_URL,
   nodeEnv: NODE_ENV,
@@ -366,9 +320,6 @@ async function verifyGoogleIdToken(idToken) {
   if (!idToken) {
     throw new Error('Google token missing');
   }
-  if (!GOOGLE_CLIENT_ID) {
-    throw new Error('GOOGLE_CLIENT_ID missing in environment');
-  }
 
   let payload = null;
   try {
@@ -385,9 +336,6 @@ async function verifyGoogleIdToken(idToken) {
     payload = decoded;
   }
 
-  if (payload.aud !== GOOGLE_CLIENT_ID) {
-    throw new Error('Google token audience mismatch');
-  }
   if (String(payload.email_verified || '').toLowerCase() !== 'true') {
     throw new Error('Google account email is not verified');
   }
@@ -521,44 +469,10 @@ const DEFAULT_FALLBACK_SETTINGS = {
   aiChatWelcome: 'Namaste! Main Lencho assistant hoon. Product, offers, shipping, ya order help ke liye message bhejiye.',
   aiSystemPrompt: 'You are Lencho\'s premium jewelry shopping assistant. Recommend only products that fit the catalog context. Be concise, friendly, and practical.',
   aiHandoffWhatsappNumber: '919999999999',
-  razorpayKeyId: process.env.RAZORPAY_KEY_ID || '',
-  googleClientId: GOOGLE_CLIENT_ID,
-  googleOAuthEnabled: GOOGLE_OAUTH_REDIRECT_ENABLED
+  razorpayKeyId: process.env.RAZORPAY_KEY_ID || ''
 };
 
 const app = express();
-const GOOGLE_CALLBACK_PATH = new URL(GOOGLE_CALLBACK_URL).pathname;
-const GOOGLE_START_PATH = '/auth/google/start';
-
-function sendGoogleOAuthError(res, statusCode, message) {
-  const safeMessage = String(message || 'Google authentication is temporarily unavailable');
-  const backUrl = `${FRONTEND_URL.replace(/\/+$/, '')}/login`;
-  const html = `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Google Login Unavailable</title>
-  <style>
-    body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(135deg,#fff7f9,#fff);color:#222;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px;}
-    .card{max-width:560px;width:100%;background:#fff;border:1px solid #f0dbe1;border-radius:18px;box-shadow:0 16px 40px rgba(0,0,0,.08);padding:28px;}
-    h1{margin:0 0 12px;font-size:28px;color:#b83c58;}
-    p{margin:0 0 14px;line-height:1.6;font-size:16px;}
-    a{display:inline-block;margin-top:8px;background:#b83c58;color:#fff;text-decoration:none;padding:12px 18px;border-radius:999px;font-weight:700;}
-    .hint{color:#666;font-size:14px;}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>Google login is unavailable</h1>
-    <p>${safeMessage}</p>
-    <p class="hint">Please use email login for now, or ask the administrator to verify the Render environment variables and Google OAuth callback settings.</p>
-    <a href="${backUrl}">Back to login</a>
-  </div>
-</body>
-</html>`;
-  return res.status(statusCode).type('html').set('Cache-Control', 'no-store').send(html);
-}
 
 // CORS Configuration for Production
 const allowedOrigins = [
@@ -608,22 +522,6 @@ app.use(cors({
 app.get('/health', (req, res) => {
   res.set('Cache-Control', 'no-cache');
   res.json({ status: 'ok', timestamp: new Date().toISOString(), db: useDB ? 'connected' : 'fallback' });
-});
-
-app.get('/api/auth/google/status', (req, res) => {
-  const missing = [];
-  if (!GOOGLE_CLIENT_ID) missing.push('GOOGLE_CLIENT_ID');
-  if (!GOOGLE_CLIENT_SECRET) missing.push('GOOGLE_CLIENT_SECRET');
-
-  res.set('Cache-Control', 'no-store');
-  return res.json({
-    enabled: GOOGLE_OAUTH_REDIRECT_ENABLED,
-    callbackPath: GOOGLE_CALLBACK_PATH,
-    callbackUrl: GOOGLE_CALLBACK_URL,
-    frontendUrl: FRONTEND_URL,
-    missing,
-    nodeEnv: NODE_ENV
-  });
 });
 
 app.get('/api/auth/me', async (req, res) => {
@@ -1235,12 +1133,12 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://checkout.razorpay.com", "https://accounts.google.com", "https://accounts.google.com/gsi/client", "https://cdnjs.cloudflare.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://checkout.razorpay.com", "https://accounts.google.com", "https://accounts.google.com/gsi/client", "https://apis.google.com", "https://cdnjs.cloudflare.com", "https://www.gstatic.com"],
       scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://fonts.gstatic.com", "https://accounts.google.com", "https://accounts.google.com/gsi/style", "https://cdnjs.cloudflare.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com", "data:"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https://checkout.razorpay.com", "https://www.googleapis.com", "https://oauth2.googleapis.com", "https://accounts.google.com"],
+      connectSrc: ["'self'", "https://checkout.razorpay.com", "https://www.googleapis.com", "https://oauth2.googleapis.com", "https://accounts.google.com", "https://identitytoolkit.googleapis.com", "https://securetoken.googleapis.com", "https://firebaseinstallations.googleapis.com"],
       frameSrc: ["https://checkout.razorpay.com", "https://accounts.google.com"]
     }
   },
@@ -3826,11 +3724,8 @@ app.get('/api/ai/trending', async (req, res) => {
 });
 
 // ─── GOOGLE OAUTH ROUTE ──────────────────────────────────────
-app.post('/api/auth/google', async (req, res) => {
+app.post('/api/auth/firebase/google', async (req, res) => {
   try {
-    if (!GOOGLE_CLIENT_ID) {
-      return res.status(503).json({ error: 'Google OAuth client ID is not configured on the server' });
-    }
     const { email, name, picture, googleId, idToken } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
@@ -3902,127 +3797,6 @@ app.post('/api/auth/google', async (req, res) => {
     console.error('Google Auth Error:', e.message);
     await recordLoginActivity({ email: req.body?.email || '', status: 'failed', method: 'google', role: 'user', ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress || '', userAgent: req.headers['user-agent'] || '' });
     res.status(500).json({ error: 'Google login failed: ' + e.message }); 
-  }
-});
-
-// ─── GOOGLE OAUTH (Redirect + PKCE) ─────────────────────────
-function buildGoogleAuthStart(req, res, redirectTo, codeVerifier) {
-  if (!GOOGLE_OAUTH_REDIRECT_ENABLED) {
-    throw new Error('Google OAuth redirect flow is disabled because required environment variables are missing');
-  }
-  const state = uuidv4();
-  const verifier = codeVerifier || crypto.randomBytes(32).toString('hex');
-  const hash = crypto.createHash('sha256').update(verifier).digest('base64');
-  const code_challenge = hash.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  req.session.google_oauth = { state, code_verifier: verifier, redirectTo: redirectTo || '/' };
-  const redirectUri = GOOGLE_CALLBACK_URL;
-  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('openid email profile')}&state=${state}&code_challenge=${code_challenge}&code_challenge_method=S256&prompt=select_account`;
-  return authUrl;
-}
-
-app.get(GOOGLE_START_PATH, async (req, res) => {
-  try {
-    if (!GOOGLE_OAUTH_REDIRECT_ENABLED) {
-      console.error('[auth][google] Redirect start requested but Google OAuth is not fully configured');
-      return sendGoogleOAuthError(res, 503, 'Google OAuth is not configured on the server yet.');
-    }
-    const redirectTo = req.query?.redirectTo || '/';
-    const authUrl = buildGoogleAuthStart(req, res, redirectTo);
-    await saveSessionAsync(req);
-    return res.redirect(302, authUrl);
-  } catch (e) {
-    console.error('[auth][google] redirect start failed:', e.message);
-    return sendGoogleOAuthError(res, 500, 'Google redirect start failed.');
-  }
-});
-
-app.get(GOOGLE_CALLBACK_PATH, async (req, res) => {
-  try {
-    if (!GOOGLE_OAUTH_REDIRECT_ENABLED) {
-      console.error('[auth][google] Callback requested but Google OAuth is not fully configured');
-      return sendGoogleOAuthError(res, 503, 'Google OAuth callback is not configured on the server yet.');
-    }
-    const { code, state } = req.query || {};
-    if (!code || !state) return res.status(400).send('Missing code/state');
-    const sessionData = req.session.google_oauth || {};
-    if (!sessionData || !sessionData.state || sessionData.state !== state) {
-      console.error('[auth][google] OAuth state mismatch — session may have expired or cookies were blocked.', { expected: sessionData.state, received: state });
-      return sendGoogleOAuthError(res, 400, 'Your sign-in session expired. Please close this window and try Google Login again. If the problem persists, clear your browser cookies and retry.');
-    }
-
-    const code_verifier = sessionData.code_verifier;
-    const redirectUri = GOOGLE_CALLBACK_URL;
-
-    // Exchange code for tokens
-    const params = new URLSearchParams();
-    params.append('code', String(code));
-    params.append('client_id', GOOGLE_CLIENT_ID);
-    params.append('client_secret', GOOGLE_CLIENT_SECRET);
-    params.append('grant_type', 'authorization_code');
-    params.append('redirect_uri', redirectUri);
-    params.append('code_verifier', code_verifier);
-
-    let tokenResp;
-    try {
-      tokenResp = await axios.post('https://oauth2.googleapis.com/token', params.toString(), {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-      });
-    } catch (tokenError) {
-      const details = tokenError?.response?.data;
-      const message = details
-        ? `Google token exchange failed: ${typeof details === 'string' ? details : JSON.stringify(details)}`
-        : `Google token exchange failed: ${tokenError.message}`;
-      console.error('[auth][google] ' + message);
-      return sendGoogleOAuthError(res, 500, 'Google sign-in could not be completed right now.');
-    }
-
-    const tokenData = tokenResp.data || {};
-    const idToken = tokenData.id_token;
-    if (!idToken) return res.status(400).send('Failed to obtain id_token from Google');
-
-    const verified = await verifyGoogleIdToken(idToken);
-    if (!verified || !verified.email) return res.status(400).send('Google verification failed');
-
-    // Reuse existing google auth logic to create user + session
-    const finalEmail = verified.email;
-    const finalName = verified.name;
-    const finalPicture = verified.picture;
-    const finalGoogleId = verified.googleId;
-
-    let user;
-    if (useDB) {
-      user = await User.findOne({ email: finalEmail }).lean();
-      if (!user) {
-        const newUser = new User({ name: finalName || finalEmail.split('@')[0], email: finalEmail, password: 'GOOGLE_' + (finalGoogleId || Date.now()), googleId: finalGoogleId, avatar: finalPicture, role: 'user', verified: true, phone: '' });
-        await newUser.save();
-        user = newUser.toObject();
-      }
-    } else {
-      const users = readJson(FILES.users);
-      user = users.find(u => u.email === finalEmail);
-      if (!user) {
-        user = { id: Date.now().toString(), name: finalName || finalEmail.split('@')[0], email: finalEmail, googleId: finalGoogleId, role: 'user', verified: true };
-        users.push(user);
-        writeJson(FILES.users, users);
-      }
-    }
-
-    const userId = user._id?.toString() || user.id;
-    req.session.userId = userId;
-    req.session.role = user.role || 'user';
-    const userName = user.name || finalName || finalEmail.split('@')[0] || 'User';
-    await recordLoginActivity({ email: finalEmail, name: userName, status: 'success', method: 'google', role: user.role || 'user', ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress || '', userAgent: req.headers['user-agent'] || '' });
-
-    const loginSuccessUrl = new URL('/login-success', SITE_URL);
-    loginSuccessUrl.searchParams.set('token', generateToken(userId, user.role || 'user'));
-    loginSuccessUrl.searchParams.set('redirectTo', sessionData.redirectTo || '/');
-    delete req.session.google_oauth;
-    await saveSessionAsync(req);
-    return res.redirect(302, loginSuccessUrl.toString());
-  } catch (e) {
-    const tokenError = e?.response?.data ? ` | ${typeof e.response.data === 'string' ? e.response.data : JSON.stringify(e.response.data)}` : '';
-    console.error('[auth][google] callback error:', e.message + tokenError);
-    return sendGoogleOAuthError(res, 500, 'Google sign-in callback failed.');
   }
 });
 
@@ -4310,7 +4084,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`📌 Environment: ${NODE_ENV}`);
   console.log(`   Admin Panel → /admin`);
   console.log(`   MongoDB: ${useDB ? '✅ Connected' : '⚠️  Using JSON fallback'}\n`);
-  console.log(`   Google OAuth: ${GOOGLE_OAUTH_REDIRECT_ENABLED ? '✅ Enabled' : '⚠️ Disabled (missing env vars)'}`);
+  console.log('   Firebase Google Auth: ✅ Client-driven flow enabled');
   console.log(`   FRONTEND_URL: ${FRONTEND_URL}`);
   console.log(`   SESSION_SECRET: ${cleanEnvValue(process.env.SESSION_SECRET) ? '✅ Set' : '⚠️ Missing (using fallback)'}`);
   console.log(`   JWT_SECRET: ${cleanEnvValue(process.env.JWT_SECRET) ? '✅ Set' : '⚠️ Missing (using fallback)'}`);

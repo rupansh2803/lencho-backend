@@ -647,8 +647,8 @@ button:hover,
 
 .google-auth-slot {
   width: 100%;
-  min-height: 44px;
-  margin-bottom: 1rem;
+  min-height: 52px;
+  margin: .5rem 0 1.1rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -665,11 +665,12 @@ button:hover,
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   width: 100% !important;
   max-width: 100% !important;
-  padding: 12px 20px;
-  border-radius: 999px;
+  min-height: 48px;
+  padding: 12px 18px;
+  border-radius: 14px;
   border: 1.5px solid #dadce0;
   background: #fff;
   cursor: pointer;
@@ -701,11 +702,32 @@ button:hover,
 
 .google-auth-btn svg {
   flex-shrink: 0;
+  width: 20px;
+  height: 20px;
 }
 
 .google-auth-btn span {
   font-weight: 500;
   white-space: nowrap;
+}
+
+.google-auth-btn.loading {
+  pointer-events: none;
+}
+
+.google-auth-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #dadce0;
+  border-top-color: #4285F4;
+  animation: googleBtnSpin 0.8s linear infinite;
+}
+
+@keyframes googleBtnSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 480px) {
@@ -717,8 +739,9 @@ button:hover,
 
   .google-auth-btn {
     font-size: 0.9rem;
-    padding: 11px 16px;
-    gap: 10px;
+    padding: 10px 14px;
+    min-height: 46px;
+    gap: 8px;
   }
 }
 
@@ -4075,6 +4098,14 @@ tr:hover td {
   font-size: .8rem;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.header-user-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(201, 106, 138, 0.35);
 }
 
 @media (max-width: 768px) {
