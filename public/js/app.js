@@ -622,6 +622,33 @@ function switchToSignup() {
   renderGoogleButtons();
 }
 
+function resetAuthModalState() {
+  authOtpRequestInFlight = false;
+  googleAuthInFlight = false;
+  window.pendingAuth = null;
+
+  if (authOtpResendTimer) {
+    clearInterval(authOtpResendTimer);
+    authOtpResendTimer = null;
+  }
+  authOtpResendEndsAt = 0;
+
+  for (const id of ['login-error', 'signup-error', 'otp-error', 'signup-password-step-error']) {
+    const node = document.getElementById(id);
+    if (node) node.textContent = '';
+  }
+
+  const resendBtn = document.getElementById('resend-otp-btn');
+  if (resendBtn) {
+    resendBtn.textContent = 'Resend OTP';
+    resendBtn.style.pointerEvents = '';
+    resendBtn.style.opacity = '';
+  }
+
+  const otpInput = document.getElementById('auth-otp-input');
+  if (otpInput) otpInput.value = '';
+}
+
 function openAuthModal() {
   const modal = document.getElementById('auth-modal');
   if (!modal) return;
@@ -636,6 +663,8 @@ function openAuthModal() {
 function closeAuthModal() {
   const modal = document.getElementById('auth-modal');
   if (!modal) return;
+  resetAuthModalState();
+  switchToLogin();
   modal.style.display = 'none';
   document.body.style.overflow = '';
   document.documentElement.style.overflow = '';
@@ -651,20 +680,30 @@ function handleUserClick() {
 
 // ── CAPTCHA HELPERS ──────────────────────────────────────
 async function loadAuthCaptcha() {
+  const loginQ = document.getElementById('login-captcha-q');
+  const signupQ = document.getElementById('signup-captcha-q');
+  if (loginQ) loginQ.textContent = 'Loading...';
+  if (signupQ) signupQ.textContent = 'Loading...';
+
   try {
     const r = await api('/api/captcha');
     if (r.question) {
-      const loginQ = document.getElementById('login-captcha-q');
-      const signupQ = document.getElementById('signup-captcha-q');
       if (loginQ) loginQ.textContent = r.question;
       if (signupQ) signupQ.textContent = r.question;
+    } else {
+      if (loginQ) loginQ.textContent = 'Security code unavailable';
+      if (signupQ) signupQ.textContent = 'Security code unavailable';
     }
     // Clear previous answers
     const loginCaptcha = document.getElementById('login-captcha');
     const signupCaptcha = document.getElementById('signup-captcha');
     if (loginCaptcha) loginCaptcha.value = '';
     if (signupCaptcha) signupCaptcha.value = '';
-  } catch(e) { console.error('Captcha load error:', e); }
+  } catch(e) {
+    console.error('Captcha load error:', e);
+    if (loginQ) loginQ.textContent = 'Security code unavailable';
+    if (signupQ) signupQ.textContent = 'Security code unavailable';
+  }
 }
 
 async function handleLogin() {
@@ -720,9 +759,10 @@ async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '') {
   authOtpRequestInFlight = true;
   
   if (btn) { btn.disabled = true; btn.textContent = 'Sending OTP... ✦'; }
+  let resp = null;
   
   try {
-    const resp = await api('/api/otp/send-email', { method: 'POST', body: { email: email.trim().toLowerCase(), captchaAnswer: captchaAnswer.trim() }, timeoutMs: 10000 });
+    resp = await api('/api/otp/send-email', { method: 'POST', body: { email: email.trim().toLowerCase(), captchaAnswer: captchaAnswer.trim() }, timeoutMs: 10000 });
     
     authOtpRequestInFlight = false;
     if (btn) { btn.disabled = false; btn.textContent = currentFormId === 'auth-login-form' ? 'Sign In' : 'Send OTP ✦'; }
@@ -779,7 +819,7 @@ async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '') {
   }
   
   // Show OTP in dev mode if available
-  if (resp.debugOTP || resp.devOtp) {
+  if (resp && (resp.debugOTP || resp.devOtp)) {
     const devMsg = `DEV MODE: Your OTP is ${resp.debugOTP || resp.devOtp}. This will only show in development.`;
     document.getElementById('otp-error').textContent = devMsg;
     console.log(devMsg);
@@ -2192,7 +2232,7 @@ async function completeGoogleLogin(authResult, btn) {
     });
     
     if (result.error) {
-      console.error('Backend Google auth failed:', result.error, 'profile:', profile);
+      console.error('Backend Google auth failed:', result.error, 'profile:', authResult);
       // Show user-friendly error
       if (result.error.includes('SMTP')) {
         toast('Account created! Please login with your email.', 'success');

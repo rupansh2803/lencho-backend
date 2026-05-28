@@ -4038,7 +4038,6 @@ tr:hover td {
 }
 
 #auth-modal.modal-overlay {
-  display: flex !important;
   align-items: center;
   justify-content: center;
   position: fixed;
