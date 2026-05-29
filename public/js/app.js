@@ -849,34 +849,52 @@ async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '') {
     }
 
     toast('OTP sent successfully! ✦', 'success');
-    authOtpResendEndsAt = Date.now() + 30000;
+    authOtpResendEndsAt = Date.now() + 60000;
     const resendBtn = document.getElementById('resend-otp-btn');
     if (resendBtn) {
-      resendBtn.style.pointerEvents = 'none';
-      resendBtn.style.opacity = '0.55';
+      resendBtn.disabled = true;
     }
+    
+  // ── Premium OTP Countdown Timer ──
   if (authOtpResendTimer) clearInterval(authOtpResendTimer);
+  const countdownEl = document.getElementById('otp-countdown');
+  const timerDisplay = document.getElementById('otp-timer-display');
+  
   authOtpResendTimer = setInterval(() => {
     const remaining = Math.max(0, Math.ceil((authOtpResendEndsAt - Date.now()) / 1000));
     const resendNode = document.getElementById('resend-otp-btn');
+    const countdownNode = document.getElementById('otp-countdown');
+    const timerNode = document.getElementById('otp-timer-display');
     if (!resendNode) return;
+    
     if (remaining <= 0) {
-      resendNode.textContent = 'Resend OTP';
-      resendNode.style.pointerEvents = '';
-      resendNode.style.opacity = '';
+      if (resendNode) { resendNode.disabled = false; resendNode.innerHTML = '<i class="fas fa-redo-alt"></i> Resend OTP'; }
+      if (timerNode) timerNode.style.display = 'none';
       clearInterval(authOtpResendTimer);
       authOtpResendTimer = null;
       return;
     }
-    resendNode.textContent = `Resend OTP (${remaining}s)`;
+    if (countdownNode) countdownNode.textContent = remaining;
+    if (timerNode) timerNode.style.display = '';
   }, 1000);
   
+  // ── Show Premium OTP Step ──
   document.getElementById(currentFormId).style.display = 'none';
   document.getElementById('otp-error').textContent = '';
   document.getElementById('auth-otp-input').value = '';
+  const otpSuccess = document.getElementById('otp-success');
+  if (otpSuccess) otpSuccess.style.display = 'none';
   document.getElementById('auth-otp-step').style.display = 'block';
-  document.getElementById('otp-title').textContent = 'Verify Email';
-  document.getElementById('otp-subtitle').textContent = `We've sent a 6-digit code to ${email}`;
+  document.getElementById('otp-title').textContent = 'Verify Your Email';
+  document.getElementById('otp-subtitle').textContent = `We've sent a 6-digit verification code to your email`;
+  
+  // Show email in the badge
+  const emailDisplay = document.getElementById('otp-target-email');
+  if (emailDisplay) emailDisplay.textContent = email;
+  
+  // Initialize 6-box OTP input
+  initOtpBoxes();
+  
   document.getElementById('verify-otp-btn').onclick = () => verifyEmailOTP();
   } catch (error) {
     authOtpRequestInFlight = false;
@@ -919,36 +937,149 @@ async function sendPhoneOTP(phone) {
   toast('OTP sent to your phone! 📱', 'success');
 }
 
+// ── PREMIUM 6-BOX OTP INPUT HANDLER ──────────────────────────
+function initOtpBoxes() {
+  const boxes = document.querySelectorAll('#otp-input-row .otp-box');
+  if (!boxes.length) return;
+  
+  // Clear all boxes
+  boxes.forEach(box => {
+    box.value = '';
+    box.classList.remove('filled', 'error', 'success');
+  });
+  
+  // Focus first box
+  setTimeout(() => boxes[0]?.focus(), 150);
+  
+  boxes.forEach((box, idx) => {
+    // Remove old listeners by cloning
+    const newBox = box.cloneNode(true);
+    box.parentNode.replaceChild(newBox, box);
+  });
+  
+  // Re-select after cloning
+  const freshBoxes = document.querySelectorAll('#otp-input-row .otp-box');
+  const verifyBtn = document.getElementById('verify-otp-btn');
+  const hiddenInput = document.getElementById('auth-otp-input');
+  
+  function syncHiddenInput() {
+    const val = Array.from(freshBoxes).map(b => b.value).join('');
+    if (hiddenInput) hiddenInput.value = val;
+    if (verifyBtn) verifyBtn.disabled = val.length !== 6;
+  }
+  
+  freshBoxes.forEach((box, idx) => {
+    box.addEventListener('input', (e) => {
+      const val = e.target.value.replace(/\D/g, '');
+      e.target.value = val.slice(0, 1);
+      
+      if (val && idx < 5) freshBoxes[idx + 1].focus();
+      box.classList.toggle('filled', !!val);
+      syncHiddenInput();
+      
+      // Auto-verify when all 6 digits entered
+      const fullOtp = Array.from(freshBoxes).map(b => b.value).join('');
+      if (fullOtp.length === 6) {
+        setTimeout(() => verifyEmailOTP(), 200);
+      }
+    });
+    
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && !box.value && idx > 0) {
+        freshBoxes[idx - 1].focus();
+        freshBoxes[idx - 1].value = '';
+        freshBoxes[idx - 1].classList.remove('filled');
+        syncHiddenInput();
+      }
+      if (e.key === 'ArrowLeft' && idx > 0) freshBoxes[idx - 1].focus();
+      if (e.key === 'ArrowRight' && idx < 5) freshBoxes[idx + 1].focus();
+    });
+    
+    box.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const paste = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6);
+      paste.split('').forEach((ch, i) => {
+        if (freshBoxes[i]) {
+          freshBoxes[i].value = ch;
+          freshBoxes[i].classList.add('filled');
+        }
+      });
+      const lastIdx = Math.min(paste.length, 5);
+      freshBoxes[lastIdx]?.focus();
+      syncHiddenInput();
+      
+      if (paste.length === 6) {
+        setTimeout(() => verifyEmailOTP(), 200);
+      }
+    });
+    
+    box.addEventListener('focus', () => box.select());
+  });
+  
+  setTimeout(() => freshBoxes[0]?.focus(), 200);
+}
+
 async function verifyEmailOTP() {
-  const otp = String(document.getElementById('auth-otp-input').value || '').replace(/\D/g, '').slice(0, 6);
+  const boxes = document.querySelectorAll('#otp-input-row .otp-box');
+  const otp = boxes.length ? Array.from(boxes).map(b => b.value).join('') : String(document.getElementById('auth-otp-input').value || '').replace(/\D/g, '').slice(0, 6);
   const err = document.getElementById('otp-error');
   const email = window.pendingAuth.email;
+  const verifyBtn = document.getElementById('verify-otp-btn');
+  const btnText = verifyBtn?.querySelector('.otp-btn-text');
+  const btnLoader = verifyBtn?.querySelector('.otp-btn-loader');
 
   if (otp.length !== 6) {
     err.textContent = 'Please enter a valid 6-digit OTP';
+    boxes.forEach(b => b.classList.add('error'));
+    setTimeout(() => boxes.forEach(b => b.classList.remove('error')), 600);
     return;
   }
   
+  // Show loading state
+  if (btnText) btnText.style.display = 'none';
+  if (btnLoader) btnLoader.style.display = 'inline-flex';
+  if (verifyBtn) verifyBtn.disabled = true;
+  err.textContent = '';
+  
   const resp = await api('/api/otp/verify-email', { method: 'POST', body: { email, otp } });
-  if (resp.error) { err.textContent = resp.error; return; }
+  
+  if (resp.error) {
+    // Reset button
+    if (btnText) btnText.style.display = 'inline-flex';
+    if (btnLoader) btnLoader.style.display = 'none';
+    if (verifyBtn) verifyBtn.disabled = false;
+    err.textContent = resp.error;
+    boxes.forEach(b => b.classList.add('error'));
+    setTimeout(() => boxes.forEach(b => b.classList.remove('error')), 600);
+    return;
+  }
 
-  // Clear error on success
+  // ── SUCCESS ANIMATION ──
+  boxes.forEach(b => { b.classList.remove('error'); b.classList.add('success'); });
+  const otpSuccess = document.getElementById('otp-success');
+  if (otpSuccess) otpSuccess.style.display = 'block';
   err.textContent = '';
 
   const p = window.pendingAuth;
   if (p.type === 'signup') {
-    document.getElementById('auth-otp-step').style.display = 'none';
-    document.getElementById('signup-password-step-error').textContent = '';
-    document.getElementById('signup-password-step').value = '';
-    document.getElementById('signup-confirm-password-step').value = '';
-    document.getElementById('auth-signup-password-step').style.display = 'block';
-    toast('Email verified. Now set your password.', 'success');
+    setTimeout(() => {
+      document.getElementById('auth-otp-step').style.display = 'none';
+      document.getElementById('signup-password-step-error').textContent = '';
+      document.getElementById('signup-password-step').value = '';
+      document.getElementById('signup-confirm-password-step').value = '';
+      document.getElementById('auth-signup-password-step').style.display = 'block';
+      toast('Email verified. Now set your password.', 'success');
+    }, 800);
     return;
   }
 
   // OTP Verified, now complete the original login action
   const endpoint = p.type === 'login' ? '/api/login' : '/api/signup';
   const finalResp = await api(endpoint, { method: 'POST', body: p });
+  
+  // Reset button
+  if (btnText) btnText.style.display = 'inline-flex';
+  if (btnLoader) btnLoader.style.display = 'none';
   
   if (finalResp.error) { err.textContent = finalResp.error; return; }
   

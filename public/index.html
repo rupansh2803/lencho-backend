@@ -216,18 +216,61 @@
       </div>
 
       <div id="auth-otp-step" style="display:none">
-        <div class="modal-logo"><img src="/images/logo.png" alt="Lencho Logo"/></div>
-        <h2 class="modal-title" id="otp-title">Verify Email</h2>
-        <p class="modal-sub" id="otp-subtitle">We've sent a 6-digit code to your email</p>
-        <div class="form-group" style="margin-top:2rem;">
-          <label>Enter OTP Code</label>
-          <input type="text" id="auth-otp-input" placeholder="XXXXXX" maxlength="6" inputmode="numeric" autocomplete="one-time-code" style="text-align:center;font-size:1.8rem;letter-spacing:8px;font-weight:700;border:2px solid var(--rose);"/>
+        <!-- Premium OTP Verification UI -->
+        <div class="otp-premium-header">
+          <div class="otp-shield-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2L3 7V12C3 17.55 6.84 22.74 12 24C17.16 22.74 21 17.55 21 12V7L12 2Z" fill="url(#goldGrad)" opacity="0.15"/>
+              <path d="M12 2L3 7V12C3 17.55 6.84 22.74 12 24C17.16 22.74 21 17.55 21 12V7L12 2Z" stroke="url(#goldGrad)" stroke-width="1.5" fill="none"/>
+              <path d="M9 12L11 14L15 10" stroke="url(#goldGrad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <defs><linearGradient id="goldGrad" x1="3" y1="2" x2="21" y2="24"><stop stop-color="#c9954c"/><stop offset="1" stop-color="#d4a853"/></linearGradient></defs>
+            </svg>
+          </div>
+          <div class="otp-brand-mark">✦ LENCHO ✦</div>
+          <h2 class="otp-premium-title" id="otp-title">Verify Your Email</h2>
+          <p class="otp-premium-subtitle" id="otp-subtitle">We've sent a 6-digit verification code to your email</p>
+          <div class="otp-email-badge" id="otp-email-display">
+            <i class="fas fa-envelope"></i>
+            <span id="otp-target-email">your-email@gmail.com</span>
+          </div>
         </div>
-        <div id="otp-error" class="form-error"></div>
-        <button class="btn-primary full-width" id="verify-otp-btn" onclick="verifyEmailOTP()">Verify & Continue ✦</button>
-        <p style="text-align:center;font-size:0.8rem;color:var(--gray);margin-top:1.5rem;">
-          Didn't receive it? <span style="color:var(--rose);cursor:pointer;font-weight:600;" id="resend-otp-btn" onclick="resendEmailOTP()">Resend OTP</span>
-        </p>
+
+        <div class="otp-boxes-container">
+          <label class="otp-label">Enter Verification Code</label>
+          <div class="otp-input-row" id="otp-input-row">
+            <input type="text" class="otp-box" data-otp-idx="0" maxlength="1" inputmode="numeric" autocomplete="one-time-code" aria-label="OTP digit 1"/>
+            <input type="text" class="otp-box" data-otp-idx="1" maxlength="1" inputmode="numeric" aria-label="OTP digit 2"/>
+            <input type="text" class="otp-box" data-otp-idx="2" maxlength="1" inputmode="numeric" aria-label="OTP digit 3"/>
+            <div class="otp-separator">—</div>
+            <input type="text" class="otp-box" data-otp-idx="3" maxlength="1" inputmode="numeric" aria-label="OTP digit 4"/>
+            <input type="text" class="otp-box" data-otp-idx="4" maxlength="1" inputmode="numeric" aria-label="OTP digit 5"/>
+            <input type="text" class="otp-box" data-otp-idx="5" maxlength="1" inputmode="numeric" aria-label="OTP digit 6"/>
+          </div>
+          <!-- Hidden combined input for form submission -->
+          <input type="hidden" id="auth-otp-input" value=""/>
+        </div>
+
+        <div id="otp-error" class="form-error otp-error-msg"></div>
+        <div id="otp-success" class="otp-success-msg" style="display:none">
+          <i class="fas fa-check-circle"></i> Email Verified Successfully!
+        </div>
+
+        <button class="otp-verify-btn" id="verify-otp-btn" onclick="verifyEmailOTP()" disabled>
+          <span class="otp-btn-text">Verify & Continue</span>
+          <span class="otp-btn-loader" style="display:none"><i class="fas fa-spinner fa-spin"></i> Verifying...</span>
+        </button>
+
+        <div class="otp-footer">
+          <div class="otp-timer" id="otp-timer-display">
+            <i class="fas fa-clock"></i> Resend available in <span id="otp-countdown">60</span>s
+          </div>
+          <button class="otp-resend-btn" id="resend-otp-btn" onclick="resendEmailOTP()" disabled>
+            <i class="fas fa-redo-alt"></i> Resend OTP
+          </button>
+          <div class="otp-security-note">
+            <i class="fas fa-lock"></i> Your account security is our priority
+          </div>
+        </div>
       </div>
 
       <div id="auth-signup-password-step" style="display:none">

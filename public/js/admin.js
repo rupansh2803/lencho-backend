@@ -154,38 +154,160 @@ async function adminLogin() {
 
 function showAdminVerifyOtp(email) {
   document.getElementById('app').innerHTML = `
-  <div style="min-height:100vh;background:var(--dark);display:flex;align-items:center;justify-content:center;padding:2rem;">
-    <div style="background:#fff;border-radius:24px;padding:2.5rem;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);">
-      <div style="text-align:center;margin-bottom:1.25rem;">
-        <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;margin-bottom:.25rem;">Enter OTP</h2>
-        <p style="color:var(--gray);font-size:.9rem;">We've sent a one-time code to the admin contact for <strong>${email}</strong>.</p>
+  <div class="admin-otp-container">
+    <div class="admin-otp-card">
+      <div style="text-align:center;margin-bottom:1.5rem;">
+        <div style="width:72px;height:72px;margin:0 auto 1rem;background:linear-gradient(135deg,rgba(201,149,76,.08),rgba(212,168,83,.15));border:1.5px solid rgba(201,149,76,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;animation:otpShieldPulse 2.5s ease-in-out infinite;">
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none"><path d="M12 2L3 7V12C3 17.55 6.84 22.74 12 24C17.16 22.74 21 17.55 21 12V7L12 2Z" fill="url(#ag)" opacity=".15"/><path d="M12 2L3 7V12C3 17.55 6.84 22.74 12 24C17.16 22.74 21 17.55 21 12V7L12 2Z" stroke="url(#ag)" stroke-width="1.5" fill="none"/><path d="M9 12L11 14L15 10" stroke="url(#ag)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="ag" x1="3" y1="2" x2="21" y2="24"><stop stop-color="#c9954c"/><stop offset="1" stop-color="#d4a853"/></linearGradient></defs></svg>
+        </div>
+        <div style="font-family:'Cormorant Garamond',serif;font-size:.75rem;color:#c9954c;letter-spacing:.35em;font-weight:600;">✦ LENCHO ADMIN ✦</div>
+        <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;margin:.4rem 0;font-weight:700;">Verify Your Identity</h2>
+        <p style="color:var(--gray);font-size:.85rem;margin-bottom:.75rem;">We've sent a one-time verification code to</p>
+        <div style="display:inline-flex;align-items:center;gap:.5rem;background:linear-gradient(135deg,#fdf6ee,#fef9f3);border:1px solid rgba(201,149,76,.2);padding:.5rem 1rem;border-radius:99px;font-size:.82rem;font-weight:600;">
+          <i class="fas fa-envelope" style="color:#c9954c;"></i> ${email}
+        </div>
       </div>
-      <div class="form-group"><label>One-Time Password (OTP)</label><input type="text" id="adm-otp" placeholder="Enter OTP" maxlength="8" style="text-align:center;font-weight:700;letter-spacing:.2em;"/></div>
-      <div id="adm-otp-err" style="color:#ef4444;font-size:.85rem;min-height:20px;margin-bottom:.5rem;"></div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn-primary full-width" onclick="verifyAdminOtp('${email}')">Verify OTP</button>
-        <button class="btn-outline full-width" onclick="showAdminLogin()">Back</button>
+      
+      <div style="text-align:center;margin:1.5rem 0;">
+        <label style="display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.15em;color:var(--gray);margin-bottom:.75rem;font-weight:600;">Enter Verification Code</label>
+        <div class="admin-otp-boxes" id="admin-otp-row">
+          <input type="text" class="adm-otp-digit" data-idx="0" maxlength="1" inputmode="numeric" aria-label="Admin OTP digit 1"/>
+          <input type="text" class="adm-otp-digit" data-idx="1" maxlength="1" inputmode="numeric" aria-label="Admin OTP digit 2"/>
+          <input type="text" class="adm-otp-digit" data-idx="2" maxlength="1" inputmode="numeric" aria-label="Admin OTP digit 3"/>
+          <input type="text" class="adm-otp-digit" data-idx="3" maxlength="1" inputmode="numeric" aria-label="Admin OTP digit 4"/>
+          <input type="text" class="adm-otp-digit" data-idx="4" maxlength="1" inputmode="numeric" aria-label="Admin OTP digit 5"/>
+          <input type="text" class="adm-otp-digit" data-idx="5" maxlength="1" inputmode="numeric" aria-label="Admin OTP digit 6"/>
+        </div>
+        <input type="hidden" id="adm-otp" value=""/>
       </div>
-      <div style="margin-top:10px;text-align:center;color:var(--gray);font-size:.85rem;"><a href="#" onclick="resendAdminOtp('${email}');return false;">Resend OTP</a></div>
+
+      <div id="adm-otp-err" style="color:#ef4444;font-size:.82rem;min-height:22px;margin:.5rem 0;text-align:center;"></div>
+      
+      <button class="otp-verify-btn" id="adm-verify-btn" onclick="verifyAdminOtp('${email}')" disabled>
+        <span class="otp-btn-text">Verify & Access Panel</span>
+        <span class="otp-btn-loader" style="display:none"><i class="fas fa-spinner fa-spin"></i> Verifying...</span>
+      </button>
+      
+      <div style="text-align:center;margin-top:1.25rem;">
+        <div id="adm-otp-timer" style="font-size:.78rem;color:var(--gray);margin-bottom:.6rem;display:flex;align-items:center;justify-content:center;gap:.35rem;">
+          <i class="fas fa-clock" style="color:#c9954c;font-size:.75rem;"></i> Resend available in <span id="adm-otp-countdown" style="font-weight:700;color:#c9954c;">60</span>s
+        </div>
+        <button class="otp-resend-btn" id="adm-resend-btn" onclick="resendAdminOtp('${email}')" disabled>
+          <i class="fas fa-redo-alt"></i> Resend OTP
+        </button>
+        <div style="display:flex;gap:.5rem;margin-top:.75rem;">
+          <button class="otp-resend-btn" onclick="showAdminLogin()" style="flex:1;border-color:#d4d0cc;color:var(--gray);">
+            <i class="fas fa-arrow-left"></i> Back to Login
+          </button>
+        </div>
+        <div style="font-size:.7rem;color:#b8b5b1;display:flex;align-items:center;justify-content:center;gap:.35rem;margin-top:.75rem;">
+          <i class="fas fa-lock" style="font-size:.65rem;color:#c9954c;"></i> Admin access is OTP-protected for security
+        </div>
+      </div>
     </div>
   </div>`;
-  setTimeout(() => document.getElementById('adm-otp')?.focus(), 100);
+
+  // Initialize admin OTP boxes
+  initAdminOtpBoxes(email);
+  
+  // Start countdown timer
+  startAdminOtpTimer();
+}
+
+function initAdminOtpBoxes(email) {
+  const boxes = document.querySelectorAll('#admin-otp-row .adm-otp-digit');
+  if (!boxes.length) return;
+  
+  const hiddenInput = document.getElementById('adm-otp');
+  const verifyBtn = document.getElementById('adm-verify-btn');
+  
+  function syncVal() {
+    const val = Array.from(boxes).map(b => b.value).join('');
+    if (hiddenInput) hiddenInput.value = val;
+    if (verifyBtn) verifyBtn.disabled = val.length !== 6;
+  }
+  
+  boxes.forEach((box, idx) => {
+    box.addEventListener('input', (e) => {
+      const val = e.target.value.replace(/\\D/g, '');
+      e.target.value = val.slice(0, 1);
+      if (val && idx < 5) boxes[idx + 1].focus();
+      box.classList.toggle('filled', !!val);
+      syncVal();
+      const full = Array.from(boxes).map(b => b.value).join('');
+      if (full.length === 6) setTimeout(() => verifyAdminOtp(email), 200);
+    });
+    
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && !box.value && idx > 0) {
+        boxes[idx - 1].focus();
+        boxes[idx - 1].value = '';
+        boxes[idx - 1].classList.remove('filled');
+        syncVal();
+      }
+      if (e.key === 'ArrowLeft' && idx > 0) boxes[idx - 1].focus();
+      if (e.key === 'ArrowRight' && idx < 5) boxes[idx + 1].focus();
+    });
+    
+    box.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const paste = (e.clipboardData || window.clipboardData).getData('text').replace(/\\D/g, '').slice(0, 6);
+      paste.split('').forEach((ch, i) => { if (boxes[i]) { boxes[i].value = ch; boxes[i].classList.add('filled'); } });
+      boxes[Math.min(paste.length, 5)]?.focus();
+      syncVal();
+      if (paste.length === 6) setTimeout(() => verifyAdminOtp(email), 200);
+    });
+    
+    box.addEventListener('focus', () => box.select());
+  });
+  
+  setTimeout(() => boxes[0]?.focus(), 200);
+}
+
+function startAdminOtpTimer() {
+  const endsAt = Date.now() + 60000;
+  const timer = setInterval(() => {
+    const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+    const countdown = document.getElementById('adm-otp-countdown');
+    const timerEl = document.getElementById('adm-otp-timer');
+    const resendBtn = document.getElementById('adm-resend-btn');
+    if (!countdown) { clearInterval(timer); return; }
+    if (remaining <= 0) {
+      if (timerEl) timerEl.style.display = 'none';
+      if (resendBtn) { resendBtn.disabled = false; }
+      clearInterval(timer);
+      return;
+    }
+    countdown.textContent = remaining;
+  }, 1000);
 }
 
 async function verifyAdminOtp(email) {
-  const otp = document.getElementById('adm-otp')?.value;
+  const boxes = document.querySelectorAll('#admin-otp-row .adm-otp-digit');
+  const otp = boxes.length ? Array.from(boxes).map(b => b.value).join('') : (document.getElementById('adm-otp')?.value || '');
   const err = document.getElementById('adm-otp-err');
-  if (!otp || !email) { if (err) err.textContent = 'Please enter the OTP'; return; }
+  if (!otp || otp.length !== 6 || !email) { 
+    if (err) err.textContent = 'Please enter the 6-digit OTP';
+    boxes.forEach(b => { b.classList.add('error'); setTimeout(() => b.classList.remove('error'), 600); });
+    return; 
+  }
 
-  const verifyBtn = document.querySelector('.btn-primary');
-  if (verifyBtn) { verifyBtn.disabled = true; verifyBtn.innerHTML = '<i class="fas fa-spinner" style="animation:spin 1s linear infinite;"></i> Verifying...'; }
+  const verifyBtn = document.getElementById('adm-verify-btn');
+  const btnText = verifyBtn?.querySelector('.otp-btn-text');
+  const btnLoader = verifyBtn?.querySelector('.otp-btn-loader');
+  if (btnText) btnText.style.display = 'none';
+  if (btnLoader) btnLoader.style.display = 'inline-flex';
+  if (verifyBtn) verifyBtn.disabled = true;
 
   const r = await api('/api/admin/login/verify-otp', { method: 'POST', body: { email, otp } });
   
-  if (verifyBtn) { verifyBtn.disabled = false; verifyBtn.innerHTML = 'Verify OTP'; }
+  if (btnText) btnText.style.display = 'inline-flex';
+  if (btnLoader) btnLoader.style.display = 'none';
   
   if (r.error) {
     if (err) err.textContent = r.error;
+    if (verifyBtn) verifyBtn.disabled = false;
+    boxes.forEach(b => { b.classList.add('error'); setTimeout(() => b.classList.remove('error'), 600); });
     return;
   }
 
