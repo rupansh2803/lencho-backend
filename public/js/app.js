@@ -561,28 +561,52 @@ async function autoLoginWithToken() {
   const savedUser = getSavedUser();
   
   if (!token) {
+    // No token at all — user is genuinely logged out
     currentUser = null;
     updateHeader();
     return;
   }
   
+  // ── INSTANT RESTORE: Show saved user immediately so UI never flickers ──
+  if (savedUser) {
+    currentUser = savedUser;
+    updateHeader();
+    console.log('[Auth] Session restored from localStorage:', savedUser.email || savedUser.name);
+  }
+  
+  // ── BACKGROUND VALIDATION: Verify JWT with server (non-blocking) ──
   try {
-    // Try to validate token and restore session
     const r = await api('/api/me');
     if (r.user) {
+      // Server confirmed — update with fresh data
       currentUser = r.user;
       saveCurrentUser(r.user);
       updateHeader();
+      console.log('[Auth] JWT validated by server:', r.user.email);
       return;
-    } else {
-      // Token is invalid or expired, clear auth
+    }
+    
+    // Server returned { user: null } — token is explicitly invalid/expired
+    if (r.error && (r.error.includes('401') || r.error.includes('expired') || r.error.includes('invalid'))) {
+      console.warn('[Auth] Token explicitly rejected by server, clearing auth');
       clearAuth();
+      updateHeader();
+      return;
+    }
+    
+    // Server returned null user but no error — might be a server issue
+    // Keep the saved user to avoid flicker, but don't save new data
+    if (!currentUser && savedUser) {
+      currentUser = savedUser;
       updateHeader();
     }
   } catch(e) {
-    console.error('Auto-login failed:', e);
-    currentUser = savedUser || null; // Graceful UI fallback when network is temporarily unavailable
-    updateHeader();
+    // Network error, timeout, or server unreachable — NEVER clear auth
+    console.warn('[Auth] Background validation failed (keeping session):', e?.message || e);
+    if (!currentUser && savedUser) {
+      currentUser = savedUser;
+      updateHeader();
+    }
   }
 }
 
@@ -2080,32 +2104,30 @@ async function syncSocialLinks() {
 // ── INIT ──────────────────────────────────────────────────
 async function bootstrapApp() {
   try {
-    // ✨ PARALLEL INITIALIZATION: Run non-blocking tasks together
-    const initPromises = [];
+    // ── STEP 1: Instantly restore saved session (synchronous, no flicker) ──
+    await autoLoginWithToken();
     
-    // Critical path: Auto-login with saved JWT + init header (fast)
-    initPromises.push(autoLoginWithToken().catch(e => console.error('autoLoginWithToken error:', e)));
-    
-    // Non-critical async tasks (run in background, don't block rendering)
-    initPromises.push(updateCartCount().catch(e => console.error('updateCartCount error:', e)));
-    initPromises.push(syncSocialLinks().catch(e => console.error('syncSocialLinks error:', e)));
-    initPromises.push(loadPublicSettings().catch(e => console.error('loadPublicSettings error:', e)));
-    
-    // Render page IMMEDIATELY (don't wait for all promises)
+    // ── STEP 2: Render page immediately with restored auth state ──
     navigate(location.pathname + location.search, false);
     if (typeof initHeader === 'function') initHeader();
     renderGoogleButtons();
-    initPromises.push(handleFirebaseRedirectAuth().catch(e => console.error('handleFirebaseRedirectAuth error:', e)));
     
-    // Hide loading screen fast (after minimal delay)
+    // ── STEP 3: Hide loading screen fast ──
     const ls = document.getElementById('loading-screen');
     setTimeout(() => {
       if (ls) ls.classList.add('hidden');
-    }, 300); // Reduced from 1000ms
+    }, 300);
     
-    // Wait for background tasks to complete (non-blocking)
-    await Promise.allSettled(initPromises);
-    updateHeader(); // Ensure header correctly reflects auth state after async auto-login
+    // ── STEP 4: Run non-blocking background tasks ──
+    const bgTasks = [
+      updateCartCount().catch(e => console.error('updateCartCount error:', e)),
+      syncSocialLinks().catch(e => console.error('syncSocialLinks error:', e)),
+      loadPublicSettings().catch(e => console.error('loadPublicSettings error:', e)),
+      handleFirebaseRedirectAuth().catch(e => console.error('handleFirebaseRedirectAuth error:', e))
+    ];
+    
+    await Promise.allSettled(bgTasks);
+    updateHeader(); // Final header sync after all tasks complete
 
     // Warm common read-only endpoints for snappier next navigation.
     Promise.allSettled([

@@ -2462,7 +2462,7 @@ app.post('/api/admin/login/verify-otp', async (req, res) => {
       delete req.session.pendingAdminOTP;
       await recordLoginActivity({ email, name: user.name, status: 'success', method: 'admin_otp', role: user.role, ip, userAgent });
       const { password: _, ...safe } = user.toObject();
-      return res.json({ success: true, user: { id: user._id, ...safe } });
+      return res.json({ success: true, token: generateToken(user._id.toString(), user.role), user: { id: user._id, ...safe } });
     }
 
     const users = readJson(FILES.users);
@@ -2474,7 +2474,7 @@ app.post('/api/admin/login/verify-otp', async (req, res) => {
     delete req.session.pendingAdminLogin;
     delete req.session.pendingAdminOTP;
     await recordLoginActivity({ email, name: user.name, status: 'success', method: 'admin_otp', role: user.role, ip, userAgent });
-    res.json({ success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    res.json({ success: true, token: generateToken(user.id, user.role), user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

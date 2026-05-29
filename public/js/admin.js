@@ -129,22 +129,27 @@ async function adminLogin() {
   const pass = document.getElementById('adm-pass')?.value;
   const captcha = document.getElementById('adm-captcha')?.value;
   const err = document.getElementById('adm-err');
+  const btn = document.querySelector('#adm-err + button.btn-primary') || document.querySelector('.btn-primary');
 
   if (!email || !pass || !captcha) { err.textContent = 'Please fill all fields'; return; }
 
-  // Admin login - email, password + CAPTCHA (no OTP)
-  const r = await api('/api/admin/login/simple', { method: 'POST', body: { email, password: pass, captchaAnswer: captcha } });
+  // Show loading state
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner" style="animation:spin 1s linear infinite;"></i> Sending OTP...'; }
+
+  // Admin login with OTP - Step 1: Verify credentials and send OTP
+  const r = await api('/api/admin/login/request-otp', { method: 'POST', body: { email, password: pass, captchaAnswer: captcha } });
+  
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-shield-alt"></i> Sign In'; }
+  
   if (r.error) {
     err.textContent = r.error;
     showAdminLogin(); // Refresh CAPTCHA on error
     return;
   }
 
-  // Login successful - refresh admin panel
-  toast('✅ Admin login successful!', 'success');
-  currentUser = r.user || currentUser;
-  updateHeader();
-  buildAdminPanel();
+  // OTP sent successfully - show OTP verification step
+  toast(r.message || 'OTP sent to your admin email!', 'success');
+  showAdminVerifyOtp(email);
 }
 
 function showAdminVerifyOtp(email) {
@@ -172,14 +177,28 @@ async function verifyAdminOtp(email) {
   const err = document.getElementById('adm-otp-err');
   if (!otp || !email) { if (err) err.textContent = 'Please enter the OTP'; return; }
 
+  const verifyBtn = document.querySelector('.btn-primary');
+  if (verifyBtn) { verifyBtn.disabled = true; verifyBtn.innerHTML = '<i class="fas fa-spinner" style="animation:spin 1s linear infinite;"></i> Verifying...'; }
+
   const r = await api('/api/admin/login/verify-otp', { method: 'POST', body: { email, otp } });
+  
+  if (verifyBtn) { verifyBtn.disabled = false; verifyBtn.innerHTML = 'Verify OTP'; }
+  
   if (r.error) {
     if (err) err.textContent = r.error;
     return;
   }
 
-  // Success: r should include user and session token if applicable
+  // Save JWT token for session persistence across refreshes
+  if (r.token) {
+    if (typeof setJWTToken === 'function') setJWTToken(r.token);
+    localStorage.setItem('authToken', r.token);
+    localStorage.setItem('lencho_jwt_token_v1', r.token);
+  }
+
+  // Success: save user and build admin panel
   currentUser = r.user || null;
+  if (typeof saveCurrentUser === 'function') saveCurrentUser(currentUser);
   updateHeader();
   toast('Admin Authorization Granted! ✦', 'success');
   buildAdminPanel();
@@ -938,7 +957,10 @@ function downloadGSTReport() {
   toast('GST Report downloaded! ✦', 'success');
 }
 
-function adminSettings() {
+async function adminSettings() {
+  // Load existing settings
+  const settings = normalizeSettings(await api('/api/admin/settings'));
+  
   document.getElementById('admin-content').innerHTML = `
   <div class="admin-header"><h1 class="admin-page-title">⚙️ Admin Settings</h1></div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;">
@@ -973,6 +995,71 @@ function adminSettings() {
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- SMTP Configuration Section -->
+  <div style="margin-top:2rem;">
+    <div class="admin-form">
+      <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.4rem;margin-bottom:.5rem;padding-bottom:.75rem;border-bottom:1px solid var(--border);">
+        <i class="fas fa-envelope" style="color:var(--rose);margin-right:.5rem;"></i>📧 SMTP Email Configuration
+      </h3>
+      <p style="color:var(--gray);font-size:.85rem;margin-bottom:1.5rem;">Configure SMTP settings for OTP emails, order notifications, and password resets. These settings are used by both user OTP and admin OTP systems.</p>
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+        <div class="form-group">
+          <label><i class="fas fa-server" style="color:var(--rose);margin-right:4px;"></i> SMTP Host</label>
+          <input type="text" id="smtp-host" placeholder="smtp.gmail.com" value="${settings.smtpHost || ''}"/>
+          <small style="color:var(--gray);font-size:.72rem;">Gmail: smtp.gmail.com | Outlook: smtp.office365.com</small>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-hashtag" style="color:var(--rose);margin-right:4px;"></i> SMTP Port</label>
+          <input type="number" id="smtp-port" placeholder="465" value="${settings.smtpPort || ''}"/>
+          <small style="color:var(--gray);font-size:.72rem;">SSL: 465 | TLS: 587</small>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-user" style="color:var(--rose);margin-right:4px;"></i> SMTP Username / Email</label>
+          <input type="email" id="smtp-user" placeholder="your-email@gmail.com" value="${settings.smtpUser || ''}"/>
+          <small style="color:var(--gray);font-size:.72rem;">The email address used to send OTPs</small>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-key" style="color:var(--rose);margin-right:4px;"></i> SMTP Password / App Password</label>
+          <input type="password" id="smtp-pass" placeholder="••••••••••••••••" value="${settings.smtpPass || ''}"/>
+          <small style="color:var(--gray);font-size:.72rem;">For Gmail: use App Password (not your regular password)</small>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-tag" style="color:var(--rose);margin-right:4px;"></i> Sender Name</label>
+          <input type="text" id="smtp-sender-name" placeholder="Lencho" value="${settings.storeName || ''}"/>
+          <small style="color:var(--gray);font-size:.72rem;">Name shown as email sender (e.g. "Lencho")</small>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-paper-plane" style="color:var(--rose);margin-right:4px;"></i> Test Email Address</label>
+          <input type="email" id="smtp-test-email" placeholder="test@example.com" value="${currentUser?.email || ''}"/>
+          <small style="color:var(--gray);font-size:.72rem;">Send a test email to verify configuration</small>
+        </div>
+      </div>
+
+      <div id="smtp-status" style="min-height:24px;margin:1rem 0;font-size:.85rem;"></div>
+
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+        <button class="btn-primary" onclick="saveSmtpSettings()" id="smtp-save-btn">
+          <i class="fas fa-save"></i> Save SMTP Settings
+        </button>
+        <button class="btn-outline" onclick="testSmtpConnection()" id="smtp-test-btn">
+          <i class="fas fa-paper-plane"></i> Send Test Email
+        </button>
+      </div>
+
+      <div style="margin-top:1.5rem;padding:1rem;background:var(--beige);border-radius:12px;border:1px solid rgba(0,0,0,.04);">
+        <h4 style="font-size:.85rem;margin-bottom:.5rem;color:var(--dark);">💡 Gmail App Password Setup</h4>
+        <ol style="font-size:.78rem;color:var(--gray);line-height:1.7;margin:0;padding-left:1.2rem;">
+          <li>Go to <a href="https://myaccount.google.com/security" target="_blank" style="color:var(--rose);">Google Account Security</a></li>
+          <li>Enable 2-Step Verification (required)</li>
+          <li>Go to <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:var(--rose);">App Passwords</a></li>
+          <li>Create a new App Password for "Mail"</li>
+          <li>Copy the 16-character password and paste it above</li>
+        </ol>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -998,6 +1085,85 @@ async function saveAdminCredentials() {
   const r = await api('/api/admin/change-credentials', { method:'PUT', body: { currentPassword, newEmail, newPassword, name } });
   if(r.error) document.getElementById('set-err').textContent = r.error;
   else { toast('Credentials updated! Please login again.', 'success'); handleLogout(); }
+}
+
+async function saveSmtpSettings() {
+  const btn = document.getElementById('smtp-save-btn');
+  const status = document.getElementById('smtp-status');
+  
+  const host = document.getElementById('smtp-host')?.value?.trim();
+  const port = document.getElementById('smtp-port')?.value?.trim();
+  const user = document.getElementById('smtp-user')?.value?.trim();
+  const pass = document.getElementById('smtp-pass')?.value?.trim();
+  const senderName = document.getElementById('smtp-sender-name')?.value?.trim();
+
+  if (!host || !user || !pass) {
+    status.innerHTML = '<span style="color:#ef4444;"><i class="fas fa-exclamation-circle"></i> Please fill Host, Username, and Password fields.</span>';
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner" style="animation:spin 1s linear infinite;"></i> Saving...'; }
+  status.innerHTML = '<span style="color:var(--gray);"><i class="fas fa-spinner" style="animation:spin 1s linear infinite;"></i> Saving SMTP settings...</span>';
+
+  const r = await api('/api/admin/settings', {
+    method: 'PUT',
+    body: {
+      smtpHost: host,
+      smtpPort: Number(port) || 465,
+      smtpUser: user,
+      smtpPass: pass,
+      storeName: senderName || 'Lencho'
+    }
+  });
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save SMTP Settings'; }
+
+  if (r.error) {
+    status.innerHTML = `<span style="color:#ef4444;"><i class="fas fa-times-circle"></i> Error: ${r.error}</span>`;
+    toast('Failed to save SMTP settings', 'error');
+  } else {
+    status.innerHTML = '<span style="color:#22c55e;"><i class="fas fa-check-circle"></i> SMTP settings saved successfully!</span>';
+    toast('SMTP settings saved! ✦', 'success');
+  }
+}
+
+async function testSmtpConnection() {
+  const btn = document.getElementById('smtp-test-btn');
+  const status = document.getElementById('smtp-status');
+  const testEmail = document.getElementById('smtp-test-email')?.value?.trim();
+
+  if (!testEmail) {
+    status.innerHTML = '<span style="color:#ef4444;"><i class="fas fa-exclamation-circle"></i> Please enter a test email address.</span>';
+    return;
+  }
+
+  // Save settings first before testing
+  const host = document.getElementById('smtp-host')?.value?.trim();
+  const user = document.getElementById('smtp-user')?.value?.trim();
+  const pass = document.getElementById('smtp-pass')?.value?.trim();
+  
+  if (!host || !user || !pass) {
+    status.innerHTML = '<span style="color:#ef4444;"><i class="fas fa-exclamation-circle"></i> Please save SMTP settings first before testing.</span>';
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner" style="animation:spin 1s linear infinite;"></i> Sending test email...'; }
+  status.innerHTML = '<span style="color:var(--gray);"><i class="fas fa-spinner" style="animation:spin 1s linear infinite;"></i> Sending test email... This may take a few seconds.</span>';
+
+  const r = await api('/api/admin/test-smtp', {
+    method: 'POST',
+    body: { testEmail }
+  });
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Test Email'; }
+
+  if (r.error) {
+    status.innerHTML = `<span style="color:#ef4444;"><i class="fas fa-times-circle"></i> Test failed: ${r.error}</span>`;
+    toast('SMTP test failed: ' + r.error, 'error');
+  } else {
+    status.innerHTML = `<span style="color:#22c55e;"><i class="fas fa-check-circle"></i> ✅ Test email sent successfully to ${testEmail}! Check your inbox.</span>`;
+    toast('Test email sent successfully! Check your inbox.', 'success');
+  }
 }
 
 function normalizeSettings(settings) {
