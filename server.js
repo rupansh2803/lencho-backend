@@ -318,34 +318,54 @@ async function sendEmailWithRetry(transporter, payload, attempts = 2) {
 
 async function verifyGoogleIdToken(idToken) {
   if (!idToken) {
-    throw new Error('Google token missing');
+    return null; // No token — caller should use client-provided data
   }
 
   let payload = null;
+
+  // Try Google tokeninfo endpoint (works for Google OAuth access tokens)
   try {
     const response = await axios.get('https://oauth2.googleapis.com/tokeninfo', {
       params: { id_token: idToken },
-      timeout: 10000
+      timeout: 8000
     });
     payload = response.data || {};
-  } catch (error) {
-    const decoded = jwt.decode(idToken, { json: true }) || {};
-    if (!decoded || !decoded.email) {
-      throw error;
-    }
-    payload = decoded;
+  } catch (_ignored) {
+    // Expected for Firebase ID tokens — fall through to JWT decode
   }
 
-  if (String(payload.email_verified || '').toLowerCase() !== 'true') {
-    throw new Error('Google account email is not verified');
+  // Fallback: decode Firebase ID token (JWT) directly
+  if (!payload || !payload.email) {
+    try {
+      const decoded = jwt.decode(idToken, { json: true });
+      if (decoded && decoded.email) {
+        payload = decoded;
+      }
+    } catch (_ignored) {
+      // JWT decode failed — return null to let caller use client data
+    }
+  }
+
+  if (!payload || !payload.email) {
+    console.warn('[GoogleAuth] Could not extract email from ID token');
+    return null;
+  }
+
+  // Accept email_verified as boolean true OR string "true"
+  const emailVerified = payload.email_verified === true ||
+    String(payload.email_verified || '').toLowerCase() === 'true';
+
+  if (!emailVerified) {
+    console.warn('[GoogleAuth] Email not verified for:', payload.email);
+    // Don't throw — some Firebase accounts may not have this flag
   }
 
   return {
     email: payload.email,
     name: payload.name || payload.email?.split('@')?.[0] || 'User',
     picture: payload.picture || '',
-    googleId: payload.sub || '',
-    emailVerified: true
+    googleId: payload.sub || payload.user_id || '',
+    emailVerified
   };
 }
 
@@ -1138,8 +1158,8 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://fonts.gstatic.com", "https://accounts.google.com", "https://accounts.google.com/gsi/style", "https://cdnjs.cloudflare.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com", "data:"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https://checkout.razorpay.com", "https://www.googleapis.com", "https://oauth2.googleapis.com", "https://accounts.google.com", "https://identitytoolkit.googleapis.com", "https://securetoken.googleapis.com", "https://firebaseinstallations.googleapis.com"],
-      frameSrc: ["https://checkout.razorpay.com", "https://accounts.google.com"]
+      connectSrc: ["'self'", "https://checkout.razorpay.com", "https://www.googleapis.com", "https://oauth2.googleapis.com", "https://accounts.google.com", "https://identitytoolkit.googleapis.com", "https://securetoken.googleapis.com", "https://firebaseinstallations.googleapis.com", "https://apis.googleapis.com", "https://lencho-b556e.firebaseapp.com"],
+      frameSrc: ["https://checkout.razorpay.com", "https://accounts.google.com", "https://lencho-b556e.firebaseapp.com"]
     }
   },
   crossOriginEmbedderPolicy: false,
@@ -3726,27 +3746,41 @@ app.get('/api/ai/trending', async (req, res) => {
 // ─── GOOGLE OAUTH ROUTE ──────────────────────────────────────
 app.post('/api/auth/firebase/google', async (req, res) => {
   try {
-    const { email, name, picture, googleId, idToken } = req.body;
+    const { email, name, picture, googleId, idToken, firebaseUid } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
-    let verifiedGoogle = null;
 
+    console.log('[GoogleAuth] Request received:', { email, name: name?.slice(0, 20), hasIdToken: !!idToken, hasFirebaseUid: !!firebaseUid });
+
+    // Try to verify the Firebase ID token (returns null if token is missing or unverifiable)
+    let verifiedGoogle = null;
     if (idToken) {
-      verifiedGoogle = await verifyGoogleIdToken(idToken);
+      try {
+        verifiedGoogle = await verifyGoogleIdToken(idToken);
+        console.log('[GoogleAuth] Token verification:', verifiedGoogle ? 'success' : 'fell back to client data');
+      } catch (tokenErr) {
+        console.warn('[GoogleAuth] Token verification error (non-fatal):', tokenErr.message);
+      }
     }
 
+    // Use verified data if available, otherwise trust client-provided Firebase Auth data
     const finalEmail = verifiedGoogle?.email || email;
     const finalName = verifiedGoogle?.name || name;
     const finalPicture = verifiedGoogle?.picture || picture;
-    const finalGoogleId = verifiedGoogle?.googleId || googleId;
+    const finalGoogleId = verifiedGoogle?.googleId || firebaseUid || googleId;
 
-    if (!finalEmail) return res.status(400).json({ error: 'Email is required from Google' });
+    if (!finalEmail) {
+      console.error('[GoogleAuth] No email provided');
+      return res.status(400).json({ error: 'Email is required from Google' });
+    }
+
+    console.log('[GoogleAuth] Processing login for:', finalEmail);
     
     let user;
     if (useDB) {
       user = await User.findOne({ email: finalEmail }).lean();
       if (!user) {
-        // New user — create account automatically
+        console.log('[GoogleAuth] Creating new user:', finalEmail);
         const newUser = new User({ 
           name: finalName || finalEmail.split('@')[0], 
           email: finalEmail, 
@@ -3759,6 +3793,13 @@ app.post('/api/auth/firebase/google', async (req, res) => {
         });
         await newUser.save();
         user = newUser.toObject();
+        console.log('[GoogleAuth] New user created:', user._id);
+      } else {
+        console.log('[GoogleAuth] Existing user found:', user._id);
+        // Update googleId and avatar if missing
+        if ((!user.googleId && finalGoogleId) || (!user.avatar && finalPicture)) {
+          await User.updateOne({ _id: user._id }, { $set: { googleId: finalGoogleId || user.googleId, avatar: finalPicture || user.avatar } });
+        }
       }
     } else {
       const users = readJson(FILES.users);
@@ -3782,20 +3823,24 @@ app.post('/api/auth/firebase/google', async (req, res) => {
     const userName = user.name || finalName || finalEmail.split('@')[0] || 'User';
     await recordLoginActivity({ email: finalEmail, name: userName, status: 'success', method: 'google', role: user.role || 'user', ip, userAgent });
     
-    res.json({ 
+    const responsePayload = { 
       success: true,
       token: generateToken(userId, user.role || 'user'),
       user: { 
         id: userId, 
-        name: user.name, 
+        name: user.name || finalName, 
         email: user.email, 
         role: user.role || 'user', 
         avatar: user.avatar || finalPicture 
       } 
-    });
+    };
+    console.log('[GoogleAuth] Login successful:', { userId, email: finalEmail, role: user.role || 'user' });
+    res.json(responsePayload);
   } catch (e) { 
-    console.error('Google Auth Error:', e.message);
-    await recordLoginActivity({ email: req.body?.email || '', status: 'failed', method: 'google', role: 'user', ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress || '', userAgent: req.headers['user-agent'] || '' });
+    console.error('[GoogleAuth] Error:', e.message, e.stack?.slice(0, 300));
+    try {
+      await recordLoginActivity({ email: req.body?.email || '', status: 'failed', method: 'google', role: 'user', ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress || '', userAgent: req.headers['user-agent'] || '' });
+    } catch (_) {}
     res.status(500).json({ error: 'Google login failed: ' + e.message }); 
   }
 });

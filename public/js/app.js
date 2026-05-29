@@ -532,7 +532,8 @@ function getFirebaseAuthErrorMessage(error) {
   if (code === 'auth/unauthorized-domain') return 'This domain is not authorized for Firebase Google login yet.';
   if (code === 'auth/network-request-failed') return 'Network error during Google sign-in. Please try again.';
   if (code === 'auth/cancelled-popup-request') return 'Google sign-in request was replaced. Please try again.';
-  return String(error?.message || 'Google login failed. Please try again.');
+  const message = String(error?.message || 'Google login failed. Please try again.');
+  return code ? `${code}: ${message}` : message;
 }
 
 // ── TOAST ─────────────────────────────────────────────────
@@ -2074,32 +2075,7 @@ async function syncSocialLinks() {
   else if (s.whatsappNumber && wa) wa.href = `https://wa.me/${s.whatsappNumber}`;
 }
 
-try {
-  Object.assign(window, {
-    navigate,
-    handleUserClick,
-    openAuthModal,
-    closeAuthModal,
-    switchToSignup,
-    switchToLogin,
-    switchLoginType,
-    handleLogin,
-    handleSignup,
-    verifyEmailOTP,
-    resendEmailOTP,
-    completeSignupAfterOTP,
-    handleLogout,
-    claimDiscount,
-    toggleSearch,
-    toggleNavDropdown,
-    signInWithGoogle,
-    completeGoogleLogin,
-    handlePhoneLogin,
-    bootstrapApp
-  });
-} catch (e) {
-  console.warn('Failed to attach global handlers:', e);
-}
+// (Global window exports are at the bottom of this file)
 
 // ── INIT ──────────────────────────────────────────────────
 async function bootstrapApp() {
@@ -2160,6 +2136,8 @@ if (document.readyState === 'loading') {
 
 // ── FIREBASE GOOGLE AUTH ──────────────────────────────────────
 let googleAuthInFlight = false;
+let firebaseRedirectAuthHandled = false;
+let googleLoginCompletionInProgress = false;
 
 function renderGoogleButtons() {
   const loginSlot = document.getElementById('google-auth-login');
@@ -2201,30 +2179,37 @@ function setGoogleBtnLoading(btn, loading, label) {
 }
 
 async function signInWithGoogle(event) {
-  if (googleAuthInFlight) return;
+  if (googleAuthInFlight) {
+    console.log('[GoogleAuth] Sign-in already in flight, skipping');
+    return;
+  }
   const btn = event && event.currentTarget ? event.currentTarget : null;
   const firebaseClient = getFirebaseAuthClient();
   if (!firebaseClient || !firebaseClient.isReady || !firebaseClient.isReady()) {
     toast('Google login is temporarily unavailable. Please try again in a moment.', 'error');
+    console.error('[GoogleAuth] Firebase client not ready');
     return;
   }
 
   googleAuthInFlight = true;
+  console.log('[GoogleAuth] ▶ Sign-in started');
   try {
     const isMobileFlow = firebaseClient.isMobileDevice();
+    console.log('[GoogleAuth] Device:', isMobileFlow ? 'mobile (redirect)' : 'desktop (popup)');
     if (isMobileFlow) {
       setGoogleBtnLoading(btn, true, 'Opening Google...');
+      localStorage.setItem('googleLoginPending', 'true');
       await firebaseClient.startGoogleRedirectLogin();
+      // Page will navigate away for redirect flow
       return;
     }
 
     setGoogleBtnLoading(btn, true, 'Signing in with Google...');
     const authResult = await firebaseClient.signInWithGooglePopup();
+    console.log('[GoogleAuth] Popup result received:', { hasUser: !!authResult?.user, hasToken: !!authResult?.googleIdToken });
     await completeGoogleLogin(authResult, btn);
   } catch (e) {
-    console.error(e?.code);
-    console.error(e?.message);
-    console.error('Firebase Google sign-in failed:', e);
+    console.error('[GoogleAuth] Sign-in error:', e?.code, e?.message);
     if (String(e?.code || '').toLowerCase() !== 'auth/popup-closed-by-user') {
       toast(getFirebaseAuthErrorMessage(e), 'error');
     }
@@ -2239,30 +2224,93 @@ async function handleFirebaseRedirectAuth() {
   if (!firebaseClient || !firebaseClient.isReady || !firebaseClient.isReady()) return;
 
   try {
+    console.log('[GoogleAuth] ▶ Checking for redirect result...');
     const authResult = await firebaseClient.consumeRedirectResult();
-    if (!authResult) return;
+    if (!authResult) {
+      console.log('[GoogleAuth] No redirect result (normal for non-redirect flows)');
+      localStorage.removeItem('googleLoginPending');
+      return;
+    }
+    console.log('[GoogleAuth] Redirect result found:', { hasUser: !!authResult?.user, hasToken: !!authResult?.googleIdToken });
+    firebaseRedirectAuthHandled = true;
+    googleLoginCompletionInProgress = true;
     await completeGoogleLogin(authResult, null);
+    googleLoginCompletionInProgress = false;
+    localStorage.removeItem('googleLoginPending');
   } catch (e) {
-    console.error('Firebase redirect result failed:', e);
-    toast('Google redirect login failed. Please try again.', 'error');
+    console.error('[GoogleAuth] Redirect result error:', e?.code, e?.message);
+    googleLoginCompletionInProgress = false;
+    localStorage.removeItem('googleLoginPending');
+    toast(getFirebaseAuthErrorMessage(e), 'error');
   }
 }
 
+window.handleFirebaseAuthStateChanged = async function handleFirebaseAuthStateChanged(user) {
+  try {
+    // Skip if: no user, already handled by redirect, already logged in, or another login is in progress
+    if (!user) return;
+    if (firebaseRedirectAuthHandled) {
+      console.log('[GoogleAuth] Auth state change skipped — redirect result already handled');
+      return;
+    }
+    if (googleLoginCompletionInProgress) {
+      console.log('[GoogleAuth] Auth state change skipped — login completion in progress');
+      return;
+    }
+    if (currentUser) {
+      console.log('[GoogleAuth] Auth state change skipped — user already logged in:', currentUser.email);
+      return;
+    }
+    // Only handle if there's a pending Google login (from redirect) or no JWT token (fresh session)
+    const hasPendingLogin = localStorage.getItem('googleLoginPending') === 'true';
+    const hasExistingToken = !!getJWTToken();
+    if (!hasPendingLogin && hasExistingToken) {
+      console.log('[GoogleAuth] Auth state change skipped — existing session, not a Google login flow');
+      return;
+    }
+    console.log('[GoogleAuth] Auth state change → processing login for:', user.email);
+    firebaseRedirectAuthHandled = true;
+    googleLoginCompletionInProgress = true;
+    await completeGoogleLogin(user, null);
+    googleLoginCompletionInProgress = false;
+    localStorage.removeItem('googleLoginPending');
+  } catch (e) {
+    console.error('[GoogleAuth] handleFirebaseAuthStateChanged error:', e);
+    googleLoginCompletionInProgress = false;
+  }
+};
+
 async function completeGoogleLogin(authResult, btn) {
+  console.log('[GoogleAuth] ▶ completeGoogleLogin started');
   const user = authResult?.user || authResult;
   const firebaseClient = getFirebaseAuthClient();
-  const googleIdToken = authResult?.googleIdToken || '';
+  let googleIdToken = authResult?.googleIdToken || '';
   const firebaseId = user?.uid || '';
   const email = user?.email || authResult?.email || '';
   const name = user?.displayName || authResult?.name || email.split('@')[0] || 'User';
   const picture = user?.photoURL || authResult?.picture || '';
 
+  console.log('[GoogleAuth] User data:', { email, name: name?.slice(0, 20), firebaseId: firebaseId?.slice(0, 10), hasIdToken: !!googleIdToken });
+
   if (!email) {
     toast('Could not fetch Google account email.', 'error');
+    console.error('[GoogleAuth] No email in auth result');
     return;
+  }
+
+  // If we don't have an ID token yet, try to get one from the Firebase user object
+  if (!googleIdToken && user && typeof user.getIdToken === 'function') {
+    try {
+      googleIdToken = await user.getIdToken(true);
+      console.log('[GoogleAuth] Fetched Firebase ID token via getIdToken()');
+    } catch (tokenErr) {
+      console.warn('[GoogleAuth] getIdToken() failed (non-fatal):', tokenErr.message);
+      // Continue without token — backend will use client-provided data
+    }
   }
   
   try {
+    console.log('[GoogleAuth] Sending to backend:', { email, hasToken: !!googleIdToken });
     const result = await api('/api/auth/firebase/google', {
       method: 'POST',
       body: {
@@ -2276,8 +2324,7 @@ async function completeGoogleLogin(authResult, btn) {
     });
     
     if (result.error) {
-      console.error('Backend Google auth failed:', result.error, 'profile:', authResult);
-      // Show user-friendly error
+      console.error('[GoogleAuth] Backend error:', result.error);
       if (result.error.includes('SMTP')) {
         toast('Account created! Please login with your email.', 'success');
         switchToLogin();
@@ -2287,35 +2334,39 @@ async function completeGoogleLogin(authResult, btn) {
       return;
     }
   
-  // Save JWT token and user data with persistent session
-  if (result.token) {
-    setJWTToken(result.token);
-    localStorage.setItem('authToken', result.token);
-    localStorage.setItem('googleLoginSource', 'lencho');
-    localStorage.setItem('loginTime', Date.now());
-    localStorage.setItem('sessionId', result.sessionId || generateClientSessionId());
-  }
+    console.log('[GoogleAuth] ✓ Backend response success:', { userId: result.user?.id, role: result.user?.role });
+
+    // Save JWT token and user data with persistent session
+    if (result.token) {
+      setJWTToken(result.token);
+      localStorage.setItem('authToken', result.token);
+      localStorage.setItem('googleLoginSource', 'lencho');
+      localStorage.setItem('loginTime', Date.now());
+      localStorage.setItem('sessionId', result.sessionId || generateClientSessionId());
+      console.log('[GoogleAuth] JWT token saved');
+    }
   
-  currentUser = result.user;
-  saveCurrentUser(currentUser);
-  const sessionUser = await api('/api/me');
-  if (sessionUser && sessionUser.user) {
-    currentUser = sessionUser.user;
+    currentUser = result.user;
     saveCurrentUser(currentUser);
-  }
-  updateHeader();
-  closeAuthModal();
-  await updateCartCount();
-  toast(`🎉 Welcome, ${result.user.name}! ✦`, 'success');
+    const sessionUser = await api('/api/me');
+    if (sessionUser && sessionUser.user) {
+      currentUser = sessionUser.user;
+      saveCurrentUser(currentUser);
+    }
+    updateHeader();
+    closeAuthModal();
+    await updateCartCount();
+    toast(`🎉 Welcome, ${result.user.name}! ✦`, 'success');
+    console.log('[GoogleAuth] ✓ Login complete — redirecting');
   
-  if (currentUser.role === 'admin') {
-    navigate('/admin');
-  } else {
-    navigate('/');
-  }
+    if (currentUser.role === 'admin') {
+      navigate('/admin');
+    } else {
+      navigate('/');
+    }
   } catch (e) {
-    console.error('completeGoogleLogin failed:', e);
-    toast('Google login failed: ' + e.message, 'error');
+    console.error('[GoogleAuth] completeGoogleLogin error:', e);
+    toast(getFirebaseAuthErrorMessage(e), 'error');
     if (firebaseClient && typeof firebaseClient.signOut === 'function') {
       await firebaseClient.signOut();
     }
@@ -2342,6 +2393,7 @@ try {
     toggleNavDropdown,
     signInWithGoogle,
     completeGoogleLogin,
+    handleFirebaseAuthStateChanged,
     handlePhoneLogin
   });
 } catch (e) {

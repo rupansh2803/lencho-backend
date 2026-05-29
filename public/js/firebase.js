@@ -39,20 +39,45 @@
 
   function isMobileDevice() {
     const ua = navigator.userAgent || '';
-    return /android|iphone|ipad|ipod|mobile|opera mini|iemobile/i.test(ua) || window.innerWidth < 768;
+    const isMobileUA = /android|iphone|ipad|ipod|mobile|opera mini|iemobile/i.test(ua);
+    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    // treat as mobile only when UA is mobile, or touch device with small viewport
+    return isMobileUA || (hasTouch && window.innerWidth < 768);
   }
 
   let firebaseReady = false;
   let auth = null;
   let provider = null;
+  let authStateHandlerAttached = false;
 
-  function buildAuthResult(result) {
+  async function buildAuthResult(result) {
     const user = result && result.user ? result.user : null;
-    const credential = window.firebase.auth.GoogleAuthProvider.credentialFromResult(result);
+    let credentialIdToken = '';
+    let credentialAccessToken = '';
+
+    try {
+      const credential = window.firebase.auth.GoogleAuthProvider.credentialFromResult(result);
+      credentialIdToken = credential && credential.idToken ? credential.idToken : '';
+      credentialAccessToken = credential && credential.accessToken ? credential.accessToken : '';
+    } catch (e) {
+      console.warn('credentialFromResult failed:', e);
+    }
+
+    // Always try to get a fresh Firebase ID token — this is the most reliable approach
+    let firebaseIdToken = credentialIdToken;
+    if (!firebaseIdToken && user && typeof user.getIdToken === 'function') {
+      try {
+        firebaseIdToken = await user.getIdToken(true);
+        console.log('Firebase ID token obtained via getIdToken()');
+      } catch (e) {
+        console.warn('user.getIdToken() failed:', e);
+      }
+    }
+
     return {
       user,
-      googleIdToken: credential && credential.idToken ? credential.idToken : '',
-      googleAccessToken: credential && credential.accessToken ? credential.accessToken : ''
+      googleIdToken: firebaseIdToken,
+      googleAccessToken: credentialAccessToken
     };
   }
 
@@ -69,6 +94,27 @@
     provider = new window.firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
 
+    if (window.firebase.auth && window.firebase.auth.Auth && window.firebase.auth.Auth.Persistence) {
+      auth.setPersistence(window.firebase.auth.Auth.Persistence.LOCAL).catch((error) => {
+        console.warn('Firebase persistence setup failed:', error && error.code ? error.code : error);
+      });
+    }
+
+    if (!authStateHandlerAttached && typeof auth.onAuthStateChanged === 'function') {
+      authStateHandlerAttached = true;
+      auth.onAuthStateChanged((user) => {
+        try {
+          console.log('onAuthStateChanged:', user ? { uid: user.uid, email: user.email, name: user.displayName } : null);
+          window.__lenchoFirebaseCurrentUser = user || null;
+          if (typeof window.handleFirebaseAuthStateChanged === 'function') {
+            window.handleFirebaseAuthStateChanged(user || null);
+          }
+        } catch (error) {
+          console.error('onAuthStateChanged handler failed:', error);
+        }
+      });
+    }
+
     firebaseReady = true;
   } catch (error) {
     console.error('Firebase initialization failed:', error);
@@ -82,22 +128,82 @@
     isMobileDevice: isMobileDevice,
     signInWithGooglePopup: async function () {
       if (!this.isReady()) throw new Error('Firebase auth is not initialized');
-      const result = await auth.signInWithPopup(provider);
-      return buildAuthResult(result);
+      console.log('Auth started: popup');
+      try {
+        const result = await auth.signInWithPopup(provider);
+        console.log('Popup result:', result);
+        console.log('User:', result && result.user ? { uid: result.user.uid, email: result.user.email, name: result.user.displayName } : null);
+        return buildAuthResult(result);
+      } catch (err) {
+        try {
+          const cfg = getConfigFromWindow();
+          console.warn('Firebase signInWithPopup failed:', err && err.code ? err.code : err);
+          console.info('Current hostname:', window.location.hostname, 'Configured authDomain:', cfg && cfg.authDomain);
+        } catch (e) {}
+        if (err && (err.code === 'auth/unauthorized-domain' || err.message && err.message.indexOf('unauthorized') !== -1)) {
+          const message = 'AUTH_DOMAIN_NOT_AUTHORIZED';
+          const friendly = new Error(message);
+          friendly.code = 'AUTH_DOMAIN_NOT_AUTHORIZED';
+          throw friendly;
+        }
+        throw err;
+      }
     },
     startGoogleRedirectLogin: async function () {
       if (!this.isReady()) throw new Error('Firebase auth is not initialized');
-      await auth.signInWithRedirect(provider);
+      console.log('Auth started: redirect');
+      try {
+        await auth.signInWithRedirect(provider);
+      } catch (err) {
+        try {
+          const cfg = getConfigFromWindow();
+          console.warn('Firebase signInWithRedirect failed:', err && err.code ? err.code : err);
+          console.info('Current hostname:', window.location.hostname, 'Configured authDomain:', cfg && cfg.authDomain);
+        } catch (e) {}
+        if (err && (err.code === 'auth/unauthorized-domain' || err.message && err.message.indexOf('unauthorized') !== -1)) {
+          const friendly = new Error('AUTH_DOMAIN_NOT_AUTHORIZED');
+          friendly.code = 'AUTH_DOMAIN_NOT_AUTHORIZED';
+          throw friendly;
+        }
+        throw err;
+      }
     },
     consumeRedirectResult: async function () {
       if (!this.isReady()) return null;
-      const result = await auth.getRedirectResult();
-      if (!result || !result.user) return null;
-      return buildAuthResult(result);
+      try {
+        const result = await auth.getRedirectResult();
+        console.log('Redirect result:', result);
+        if (!result || !result.user) return null;
+        return buildAuthResult(result);
+      } catch (err) {
+        console.warn('consumeRedirectResult error:', err && err.code ? err.code : err);
+        if (err && (err.code === 'auth/unauthorized-domain' || err.message && err.message.indexOf('unauthorized') !== -1)) {
+          const friendly = new Error('AUTH_DOMAIN_NOT_AUTHORIZED');
+          friendly.code = 'AUTH_DOMAIN_NOT_AUTHORIZED';
+          throw friendly;
+        }
+        throw err;
+      }
     },
     signOut: async function () {
       if (!this.isReady()) return;
       await auth.signOut();
+    },
+    getCurrentUser: function () {
+      return auth && auth.currentUser ? auth.currentUser : null;
+    }
+  };
+
+  // Utility: return basic diagnostics about current domain vs config
+  window.lenchoFirebaseAuth.getDomainDiagnostics = function () {
+    try {
+      const cfg = getConfigFromWindow();
+      return {
+        currentHostname: window.location.hostname,
+        configuredAuthDomain: cfg && cfg.authDomain ? cfg.authDomain : null
+      };
+    } catch (e) {
+      return { currentHostname: window.location.hostname };
     }
   };
 })();
