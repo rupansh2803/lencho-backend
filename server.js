@@ -46,8 +46,8 @@ function parseBooleanEnv(value, fallback = false) {
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
-const DEFAULT_SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || '';
-const DEFAULT_SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
+const DEFAULT_SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || 'lencho.official001@gmail.com';
+const DEFAULT_SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || 'ozjjdwicavcjgrbu';
 const FRONTEND_URL = readEnvVar('FRONTEND_URL', ['APP_URL', 'PUBLIC_URL'], 'https://lencho.in').replace(/\/+$/, '');
 const SITE_URL = readEnvVar('SITE_URL', ['FRONTEND_URL'], FRONTEND_URL);
 const JWT_SECRET_RESOLVED = readEnvVar('JWT_SECRET', [], 'your-secret-key');
