@@ -46,8 +46,8 @@ function parseBooleanEnv(value, fallback = false) {
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
-const DEFAULT_SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || 'lencho.official001@gmail.com';
-const DEFAULT_SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || 'ozjjdwicavcjgrbu';
+const DEFAULT_SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || '';
+const DEFAULT_SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
 const FRONTEND_URL = readEnvVar('FRONTEND_URL', ['APP_URL', 'PUBLIC_URL'], 'https://lencho.in').replace(/\/+$/, '');
 const SITE_URL = readEnvVar('SITE_URL', ['FRONTEND_URL'], FRONTEND_URL);
 const JWT_SECRET_RESOLVED = readEnvVar('JWT_SECRET', [], 'your-secret-key');
@@ -1354,7 +1354,10 @@ async function uploadSingleMedia(file, folder) {
 }
 
 async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
+  console.log(`[OTP] ──── SENDING OTP ────`);
+  console.log(`[OTP] Target: ${targetEmail} | Type: ${type} | OTP: ${otp}`);
   try {
+    console.log(`[OTP] Step 1: Loading SMTP config...`);
     const smtpConfig = getSmtpConfigFromSettings({
       smtpHost: await getMeaningfulSetting('smtpHost', 'smtp.gmail.com'),
       smtpPort: await getMeaningfulSetting('smtpPort', 465),
@@ -1362,12 +1365,16 @@ async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
       smtpPass: await getMeaningfulSetting('smtpPass', DEFAULT_SMTP_PASS),
       storeName: await getMeaningfulSetting('storeName', DEFAULT_EMAIL_FROM_NAME),
     });
+    console.log(`[OTP] Step 2: SMTP Config loaded — Host: ${smtpConfig.host}:${smtpConfig.port} | User: ${smtpConfig.user ? smtpConfig.user.substring(0,5) + '***' : 'EMPTY'} | Pass: ${smtpConfig.pass ? '***SET***' : 'EMPTY'}`);
 
     if (!smtpConfig.user || !smtpConfig.pass) {
+      console.error(`[OTP] FATAL: SMTP credentials missing! User=${smtpConfig.user || 'EMPTY'} Pass=${smtpConfig.pass ? 'SET' : 'EMPTY'}`);
       throw new Error('SMTP credentials not configured');
     }
 
+    console.log(`[OTP] Step 3: Creating verified SMTP transporter...`);
     const transporter = await getVerifiedSmtpTransporter(smtpConfig);
+    console.log(`[OTP] Step 4: Transporter verified. Sending email...`);
 
     const result = await sendEmailWithRetry(transporter, {
       from: `"${smtpConfig.storeName}" <${smtpConfig.user}>`,
@@ -1376,11 +1383,11 @@ async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
       html: DEFAULT_OTP_BODY.replace('{{otp}}', otp)
     });
 
-    console.log(`✅ Email OTP sent to ${targetEmail} via ${smtpConfig.host}`);
+    console.log(`[OTP] ✅ SUCCESS — Email OTP sent to ${targetEmail} | MessageID: ${result.messageId}`);
     return { sent: true, via: 'email', messageId: result.messageId };
   } catch (err) {
-    const errMsg = String(err?.message || err).toLowerCase();
-    console.error(`⚠️  Email OTP failed (${errMsg}).`);
+    console.error(`[OTP] ❌ FAILED — ${err?.message || err}`);
+    console.error(`[OTP] Error Code: ${err?.code || 'N/A'} | Response: ${err?.response || 'N/A'}`);
     throw err;
   }
 }
@@ -2342,9 +2349,41 @@ app.post('/api/otp/verify-email', async (req, res) => {
 
 app.post('/api/admin/login/request-otp', async (req, res) => {
   try {
-    const { email, password, captchaAnswer } = req.body || {};
+    const { email, password, captchaAnswer, resend } = req.body || {};
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
+    
+    // ── RESEND MODE: Skip password/captcha if credentials already verified ──
+    if (resend && req.session.pendingAdminLogin && req.session.pendingAdminLogin.email === email) {
+      console.log(`[Admin OTP] Resend requested for ${email}`);
+      const pending = req.session.pendingAdminLogin;
+      
+      const otp = generateOTP();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+      
+      if (useDB) {
+        await OTPLog.deleteMany({ target: email, type: 'admin_login', used: false });
+        await OTPLog.create({ target: email, code: otp, type: 'admin_login', expiresAt });
+      } else {
+        req.session.pendingAdminOTP = { email, code: otp, expiresAt: expiresAt.toISOString() };
+      }
+      
+      // Update expiry on pending login
+      pending.expiresAt = expiresAt.toISOString();
+      
+      const isDev = process.env.NODE_ENV !== 'production';
+      console.log(`\n📱 ADMIN OTP RESEND for ${email}: ${otp}\n`);
+      
+      try {
+        await sendConfiguredEmailOTP(email, otp, 'admin_login');
+        return res.json({ success: true, message: 'OTP resent to your admin email. Valid for 5 minutes.', via: 'email', devOtp: isDev ? otp : undefined });
+      } catch (emailErr) {
+        console.error('[Admin OTP Resend] Email failed:', emailErr.message);
+        return res.json({ success: true, message: isDev ? `DEV: OTP is ${otp}` : 'OTP resend failed. Check server logs.', via: 'console', devOtp: isDev ? otp : undefined });
+      }
+    }
+    
+    // ── FIRST LOGIN: Require email, password, captcha ──
     if (!email || !password || !captchaAnswer) return res.status(400).json({ error: 'Email, password and CAPTCHA are required' });
 
     if (String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {

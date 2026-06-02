@@ -1,6 +1,7 @@
 /* ── LENCHO – MAIN APP ─────────────────────────────── */
 let currentUser = null;
 let cartCount = 0;
+let localCartCache = []; // Local cart cache for instant updates
 let cachedPublicSettings = null;
 let publicSettingsPromise = null;
 let loginType = 'email'; // Track current login type (email or phone)
@@ -12,6 +13,8 @@ let searchTimeout = null;
 const apiGetCache = new Map();
 const API_CACHE_TTL_MS = 2 * 60 * 1000;
 const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CART_LOCAL_STORAGE_KEY = 'lencho_cart_local_v1';
+const WISHLIST_LOCAL_STORAGE_KEY = 'lencho_wishlist_local_v1';
 
 try { window.__appLoaded = true; } catch {}
 
@@ -370,6 +373,7 @@ async function navigate(path, pushState = true) {
     else if (route.startsWith('/product/')) { renderProductDetail(route.split('/product/')[1]); }
     else if (route === '/cart') { renderCart(); }
     else if (route === '/checkout') { renderCheckout(); }
+    else if (route.startsWith('/checkout-now/')) { renderCheckoutNow(route.split('/checkout-now/')[1]); }
     else if (route === '/track') { renderTrack(); }
     else if (route === '/contact') { renderContact(); }
     else if (route === '/dashboard') { app.style.paddingTop = '0'; renderDashboard(); }
@@ -409,10 +413,10 @@ async function api(url, opts = {}) {
     }
 
     const res = await fetch(url, { 
-      headers,
+      method,
       credentials: 'include',
       signal: controller.signal,
-      ...opts, 
+      headers,
       body: opts.body ? JSON.stringify(opts.body) : undefined 
     });
     
@@ -830,7 +834,7 @@ async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '') {
   let resp = null;
   
   try {
-    resp = await api('/api/otp/send-email', { method: 'POST', body: { email: email.trim().toLowerCase(), captchaAnswer: captchaAnswer.trim() }, timeoutMs: 10000 });
+    resp = await api('/api/otp/send-email', { method: 'POST', body: { email: email.trim().toLowerCase(), captchaAnswer: captchaAnswer.trim() }, timeoutMs: 45000 });
     
     authOtpRequestInFlight = false;
     if (btn) { btn.disabled = false; btn.textContent = currentFormId === 'auth-login-form' ? 'Sign In' : 'Send OTP ✦'; }
@@ -1236,43 +1240,145 @@ async function handleLogout() {
   navigate('/');
 }
 
-// ── CART COUNT ────────────────────────────────────────────
+// ── CART COUNT (INSTANT UPDATES) ────────────────────────
 async function updateCartCount() {
   if (!currentUser) { document.getElementById('cart-count').textContent = '0'; return; }
-  const r = await api('/api/cart');
-  cartCount = r.count || 0;
-  document.getElementById('cart-count').textContent = cartCount;
+  try {
+    const r = await api('/api/cart');
+    cartCount = r.count || 0;
+    const cartBadge = document.getElementById('cart-count');
+    if (cartBadge) cartBadge.textContent = cartCount;
+  } catch (e) {
+    console.error('Cart count update error:', e);
+  }
 }
 
+// Helper: Update badge immediately (optimistic)
+function updateCartBadgeOptimistic(newCount) {
+  cartCount = Math.max(0, newCount);
+  const badge = document.getElementById('cart-count');
+  if (badge) badge.textContent = cartCount;
+}
+
+// Add to cart with INSTANT UI update (no waiting for server)
 async function addToCart(productId, showToast = true) {
   if (!currentUser) { openAuthModal(); return; }
-  const r = await api('/api/cart/add', { method: 'POST', body: { productId, quantity: 1 } });
-  if (r.error) { toast(r.error, 'error'); return; }
-  cartCount = r.count;
-  document.getElementById('cart-count').textContent = cartCount;
+  
+  // ✓ INSTANT OPTIMISTIC UPDATE
+  updateCartBadgeOptimistic(cartCount + 1);
   if (showToast) toast('Added to cart! 🛍️', 'cart');
+  
+  // Background: Sync with server
+  try {
+    const r = await api('/api/cart/add', { method: 'POST', body: { productId, quantity: 1 } });
+    if (r.error) { 
+      toast(r.error, 'error'); 
+      updateCartBadgeOptimistic(Math.max(0, cartCount - 1)); // Revert on error
+      return; 
+    }
+    // Update with actual count from server
+    cartCount = r.count;
+    updateCartBadgeOptimistic(r.count);
+  } catch (e) {
+    console.error('Add to cart error:', e);
+    updateCartCount(); // Fallback: sync with server
+  }
 }
 
+// Remove from cart with INSTANT feedback
+async function removeFromCart(productId) {
+  // ✓ INSTANT OPTIMISTIC UPDATE
+  updateCartBadgeOptimistic(Math.max(0, cartCount - 1));
+  toast('Item removed from cart', 'info');
+  
+  // Background: Sync with server
+  try {
+    await api(`/api/cart/${productId}`, { method: 'DELETE' });
+  } catch (e) {
+    console.error('Remove from cart error:', e);
+    updateCartCount(); // Fallback: sync with server
+  }
+  
+  // Refresh cart page if open
+  if (location.pathname === '/cart') {
+    renderCart();
+  }
+}
+
+// Clear entire cart with confirmation
+async function clearCart() {
+  const confirmed = confirm('Are you sure you want to clear your entire cart? This action cannot be undone.');
+  if (!confirmed) return;
+  
+  // ✓ INSTANT OPTIMISTIC UPDATE
+  updateCartBadgeOptimistic(0);
+  
+  // Background: Sync with server
+  try {
+    const r = await api('/api/cart', { method: 'DELETE' });
+    if (r.success) {
+      toast('Cart cleared!', 'success');
+      if (location.pathname === '/cart') {
+        setTimeout(() => renderCart(), 300);
+      }
+    }
+  } catch (e) {
+    console.error('Clear cart error:', e);
+    updateCartCount(); // Fallback
+  }
+}
+
+// Wishlist with INSTANT updates
 async function toggleWishlist(productId, btn) {
   if (!currentUser) { openAuthModal(); return; }
-  const r = await api('/api/wishlist/toggle', { method: 'POST', body: { productId } });
-  if (r.added) { btn.classList.add('active'); toast('Added to wishlist ❤️', 'success'); }
-  else { btn.classList.remove('active'); toast('Removed from wishlist', 'info'); }
+  
+  // ✓ INSTANT UI UPDATE
+  const willAdd = !btn.classList.contains('active');
+  btn.classList.toggle('active');
+  
+  if (willAdd) toast('Added to watchlist ❤️', 'success');
+  else toast('Removed from watchlist', 'info');
+  
+  // Background: Sync with server
+  try {
+    const r = await api('/api/wishlist/toggle', { method: 'POST', body: { productId } });
+    if (r.added !== willAdd) {
+      btn.classList.toggle('active'); // Revert if server disagrees
+    }
+  } catch (e) {
+    console.error('Wishlist toggle error:', e);
+    btn.classList.toggle('active'); // Revert on error
+  }
 }
 
+// Buy Now - DIRECT to product checkout (not through add-to-cart)
 async function buyNow(productId) {
   if (!currentUser) { openAuthModal(); return; }
-  await addToCart(productId, false);
-  navigate('/checkout');
-  toast('Proceeding to checkout! 🛒', 'success');
+  navigate(`/checkout-now/${productId}`);
+  toast('Opening checkout...', 'success');
 }
 
-// ── DISCOUNT POPUP ────────────────────────────────────────
+// ── DISCOUNT POPUP (SHOW ONCE PER SESSION) ────────────────
+function showDiscountPopup() {
+  // Only show once per session using sessionStorage
+  if (sessionStorage.getItem('popupShown')) return;
+  
+  const popup = document.getElementById('discount-popup');
+  if (!popup) return;
+  
+  popup.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  document.documentElement.style.overflow = 'hidden';
+  sessionStorage.setItem('popupShown', '1');
+}
+
 function closePopup() {
-  document.getElementById('discount-popup').style.display = 'none';
+  const popup = document.getElementById('discount-popup');
+  if (!popup) return;
+  popup.style.display = 'none';
   document.body.style.overflow = '';
   document.documentElement.style.overflow = '';
-  sessionStorage.setItem('popupShown', '1');
+  // Don't clear sessionStorage - keep it for this session
 }
 async function claimDiscount() {
   const email = document.getElementById('popup-email')?.value;
@@ -1547,7 +1653,7 @@ function productCardHTML(p) {
       
       ${badge ? `<span style="position:absolute;bottom:12px;left:12px;background:var(--gold);color:var(--dark);padding:6px 12px;border-radius:8px;font-weight:600;font-size:.75rem;z-index:2;">${badge}</span>` : ''}
       
-      <button class="product-wish" onclick="event.stopPropagation(); toggleWishlist('${p.id}',this)" title="Wishlist" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.95);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;transition:transform .2s;font-size:.9rem;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'"><i class="fas fa-heart" style="color:#ddd;"></i></button>
+      <button class="product-wish" onclick="event.stopPropagation(); toggleWishlist('${p.id}',this)" title="Add to Watchlist" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.95);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;transition:transform .2s;font-size:.9rem;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'"><i class="fas fa-heart" style="color:#ddd;"></i></button>
     </div>
     
     <div class="product-body" style="padding:1rem 1rem 1.2rem;">

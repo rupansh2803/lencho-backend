@@ -137,7 +137,8 @@ async function adminLogin() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner" style="animation:spin 1s linear infinite;"></i> Sending OTP...'; }
 
   // Admin login with OTP - Step 1: Verify credentials and send OTP
-  const r = await api('/api/admin/login/request-otp', { method: 'POST', body: { email, password: pass, captchaAnswer: captcha } });
+  // Timeout set to 45s because SMTP can take 25-30s on cold start
+  const r = await api('/api/admin/login/request-otp', { method: 'POST', body: { email, password: pass, captchaAnswer: captcha }, timeoutMs: 45000 });
   
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-shield-alt"></i> Sign In'; }
   
@@ -229,7 +230,7 @@ function initAdminOtpBoxes(email) {
   
   boxes.forEach((box, idx) => {
     box.addEventListener('input', (e) => {
-      const val = e.target.value.replace(/\\D/g, '');
+      const val = e.target.value.replace(/\D/g, '');
       e.target.value = val.slice(0, 1);
       if (val && idx < 5) boxes[idx + 1].focus();
       box.classList.toggle('filled', !!val);
@@ -251,7 +252,7 @@ function initAdminOtpBoxes(email) {
     
     box.addEventListener('paste', (e) => {
       e.preventDefault();
-      const paste = (e.clipboardData || window.clipboardData).getData('text').replace(/\\D/g, '').slice(0, 6);
+      const paste = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6);
       paste.split('').forEach((ch, i) => { if (boxes[i]) { boxes[i].value = ch; boxes[i].classList.add('filled'); } });
       boxes[Math.min(paste.length, 5)]?.focus();
       syncVal();
@@ -328,9 +329,21 @@ async function verifyAdminOtp(email) {
 
 async function resendAdminOtp(email) {
   const el = document.getElementById('adm-otp-err');
-  const r = await api('/api/admin/login/request-otp', { method: 'POST', body: { email, resend: true } });
-  if (r && r.error) { if (el) el.textContent = r.error; return; }
-  if (el) el.textContent = 'OTP resent. Check email/phone.';
+  const resendBtn = document.getElementById('adm-resend-btn');
+  if (resendBtn) { resendBtn.disabled = true; resendBtn.innerHTML = '<i class="fas fa-spinner" style="animation:spin 1s linear infinite;"></i> Sending...'; }
+  if (el) el.textContent = '';
+  
+  const r = await api('/api/admin/login/request-otp', { method: 'POST', body: { email, resend: true }, timeoutMs: 45000 });
+  
+  if (resendBtn) { resendBtn.disabled = false; resendBtn.innerHTML = '<i class="fas fa-redo-alt"></i> Resend OTP'; }
+  
+  if (r && r.error) { 
+    if (el) el.textContent = r.error; 
+    return; 
+  }
+  if (el) el.textContent = '';
+  toast('OTP resent to your email!', 'success');
+  startAdminOtpTimer();
 }
 
 function buildAdminPanel() {
@@ -1274,7 +1287,8 @@ async function testSmtpConnection() {
 
   const r = await api('/api/admin/test-smtp', {
     method: 'POST',
-    body: { testEmail }
+    body: { testEmail },
+    timeoutMs: 45000
   });
 
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Test Email'; }

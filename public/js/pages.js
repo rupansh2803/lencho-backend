@@ -66,7 +66,7 @@ async function renderProductDetail(id) {
             <i class="fas fa-shopping-bag"></i> Add to Cart
           </button>
           <button class="btn-wishlist-large" onclick="toggleWishlist('${p.id}',this)">
-            <i class="fas fa-heart"></i> Wishlist
+            <i class="fas fa-heart"></i> Add to Watchlist
           </button>
         </div>
 
@@ -323,6 +323,7 @@ async function renderCart() {
           ${subtotal < 999 ? `<p style="font-size:.75rem;color:var(--gray);margin:.75rem 0;">Add ${formatCurrency(999-subtotal)} more for FREE shipping!</p>` : ''}
           <button class="btn-primary full-width" style="margin-top:.75rem;" onclick="navigate('/checkout')">Proceed to Checkout <i class="fas fa-arrow-right"></i></button>
           <button class="btn-outline full-width" style="margin-top:.5rem;" onclick="navigate('/products')">Continue Shopping</button>
+          <button class="btn-outline full-width" style="margin-top:.5rem;color:#ef4444;border-color:#ef4444;" onclick="clearCart()"><i class="fas fa-trash" style="margin-right:.5rem;"></i>Clear Cart</button>
         </div>
       </div>
     </div>`;
@@ -338,16 +339,35 @@ async function renderCart() {
 }
 
 async function updateQty(productId, qty) {
-  await api('/api/cart/update', { method: 'PUT', body: { productId, quantity: qty } });
-  updateCartCount();
-  renderCart();
+  if (qty <= 0) {
+    // Show confirmation for removal
+    const confirmed = confirm('Remove this item from cart?');
+    if (!confirmed) return;
+  }
+  
+  try {
+    await api('/api/cart/update', { method: 'PUT', body: { productId, quantity: qty } });
+    updateCartCount();
+    renderCart();
+  } catch (e) {
+    console.error('Update quantity error:', e);
+    toast('Failed to update quantity', 'error');
+  }
 }
 
 async function removeFromCart(productId) {
-  await api(`/api/cart/${productId}`, { method: 'DELETE' });
-  toast('Item removed from cart', 'info');
-  updateCartCount();
-  renderCart();
+  const confirmed = confirm('Remove this item from cart?');
+  if (!confirmed) return;
+  
+  try {
+    await api(`/api/cart/${productId}`, { method: 'DELETE' });
+    updateCartCount();
+    renderCart();
+    toast('Item removed from cart', 'info');
+  } catch (e) {
+    console.error('Remove from cart error:', e);
+    toast('Failed to remove item', 'error');
+  }
 }
 
 async function applyCoupon(amount) {
@@ -363,6 +383,74 @@ async function applyCoupon(amount) {
   const shipping = subtotal >= 999 ? 0 : 49;
   document.getElementById('grand-total').textContent = formatCurrency(subtotal + shipping - r.discountAmt);
   sessionStorage.setItem('coupon', JSON.stringify({ code, discountAmt: r.discountAmt }));
+}
+
+/* ── WATCHLIST / WISHLIST PAGE ────────────────────────────── */
+async function renderWishlist() {
+  if (!currentUser) { openAuthModal(); navigate('/'); return; }
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="page-wrap"><div style="text-align:center;padding:3rem;color:var(--gray);">⏳ Loading your watchlist...</div></div>';
+  
+  try {
+    const r = await Promise.race([
+      api('/api/wishlist'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
+    ]);
+    
+    const items = Array.isArray(r) ? r : [];
+    if (!items.length) {
+      app.innerHTML = `<div class="page-wrap"><h1 class="page-title">My Watchlist</h1><div class="empty-state"><div class="empty-icon">❤️</div><h3>Your watchlist is empty</h3><p>Add your favorite jewellery to come back to them later!</p><button class="btn-primary" onclick="navigate('/products')">Browse Collections</button></div></div>`;
+      return;
+    }
+    
+    app.innerHTML = `
+    <div class="page-wrap">
+      <h1 class="page-title">My Watchlist <span style="font-size:1.2rem;color:var(--gray);">(${items.length} items)</span></h1>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(250px, 1fr));gap:2rem;margin-top:2rem;">
+        ${items.map(p => {
+          const discountVal = p.mrp ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0;
+          return `
+        <div class="product-card reveal" onclick="navigate('/product/${p.id||p._id}')" style="cursor:pointer;border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08);transition:all .3s;">
+          <div style="position:relative;aspect-ratio:1;overflow:hidden;background:#f9f9f9;">
+            <img src="${safeImageUrl(p.images?.[0] || p.image, p.category)}" ${imageFallbackAttr(p.category, p.images?.[0])} alt="${p.name}" style="width:100%;height:100%;object-fit:cover;"/>
+            ${discountVal ? `<span style="position:absolute;top:12px;left:12px;background:#ff4d6d;color:#fff;padding:6px 12px;border-radius:8px;font-size:.75rem;font-weight:700;">${discountVal}% OFF</span>` : ''}
+            <button class="product-wish active" onclick="event.stopPropagation(); removeFromWatchlist('${p.id||p._id}', this)" title="Remove from Watchlist" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.95);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;transition:transform .2s;font-size:.9rem;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'"><i class="fas fa-heart" style="color:#c9748f;"></i></button>
+          </div>
+          <div style="padding:1rem;">
+            <div style="font-weight:600;color:var(--dark);margin-bottom:.5rem;line-height:1.4;min-height:2.8em;">${p.name}</div>
+            <div style="font-size:.85rem;color:var(--gray);margin-bottom:.75rem;">${p.category}</div>
+            <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem;">
+              <span style="font-weight:700;color:var(--rose);">${formatCurrency(p.price)}</span>
+              ${p.mrp ? `<span style="font-size:.85rem;color:var(--gray);text-decoration:line-through;">${formatCurrency(p.mrp)}</span>` : ''}
+            </div>
+            <button class="btn-primary full-width" onclick="event.stopPropagation(); addToCart('${p.id||p._id}')" style="padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;font-weight:600;cursor:pointer;font-size:.9rem;"><i class="fas fa-shopping-bag" style="margin-right:.5rem;"></i>Add to Cart</button>
+          </div>
+        </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  } catch (e) {
+    console.error('Watchlist loading error:', e);
+    app.innerHTML = `<div class="page-wrap"><div style="text-align:center;padding:3rem;">
+      <h2 style="color:var(--rose);margin-bottom:1rem;">⚠️ Watchlist Loading Error</h2>
+      <p style="color:var(--gray);margin-bottom:1.5rem;">We're having trouble loading your watchlist. Please try again.</p>
+      <button class="btn-primary" onclick="renderWishlist()">Retry</button>
+      <button class="btn-outline" onclick="navigate('/products')" style="margin-left:0.5rem;">Shop Now</button>
+    </div></div>`;
+  }
+}
+
+async function removeFromWatchlist(productId, btn) {
+  try {
+    const r = await api('/api/wishlist/toggle', { method: 'POST', body: { productId } });
+    if (!r.added) {
+      toast('Removed from watchlist', 'info');
+      renderWishlist(); // Refresh the page
+    }
+  } catch (e) {
+    console.error('Remove from watchlist error:', e);
+    toast('Failed to remove from watchlist', 'error');
+  }
 }
 
 /* ── CHECKOUT PAGE ────────────────────────────────────────── */
@@ -541,6 +629,145 @@ function handleOrderSuccess(order) {
       <button class="btn-outline" onclick="navigate('/products')">Shop More</button>
     </div>
   </div>`;
+}
+
+/* ── DIRECT PRODUCT CHECKOUT (BUY NOW) ─────────────────────── */
+async function renderCheckoutNow(productId) {
+  if (!currentUser) { openAuthModal(); navigate('/'); return; }
+  const app = document.getElementById('app');
+  app.innerHTML = '<div style="text-align:center;padding:3rem;color:var(--gray);">⏳ Loading product...</div>';
+  
+  try {
+    const p = await api(`/api/products/${productId}`);
+    if (p.error || !p.id) { navigate('/products'); toast('Product not found', 'error'); return; }
+    
+    const subtotal = p.price;
+    const gst = (p.price * (p.gstRate || 3) / 100);
+    const shipping = subtotal >= 999 ? 0 : 49;
+    const grand = subtotal + gst + shipping;
+    
+    app.innerHTML = `
+    <div class="page-wrap">
+      <h1 class="page-title">Quick Checkout</h1>
+      <div class="checkout-layout">
+        <div>
+          <div class="checkout-section">
+            <h3><i class="fas fa-map-marker-alt" style="color:var(--rose);margin-right:.5rem;"></i> Delivery Address</h3>
+            <div class="form-row">
+              <div class="form-group"><label>Full Name</label><input id="co-name" value="${currentUser.name||''}" placeholder="Full name"/></div>
+              <div class="form-group"><label>Phone</label><input id="co-phone" type="tel" value="${currentUser.phone||''}" placeholder="+91 9876543210"/></div>
+            </div>
+            <div class="form-group"><label>Address Line 1</label><input id="co-addr1" placeholder="House no., Building, Street"/></div>
+            <div class="form-group"><label>Address Line 2</label><input id="co-addr2" placeholder="Area, Colony, Landmark"/></div>
+            <div class="form-row">
+              <div class="form-group"><label>City</label><input id="co-city" placeholder="City"/></div>
+              <div class="form-group"><label>State</label><input id="co-state" placeholder="State"/></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>PIN Code</label><input id="co-pin" placeholder="400001"/></div>
+              <div class="form-group"><label>Country</label><input id="co-country" value="India" readonly/></div>
+            </div>
+          </div>
+          <div class="checkout-section">
+            <h3><i class="fas fa-credit-card" style="color:var(--rose);margin-right:.5rem;"></i> Payment Method</h3>
+            <div class="payment-options">
+              <div class="payment-option selected" id="pay-online" onclick="selectPayment('online')">
+                <input type="radio" name="pay" checked/><span class="pay-icon">✨</span><label>Online Payment (UPI, Cards, Netbanking)</label>
+              </div>
+              <div class="payment-option" id="pay-cod" onclick="selectPayment('cod')">
+                <input type="radio" name="pay"/><span class="pay-icon">💵</span><label>Cash on Delivery (COD)</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cart-summary" style="position:sticky;top:90px;">
+            <div class="summary-title">Order Summary</div>
+            <div class="checkout-order-items">
+              <div class="co-item">
+                <img src="${safeImageUrl(p.images[0], p.category)}" alt="${p.name}"/>
+                <div class="co-item-info">
+                  <div class="co-item-name">${p.name}</div>
+                  <div class="co-item-meta">Qty: 1</div>
+                </div>
+                <div class="co-item-price">${formatCurrency(subtotal)}</div>
+              </div>
+            </div>
+            <div class="summary-row"><span>Subtotal</span><span>${formatCurrency(subtotal)}</span></div>
+            <div class="summary-row"><span>GST (${p.gstRate||3}%)</span><span>${formatCurrency(gst)}</span></div>
+            <div class="summary-row"><span>Shipping</span><span style="color:${shipping===0?'#22c55e':'inherit'}">${shipping===0?'FREE':formatCurrency(shipping)}</span></div>
+            <div class="summary-row"><span class="summary-total">Grand Total</span><span class="summary-total">${formatCurrency(grand)}</span></div>
+            <button class="btn-gold full-width" style="margin-top:1rem;" onclick="placeOrderNow('${productId}',1)"><i class="fas fa-check-circle"></i> Place Order</button>
+            <p style="font-size:.75rem;color:var(--gray);text-align:center;margin-top:.75rem;"><i class="fas fa-lock"></i> 100% Secure & Encrypted</p>
+            <button class="btn-outline full-width" style="margin-top:.75rem;" onclick="navigate('/products')">Back to Shop</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  } catch (e) {
+    console.error('Checkout product load error:', e);
+    navigate('/cart');
+    toast('Error loading product', 'error');
+  }
+}
+
+async function placeOrderNow(productId, quantity) {
+  const name = document.getElementById('co-name')?.value;
+  const phone = document.getElementById('co-phone')?.value;
+  const addr1 = document.getElementById('co-addr1')?.value;
+  const city = document.getElementById('co-city')?.value;
+  const state = document.getElementById('co-state')?.value;
+  const pin = document.getElementById('co-pin')?.value;
+  if (!name || !phone || !addr1 || !city || !state || !pin) { toast('Please fill all address fields', 'error'); return; }
+  
+  const p = await api(`/api/products/${productId}`);
+  const address = `${name}, ${addr1}, ${document.getElementById('co-addr2')?.value||''}, ${city}, ${state} - ${pin}, India. Ph: ${phone}`;
+  const orderItems = [{ productId, quantity }];
+
+  // Create Order
+  const result = await api('/api/orders', { method: 'POST', body: { address, paymentMethod: selectedPayment, items: orderItems, couponCode: null } });
+  if (result.error) { toast(result.error, 'error'); return; }
+  
+  const order = result.order;
+
+  if (selectedPayment === 'cod') {
+    handleOrderSuccess(order);
+  } else {
+    // Handle Razorpay
+    try {
+      await ensureRazorpayLoaded();
+      const publicSettings = await api('/api/settings/public');
+      const rzpOrder = await api('/api/razorpay/order', { method: 'POST', body: { amount: order.grandTotal, receipt: order.id } });
+      
+      const options = {
+        key: publicSettings.razorpayKeyId || 'rzp_test_6oE5E0WwH6wX9z',
+        amount: rzpOrder.amount,
+        currency: "INR",
+        name: "Lencho India",
+        description: `Order #${order.id}`,
+        image: "/favicon.svg",
+        order_id: rzpOrder.id,
+        handler: async function (response) {
+          const verify = await api('/api/razorpay/verify', { 
+            method: 'POST', 
+            body: { ...response, orderId: order.id } 
+          });
+          if (verify.success) {
+            handleOrderSuccess(order);
+          } else {
+            toast('Payment verification failed. Contact support.', 'error');
+          }
+        },
+        prefill: { name: currentUser.name, email: currentUser.email, contact: currentUser.phone },
+        theme: { color: "#c9748f" }
+      };
+      const rzp1 = new Razorpay(options);
+      rzp1.open();
+    } catch (err) {
+      toast('Payment gateway initialization failed', 'error');
+      console.error(err);
+    }
+  }
 }
 
 /* ── ORDER TRACKING ───────────────────────────────────────── */
