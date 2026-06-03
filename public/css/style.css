@@ -1479,7 +1479,7 @@ ul {
   font-size: 1.1rem;
 }
 
-.icon-btn span {
+.icon-btn span:not(.cart-badge):not(.wishlist-badge) {
   display: none !important;
 }
 
@@ -1490,7 +1490,8 @@ ul {
   box-shadow: 0 0 14px rgba(201, 116, 143, 0.4);
 }
 
-.cart-badge {
+.cart-badge,
+.wishlist-badge {
   position: absolute;
   top: 4px;
   right: 4px;
@@ -1946,6 +1947,10 @@ section {
 .product-wish.active {
   color: var(--rose);
   background: var(--rose-light)
+}
+
+.product-wish i {
+  color: inherit !important;
 }
 
 .product-body {

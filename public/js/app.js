@@ -784,6 +784,7 @@ async function handleLogin() {
   const captchaAnswer = document.getElementById('login-captcha')?.value || '';
   const err = document.getElementById('login-error');
   if(!email || !password) { err.textContent = 'Please enter email and password'; return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { err.textContent = 'Please enter a valid email address'; return; }
   if(!captchaAnswer.trim()) { err.textContent = 'Please enter the security code'; return; }
   
   window.pendingAuth = { type: 'login', email, password, captchaAnswer };
@@ -799,6 +800,7 @@ async function handleSignup() {
   const err = document.getElementById('signup-error');
   
   if(!name || !email) { err.textContent = 'Please fill name and email'; return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { err.textContent = 'Please enter a valid email address'; return; }
   if(!captchaAnswer.trim()) { err.textContent = 'Please enter the security code'; return; }
 
   window.pendingAuth = { type: 'signup', name, email, phone, gender, captchaAnswer };
@@ -862,7 +864,7 @@ async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '', i
       return;
     }
 
-    toast('OTP sent successfully! ✦', 'success');
+    toast('OTP sent successfully', 'success');
     authOtpResendEndsAt = Date.now() + 60000;
     const resendBtn = document.getElementById('resend-otp-btn');
     if (resendBtn) {
@@ -924,8 +926,6 @@ async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '', i
     document.getElementById('otp-error').textContent = devMsg;
     console.log(devMsg);
   }
-  
-  toast('OTP sent to your email! 📧', 'success');
 }
 
 async function sendPhoneOTP(phone) {
@@ -948,7 +948,7 @@ async function sendPhoneOTP(phone) {
   document.getElementById('otp-title').textContent = 'Verify Phone';
   document.getElementById('otp-subtitle').textContent = `We've sent a 6-digit code to ${phone}`;
   document.getElementById('verify-otp-btn').onclick = () => verifyPhoneOTP();
-  toast('OTP sent to your phone! 📱', 'success');
+  toast('OTP sent successfully', 'success');
 }
 
 // ── PREMIUM 6-BOX OTP INPUT HANDLER ──────────────────────────
@@ -1145,6 +1145,7 @@ async function completeSignupAfterOTP() {
   const password = document.getElementById('signup-password-step').value;
   const confirmPassword = document.getElementById('signup-confirm-password-step').value;
   const err = document.getElementById('signup-password-step-error');
+  const btn = document.getElementById('signup-password-btn');
 
   if (!window.pendingAuth || window.pendingAuth.type !== 'signup') {
     err.textContent = 'Signup session expired. Please start again.';
@@ -1155,22 +1156,34 @@ async function completeSignupAfterOTP() {
   if (password !== confirmPassword) { err.textContent = 'Passwords do not match'; return; }
 
   const payload = { ...window.pendingAuth, password };
-  const finalResp = await api('/api/signup', { method: 'POST', body: payload });
-  if (finalResp.error) { err.textContent = finalResp.error; return; }
-
-  // Save JWT token and user data
-  if (finalResp.token) {
-    setJWTToken(finalResp.token);
-  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating Account... ⏳'; }
   
-  currentUser = finalResp.user;
-  saveCurrentUser(currentUser);
-  updateHeader();
-  closeAuthModal();
-  toast(`Welcome ${currentUser.name}! ✦`, 'success');
-  updateCartCount();
-  updateWishlistCount();
-  navigate('/'); // Redirect to home page after signup
+  try {
+    const finalResp = await api('/api/signup', { method: 'POST', body: payload });
+    if (finalResp.error) { 
+      err.textContent = finalResp.error; 
+      if (btn) { btn.disabled = false; btn.textContent = 'Create Account ✦'; }
+      return; 
+    }
+
+    // Save JWT token and user data
+    if (finalResp.token) {
+      setJWTToken(finalResp.token);
+    }
+    
+    currentUser = finalResp.user;
+    saveCurrentUser(currentUser);
+    updateHeader();
+    closeAuthModal();
+    toast(`Welcome ${currentUser.name}! ✦`, 'success');
+    updateCartCount();
+    updateWishlistCount();
+    navigate('/'); // Redirect to home page after signup
+  } catch (error) {
+    console.error('Signup error:', error);
+    err.textContent = 'An error occurred during account creation. Please try again.';
+    if (btn) { btn.disabled = false; btn.textContent = 'Create Account ✦'; }
+  }
 }
 
 function resendEmailOTP() {
@@ -1334,7 +1347,7 @@ async function addToCart(productId, showToast = true) {
   
   // ✓ INSTANT OPTIMISTIC UPDATE
   updateCartBadgeOptimistic(cartCount + 1);
-  if (showToast) toast('Added to cart! 🛍️', 'cart');
+  if (showToast) toast('Product added to cart successfully', 'success');
   
   // Background: Sync with server
   try {
@@ -1458,7 +1471,7 @@ async function toggleWishlist(productId, btn) {
     localStorage.setItem('wishlist_count_' + currentUser.id, wishlistCount);
   }
   
-  if (willAdd) toast('Added to watchlist ❤️', 'success');
+  if (willAdd) toast('Product added to wishlist successfully', 'success');
   else toast('Removed from watchlist', 'info');
   
   // Background: Sync with server
@@ -1788,6 +1801,17 @@ function productCardHTML(p) {
   const isFeatured = p.featured ? '⭐ Trending' : '';
   const badge = isFeatured || stockStatus || (p.discount > 30 ? '🔥 Hot Deal' : '');
   
+  let inWishlist = false;
+  if (currentUser) {
+    try {
+      const cachedRaw = localStorage.getItem('wishlist_cache_' + currentUser.id);
+      if (cachedRaw) {
+        const items = JSON.parse(cachedRaw) || [];
+        inWishlist = items.some(item => (item.id || item._id || item.productId) === product.id);
+      }
+    } catch(e) {}
+  }
+  
   return `
   <div class="product-card reveal" style="border-radius:16px !important;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08) !important;transition:transform .3s ease,box-shadow .3s ease !important;background:#fff;border:1px solid rgba(201,106,138,.08);" onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 12px 32px rgba(201,106,138,.15) !important';" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 16px rgba(0,0,0,.08) !important';">
     <div class="product-img-wrap" onclick="navigate('/product/${product.id}')" style="position:relative;overflow:hidden;aspect-ratio:1/1.15;cursor:pointer;">
@@ -1798,7 +1822,7 @@ function productCardHTML(p) {
       
       ${badge ? `<span style="position:absolute;bottom:12px;left:12px;background:var(--gold);color:var(--dark);padding:6px 12px;border-radius:8px;font-weight:600;font-size:.75rem;z-index:2;">${badge}</span>` : ''}
       
-      <button class="product-wish" onclick="event.stopPropagation(); toggleWishlist('${p.id}',this)" title="Add to Watchlist" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.95);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;transition:transform .2s;font-size:.9rem;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'"><i class="fas fa-heart" style="color:#ddd;"></i></button>
+      <button class="product-wish ${inWishlist ? 'active' : ''}" onclick="event.stopPropagation(); toggleWishlist('${p.id}',this)" title="${inWishlist ? 'Remove from Watchlist' : 'Add to Watchlist'}" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.95);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;transition:transform .2s;font-size:.9rem;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'"><i class="fas fa-heart"></i></button>
     </div>
     
     <div class="product-body" style="padding:1rem 1rem 1.2rem;">

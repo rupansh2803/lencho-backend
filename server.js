@@ -1397,14 +1397,12 @@ async function sendSMSOTP(phone, otp) {
   const mobile = phone.replace(/\D/g, '').slice(-10);
   const DEV = process.env.NODE_ENV !== 'production';
 
-  // Always log in dev (so you can test without SMS key)
-  if (DEV) {
-    console.log(`\n📱 SMS OTP for ${mobile}: ${otp}  ← (visible in development mode)\n`);
-  }
+  // Always log the OTP to backend console so developers can verify
+  console.log(`\n📱 SMS OTP for ${mobile}: ${otp}\n`);
 
   // If Fast2SMS key is configured, send real SMS
   const key = process.env.FAST2SMS_KEY;
-  if (key && key !== 'your_fast2sms_api_key_here') {
+  if (key && key !== 'your_fast2sms_api_key_here' && key.trim() !== '') {
     try {
       const response = await axios.get('https://www.fast2sms.com/dev/bulkV2', {
         params: {
@@ -1428,7 +1426,7 @@ async function sendSMSOTP(phone, otp) {
   }
 
   // Fallback: return dev OTP so frontend can show it
-  return { sent: true, via: 'dev', devOtp: DEV ? otp : undefined };
+  return { sent: true, via: 'dev', devOtp: otp };
 }
 
 async function getDeliveryManagerConfig() {
