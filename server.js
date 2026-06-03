@@ -2106,7 +2106,7 @@ app.post('/api/razorpay/verify', requireAuth, async (req, res) => {
           $push: { timeline: { status: 'paid', label: 'Payment Verified ✓', date: new Date(), done: true } }
         });
         if (order && order.clearCart !== false) {
-          await Cart.findOneAndUpdate({ userId: req.session.userId }, { items: [] });
+          await Cart.findOneAndUpdate({ userId: req.auth.userId }, { items: [] });
         }
       } else {
         const orders = readJson(FILES.orders);
@@ -2115,7 +2115,7 @@ app.post('/api/razorpay/verify', requireAuth, async (req, res) => {
           order.status = 'placed';
           if (order.clearCart !== false) {
             const carts = readJson(FILES.carts);
-            const ci = carts.findIndex(c => c.userId === req.session.userId);
+            const ci = carts.findIndex(c => c.userId === req.auth.userId);
             if (ci > -1) {
               carts[ci].items = [];
               writeJson(FILES.carts, carts);
@@ -2759,14 +2759,14 @@ app.put('/api/profile', requireAuth, async (req, res) => {
       if (securityQuestion) updates.securityQuestion = securityQuestion;
       if (securityAnswer) updates.securityAnswer = securityAnswer;
       
-      const user = await User.findByIdAndUpdate(req.session.userId, updates, { new: true }).select('-password');
-      req.session.name = user.name;
+      const user = await User.findByIdAndUpdate(req.auth.userId, updates, { new: true }).select('-password');
+      if (req.session) req.session.name = user.name;
       return res.json({ success: true, user: { id: user._id, ...user.toObject() } });
     }
     
     // JSON fallback
     const users = readJson(FILES.users);
-    const idx = users.findIndex(u => u.id === req.session.userId);
+    const idx = users.findIndex(u => u.id === req.auth.userId);
     if (idx === -1) return res.status(404).json({ error: 'User not found' });
     
     if (name) users[idx].name = name;
@@ -2785,8 +2785,7 @@ app.put('/api/profile', requireAuth, async (req, res) => {
 });
 
 // ─── ADMIN USERS MANAGEMENT API ───────────────────────────────
-app.get('/api/admin/users', async (req, res) => {
-  if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
   try {
     const { search, verified, blocked, page = 1, limit = 50 } = req.query;
     if (useDB) {
@@ -2815,8 +2814,7 @@ app.get('/api/admin/users', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/admin/users/:id/block', async (req, res) => {
-  if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+app.put('/api/admin/users/:id/block', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     if (useDB) {
@@ -2835,8 +2833,7 @@ app.put('/api/admin/users/:id/block', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/admin/users/:id', async (req, res) => {
-  if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     if (useDB) {
@@ -3078,7 +3075,7 @@ app.delete('/api/products/:id', requireAdmin, async (req, res) => {
 // ─── CART ─────────────────────────────────────────────────────
 app.get('/api/cart', requireAuth, async (req, res) => {
   try {
-    const uid = req.session.userId;
+    const uid = req.auth.userId;
     if (useDB) {
       const cart = await Cart.findOne({ userId: uid }) || { items: [] };
       const enriched = await Promise.all((cart.items || []).map(async item => {
@@ -3101,7 +3098,7 @@ app.get('/api/cart', requireAuth, async (req, res) => {
 app.post('/api/cart/add', requireAuth, async (req, res) => {
   try {
     const { productId, quantity = 1 } = req.body;
-    const uid = req.session.userId;
+    const uid = req.auth.userId;
     if (useDB) {
       let cart = await Cart.findOne({ userId: uid });
       if (!cart) cart = await Cart.create({ userId: uid, items: [] });
@@ -3125,7 +3122,7 @@ app.post('/api/cart/add', requireAuth, async (req, res) => {
 app.put('/api/cart/update', requireAuth, async (req, res) => {
   try {
     const { productId, quantity } = req.body;
-    const uid = req.session.userId;
+    const uid = req.auth.userId;
     if (useDB) {
       const cart = await Cart.findOne({ userId: uid });
       if (!cart) return res.status(404).json({ error: 'Cart not found' });
@@ -3144,7 +3141,7 @@ app.put('/api/cart/update', requireAuth, async (req, res) => {
 
 app.delete('/api/cart/:productId', requireAuth, async (req, res) => {
   try {
-    const uid = req.session.userId;
+    const uid = req.auth.userId;
     if (useDB) {
       await Cart.findOneAndUpdate({ userId: uid }, { $pull: { items: { productId: req.params.productId } } });
       return res.json({ success: true });
@@ -3158,7 +3155,7 @@ app.delete('/api/cart/:productId', requireAuth, async (req, res) => {
 
 app.delete('/api/cart', requireAuth, async (req, res) => {
   try {
-    const uid = req.session.userId;
+    const uid = req.auth.userId;
     if (useDB) { await Cart.findOneAndUpdate({ userId: uid }, { items: [] }); return res.json({ success: true }); }
     const carts = readJson(FILES.carts);
     const ci = carts.findIndex(c => c.userId === uid);
@@ -3170,7 +3167,7 @@ app.delete('/api/cart', requireAuth, async (req, res) => {
 // ─── WISHLIST ─────────────────────────────────────────────────
 app.get('/api/wishlist', requireAuth, async (req, res) => {
   try {
-    const uid = req.session.userId;
+    const uid = req.auth.userId;
     if (useDB) {
       const wl = await Wishlist.findOne({ userId: uid }) || { items: [] };
       const products = await Product.find({ _id: { $in: wl.items } }).lean();
@@ -3185,7 +3182,7 @@ app.get('/api/wishlist', requireAuth, async (req, res) => {
 app.post('/api/wishlist/toggle', requireAuth, async (req, res) => {
   try {
     const { productId } = req.body;
-    const uid = req.session.userId;
+    const uid = req.auth.userId;
     if (useDB) {
       let wl = await Wishlist.findOne({ userId: uid });
       if (!wl) wl = await Wishlist.create({ userId: uid, items: [] });
@@ -3240,14 +3237,14 @@ app.post('/api/orders', requireAuth, async (req, res) => {
 
     // Ensure we always have a userName for order records (avoid validation errors when session.name missing)
     let resolvedUserName = req.session.name || '';
-    if (!resolvedUserName && req.session.userId) {
+    if (!resolvedUserName && req.auth.userId) {
       try {
         if (useDB) {
-          const u = await User.findById(req.session.userId).select('name').lean();
+          const u = await User.findById(req.auth.userId).select('name').lean();
           if (u && u.name) resolvedUserName = u.name;
         } else {
           const users = readJson(FILES.users);
-          const uu = users.find(x => x.id === req.session.userId || x._id === req.session.userId);
+          const uu = users.find(x => x.id === req.auth.userId || x._id === req.auth.userId);
           if (uu && uu.name) resolvedUserName = uu.name;
         }
       } catch (e) { /* ignore and fallback */ }
@@ -3255,7 +3252,7 @@ app.post('/api/orders', requireAuth, async (req, res) => {
     if (!resolvedUserName) resolvedUserName = 'Customer';
 
     const orderData = { 
-      id: orderId, userId: req.session.userId, userName: resolvedUserName, items: orderItems, 
+      id: orderId, userId: req.auth.userId, userName: resolvedUserName, items: orderItems, 
       address, paymentMethod, subtotal, gstTotal: totalGst, shipping, discount, grandTotal, 
       couponCode: couponCode || null, status, timeline, 
       clearCart: clearCart === true || clearCart === 'true',
@@ -3264,11 +3261,11 @@ app.post('/api/orders', requireAuth, async (req, res) => {
 
     if (useDB) {
       await Order.create(orderData);
-      if (isCOD && orderData.clearCart) await Cart.findOneAndUpdate({ userId: req.session.userId }, { items: [] });
+      if (isCOD && orderData.clearCart) await Cart.findOneAndUpdate({ userId: req.auth.userId }, { items: [] });
     } else {
       const orders = readJson(FILES.orders); orders.push(orderData); writeJson(FILES.orders, orders);
       if (isCOD && orderData.clearCart) {
-        const carts = readJson(FILES.carts); const ci = carts.findIndex(c => c.userId === req.session.userId);
+        const carts = readJson(FILES.carts); const ci = carts.findIndex(c => c.userId === req.auth.userId);
         if (ci > -1) { carts[ci].items = []; writeJson(FILES.carts, carts); }
       }
     }
@@ -3279,10 +3276,10 @@ app.post('/api/orders', requireAuth, async (req, res) => {
 app.get('/api/orders/my', requireAuth, async (req, res) => {
   try {
     if (useDB) {
-      const orders = await Order.find({ userId: req.session.userId }).sort({ createdAt: -1 }).lean();
+      const orders = await Order.find({ userId: req.auth.userId }).sort({ createdAt: -1 }).lean();
       return res.json(orders.map(o => ({ ...o, id: o.id || o._id })));
     }
-    res.json(readJson(FILES.orders).filter(o => o.userId === req.session.userId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    res.json(readJson(FILES.orders).filter(o => o.userId === req.auth.userId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3305,10 +3302,10 @@ app.get('/api/orders/:id', requireAuth, async (req, res) => {
   try {
     if (useDB) {
       const o = await Order.findOne({ $or: [{ _id: req.params.id.match(/^[a-f\d]{24}$/i) ? req.params.id : null }, { id: req.params.id }] }).lean();
-      if (!o || (o.userId.toString() !== req.session.userId && req.session.role !== 'admin')) return res.status(404).json({ error: 'Not found' });
+      if (!o || (o.userId.toString() !== req.auth.userId && req.auth.role !== 'admin')) return res.status(404).json({ error: 'Not found' });
       return res.json({ ...o, id: o.id || o._id });
     }
-    const o = readJson(FILES.orders).find(o => o.id === req.params.id && (o.userId === req.session.userId || req.session.role === 'admin'));
+    const o = readJson(FILES.orders).find(o => o.id === req.params.id && (o.userId === req.auth.userId || req.auth.role === 'admin'));
     if (!o) return res.status(404).json({ error: 'Not found' });
     res.json(o);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3323,6 +3320,9 @@ app.get('/api/orders/:id/invoice', requireAuth, async (req, res) => {
       order = readJson(FILES.orders).find(o => o.id === req.params.id);
     }
     if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.userId.toString() !== req.auth.userId && req.auth.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
     const gstin = await getSetting('gstin', '27XXXXX1234X1ZX');
     const storeName = await getSetting('storeName', 'Lencho');
     const storeEmail = await getSetting('storeEmail', 'hello@lencho.in');
@@ -3730,7 +3730,7 @@ app.put('/api/admin/change-credentials', requireAdmin, async (req, res) => {
   try {
     const { currentPassword, newEmail, newPassword, name } = req.body;
     if (useDB) {
-      const user = await User.findById(req.session.userId);
+      const user = await User.findById(req.auth.userId);
       if (!user || !await bcrypt.compare(currentPassword, user.password)) return res.status(400).json({ error: 'Current password is incorrect' });
       if (newEmail && newEmail !== user.email) { if (await User.findOne({ email: newEmail })) return res.status(400).json({ error: 'Email in use' }); user.email = newEmail; }
       if (name) user.name = name;
@@ -3739,7 +3739,7 @@ app.put('/api/admin/change-credentials', requireAdmin, async (req, res) => {
       const { password, ...safe } = user.toObject();
       return res.json({ success: true, user: { id: user._id, ...safe } });
     }
-    const users = readJson(FILES.users), idx = users.findIndex(u => u.id === req.session.userId);
+    const users = readJson(FILES.users), idx = users.findIndex(u => u.id === req.auth.userId);
     if (idx === -1 || !await bcrypt.compare(currentPassword, users[idx].password)) return res.status(400).json({ error: 'Current password galat hai' });
     if (newEmail && newEmail !== users[idx].email) {
       const dup = users.find(u => u.email === newEmail);
@@ -3749,7 +3749,7 @@ app.put('/api/admin/change-credentials', requireAdmin, async (req, res) => {
     if (name) users[idx].name = name;
     if (newPassword && newPassword.length >= 6) users[idx].password = await bcrypt.hash(newPassword, 10);
     writeJson(FILES.users, users);
-    req.session.name = users[idx].name;
+    if (req.session) req.session.name = users[idx].name;
     const { password, ...safe } = users[idx];
     res.json({ success: true, user: safe });
   } catch (e) { res.status(500).json({ error: e.message }); }
