@@ -6,6 +6,17 @@ async function renderProductDetail(id) {
 
   const discountVal = p.mrp ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0;
 
+  let inWishlist = false;
+  if (currentUser) {
+    try {
+      const cachedRaw = localStorage.getItem('wishlist_cache_' + currentUser.id);
+      if (cachedRaw) {
+        const items = JSON.parse(cachedRaw) || [];
+        inWishlist = items.some(item => (item.id || item._id) === p.id);
+      }
+    } catch(e) {}
+  }
+
   app.innerHTML = `
   <div class="product-detail-container container reveal">
     <div class="product-detail-grid">
@@ -65,8 +76,11 @@ async function renderProductDetail(id) {
           <button class="btn-add-to-cart" onclick="addToCart('${p.id}')" ${p.stock===0?'disabled':''}>
             <i class="fas fa-shopping-bag"></i> Add to Cart
           </button>
-          <button class="btn-wishlist-large" onclick="toggleWishlist('${p.id}',this)">
-            <i class="fas fa-heart"></i> Add to Watchlist
+          <button class="btn-buy-now" onclick="buyNow('${p.id}')" ${p.stock===0?'disabled':''}>
+            <i class="fas fa-bolt"></i> Buy Now
+          </button>
+          <button class="btn-wishlist-large ${inWishlist ? 'active' : ''}" onclick="toggleWishlist('${p.id}',this)">
+            <i class="fas fa-heart"></i> ${inWishlist ? 'Remove from Watchlist' : 'Add to Watchlist'}
           </button>
         </div>
 
@@ -255,23 +269,26 @@ async function submitReview(productId) {
 
 async function buyNow(productId) {
   if (!currentUser) { openAuthModal(); return; }
-  await addToCart(productId, false);
-  navigate('/checkout');
+  navigate(`/checkout-now/${productId}`);
+  toast('Opening checkout...', 'success');
 }
 
 /* ── CART PAGE ────────────────────────────────────────────── */
 async function renderCart() {
   if (!currentUser) { openAuthModal(); navigate('/'); return; }
   const app = document.getElementById('app');
-  app.innerHTML = '<div class="page-wrap"><div style="text-align:center;padding:3rem;color:var(--gray);">⏳ Loading your cart...</div></div>';
+  const cacheKey = 'cart_cache_' + currentUser.id;
   
+  let cachedData = null;
   try {
-    const r = await Promise.race([
-      api('/api/cart'),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
-    ]);
-    
-    const items = r.items || [];
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) cachedData = JSON.parse(raw);
+  } catch(e) {
+    console.error('Failed to parse cart cache:', e);
+  }
+
+  // Helper function to render a given list of cart items
+  function displayCartHTML(items) {
     if (!items.length) {
       app.innerHTML = `<div class="page-wrap"><h1 class="page-title">My Cart</h1><div class="empty-state"><div class="empty-icon">🛍️</div><h3>Your cart is empty</h3><p>Add some beautiful jewellery to your cart!</p><button class="btn-primary" onclick="navigate('/products')">Shop Now</button></div></div>`;
       return;
@@ -279,7 +296,19 @@ async function renderCart() {
     
     const subtotal = items.reduce((s, i) => s + (i.product?.price || 0) * (i.quantity || 1), 0);
     const shipping = subtotal >= 999 ? 0 : 49;
+    
+    // Check if there is an active session coupon
+    let coupon = null;
+    try {
+      const saved = sessionStorage.getItem('coupon');
+      if (saved) coupon = JSON.parse(saved);
+    } catch(e) {}
+    
     let discount = 0;
+    if (coupon) {
+      discount = coupon.discountAmt || 0;
+    }
+
     app.innerHTML = `
     <div class="page-wrap">
       <h1 class="page-title">My Cart <span style="font-size:1.2rem;color:var(--gray);">(${items.length} items)</span></h1>
@@ -292,10 +321,10 @@ async function renderCart() {
               const total = price * qty;
               return `
             <div class="cart-item" id="ci-${i.productId}">
-              <img class="cart-item-img" loading="lazy" src="${safeImageUrl(i.product.images[0], i.product.category)}" ${imageFallbackAttr(i.product.category, i.product.images[0])} alt="${i.product.name}" onclick="navigate('/product/${i.productId}')" style="cursor:pointer;"/>
+              <img class="cart-item-img" loading="lazy" src="${safeImageUrl(i.product?.images?.[0] || i.product?.image, i.product?.category)}" ${imageFallbackAttr(i.product?.category, i.product?.images?.[0])} alt="${i.product?.name}" onclick="navigate('/product/${i.productId}')" style="cursor:pointer;"/>
               <div class="cart-item-info">
-                <div class="cart-item-name">${i.product.name || 'Product'}</div>
-                <div class="cart-item-cat">${i.product.category || 'Uncategorized'}</div>
+                <div class="cart-item-name">${i.product?.name || 'Product'}</div>
+                <div class="cart-item-cat">${i.product?.category || 'Uncategorized'}</div>
                 <div class="cart-item-price-unit" style="font-size:0.85rem;color:var(--gold);font-weight:600;margin:.5rem 0;">₹${price}</div>
                 <div class="qty-control" style="margin-top:.5rem;display:flex;align-items:center;gap:0.5rem;">
                   <button class="qty-btn" onclick="updateQty('${i.productId}',Math.max(1,${qty-1}))"><i class="fas fa-minus" style="font-size:.7rem;"></i></button>
@@ -313,13 +342,13 @@ async function renderCart() {
           <div class="summary-title">Order Summary</div>
           <div class="summary-row"><span>Subtotal (${items.length} items)</span><span>${formatCurrency(subtotal)}</span></div>
           <div class="summary-row"><span>Shipping</span><span style="color:${shipping===0?'#22c55e':'inherit'}">${shipping===0?'FREE':formatCurrency(shipping)}</span></div>
-          <div class="summary-row" id="discount-row" style="display:none;color:#22c55e;"><span>Discount</span><span id="discount-amt">-₹0</span></div>
+          <div class="summary-row" id="discount-row" style="display:${discount > 0 ? 'flex' : 'none'};color:#22c55e;"><span>Discount</span><span id="discount-amt">-${formatCurrency(discount)}</span></div>
           <div class="coupon-row">
-            <input id="coupon-input" placeholder="Coupon code" style="text-transform:uppercase;"/>
+            <input id="coupon-input" placeholder="Coupon code" value="${coupon ? coupon.code : ''}" style="text-transform:uppercase;"/>
             <button class="btn-primary btn-sm" onclick="applyCoupon(${subtotal})">Apply</button>
           </div>
-          <div id="coupon-msg" style="font-size:.8rem;margin-bottom:.5rem;"></div>
-          <div class="summary-row"><span class="summary-total">Grand Total</span><span class="summary-total" id="grand-total">${formatCurrency(subtotal+shipping)}</span></div>
+          <div id="coupon-msg" style="font-size:.8rem;margin-bottom:.5rem;color:${coupon ? '#22c55e' : ''}">${coupon ? `✓ Coupon applied! Saved ${formatCurrency(discount)}` : ''}</div>
+          <div class="summary-row"><span class="summary-total">Grand Total</span><span class="summary-total" id="grand-total">${formatCurrency(subtotal+shipping-discount)}</span></div>
           ${subtotal < 999 ? `<p style="font-size:.75rem;color:var(--gray);margin:.75rem 0;">Add ${formatCurrency(999-subtotal)} more for FREE shipping!</p>` : ''}
           <button class="btn-primary full-width" style="margin-top:.75rem;" onclick="navigate('/checkout')">Proceed to Checkout <i class="fas fa-arrow-right"></i></button>
           <button class="btn-outline full-width" style="margin-top:.5rem;" onclick="navigate('/products')">Continue Shopping</button>
@@ -327,31 +356,98 @@ async function renderCart() {
         </div>
       </div>
     </div>`;
+  }
+
+  // Show cache immediately if present
+  if (cachedData && Array.isArray(cachedData.items)) {
+    displayCartHTML(cachedData.items);
+  } else {
+    app.innerHTML = '<div class="page-wrap"><div style="text-align:center;padding:3rem;color:var(--gray);">⏳ Loading your cart...</div></div>';
+  }
+
+  // Background fetch
+  try {
+    const r = await Promise.race([
+      api('/api/cart'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
+    ]);
+    
+    const items = r.items || [];
+    
+    const oldItemsStr = cachedData && Array.isArray(cachedData.items) ? JSON.stringify(cachedData.items) : '';
+    const newItemsStr = JSON.stringify(items);
+    
+    localStorage.setItem(cacheKey, JSON.stringify({ items }));
+    
+    // Update badge count
+    const freshCount = items.reduce((sum, i) => sum + i.quantity, 0);
+    updateCartBadgeOptimistic(freshCount);
+    
+    if (oldItemsStr !== newItemsStr) {
+      displayCartHTML(items);
+    }
   } catch (e) {
-    console.error('Cart loading error:', e);
-    app.innerHTML = `<div class="page-wrap"><div style="text-align:center;padding:3rem;">
-      <h2 style="color:var(--rose);margin-bottom:1rem;">⚠️ Cart Loading Error</h2>
-      <p style="color:var(--gray);margin-bottom:1.5rem;">We're having trouble loading your cart. Please try again.</p>
-      <button class="btn-primary" onclick="renderCart()">Retry</button>
-      <button class="btn-outline" onclick="navigate('/products')" style="margin-left:0.5rem;">Shop Now</button>
-    </div></div>`;
+    console.error('Background cart loading error:', e);
+    if (!cachedData || !Array.isArray(cachedData.items)) {
+      app.innerHTML = `<div class="page-wrap"><div style="text-align:center;padding:3rem;">
+        <h2 style="color:var(--rose);margin-bottom:1rem;">⚠️ Cart Loading Error</h2>
+        <p style="color:var(--gray);margin-bottom:1.5rem;">We're having trouble loading your cart. Please try again.</p>
+        <button class="btn-primary" onclick="renderCart()">Retry</button>
+        <button class="btn-outline" onclick="navigate('/products')" style="margin-left:0.5rem;">Shop Now</button>
+      </div></div>`;
+    }
   }
 }
 
 async function updateQty(productId, qty) {
   if (qty <= 0) {
-    // Show confirmation for removal
     const confirmed = confirm('Remove this item from cart?');
     if (!confirmed) return;
+    return removeFromCart(productId);
   }
   
+  if (!currentUser) return;
+  const cacheKey = 'cart_cache_' + currentUser.id;
+  
+  // 1. Optimistic Update
   try {
-    await api('/api/cart/update', { method: 'PUT', body: { productId, quantity: qty } });
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) {
+      const cached = JSON.parse(raw);
+      const items = cached.items || [];
+      const item = items.find(i => i.productId === productId);
+      if (item) {
+        item.quantity = qty;
+        localStorage.setItem(cacheKey, JSON.stringify({ items }));
+        const freshCount = items.reduce((sum, i) => sum + i.quantity, 0);
+        updateCartBadgeOptimistic(freshCount);
+        renderCart();
+      }
+    }
+  } catch (e) {
+    console.error('Optimistic qty update failed:', e);
+  }
+  
+  // 2. Background Sync
+  try {
+    const r = await api('/api/cart/update', { method: 'PUT', body: { productId, quantity: qty } });
+    if (r.error) {
+      toast(r.error, 'error');
+      updateCartCount();
+      renderCart();
+      return;
+    }
+    const fresh = await api('/api/cart');
+    if (fresh && !fresh.error) {
+      localStorage.setItem(cacheKey, JSON.stringify(fresh));
+      const freshCount = (fresh.items || []).reduce((sum, i) => sum + i.quantity, 0);
+      updateCartBadgeOptimistic(freshCount);
+      renderCart();
+    }
+  } catch (e) {
+    console.error('Update qty background sync error:', e);
     updateCartCount();
     renderCart();
-  } catch (e) {
-    console.error('Update quantity error:', e);
-    toast('Failed to update quantity', 'error');
   }
 }
 
@@ -359,14 +455,45 @@ async function removeFromCart(productId) {
   const confirmed = confirm('Remove this item from cart?');
   if (!confirmed) return;
   
+  if (!currentUser) return;
+  const cacheKey = 'cart_cache_' + currentUser.id;
+  
+  // 1. Optimistic Update
   try {
-    await api(`/api/cart/${productId}`, { method: 'DELETE' });
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) {
+      const cached = JSON.parse(raw);
+      cached.items = (cached.items || []).filter(i => i.productId !== productId);
+      localStorage.setItem(cacheKey, JSON.stringify(cached));
+      const freshCount = cached.items.reduce((sum, i) => sum + i.quantity, 0);
+      updateCartBadgeOptimistic(freshCount);
+      toast('Item removed from cart', 'info');
+      renderCart();
+    }
+  } catch (e) {
+    console.error('Optimistic remove failed:', e);
+  }
+  
+  // 2. Background Sync
+  try {
+    const r = await api(`/api/cart/${productId}`, { method: 'DELETE' });
+    if (r.error) {
+      toast(r.error, 'error');
+      updateCartCount();
+      renderCart();
+      return;
+    }
+    const fresh = await api('/api/cart');
+    if (fresh && !fresh.error) {
+      localStorage.setItem(cacheKey, JSON.stringify(fresh));
+      const freshCount = (fresh.items || []).reduce((sum, i) => sum + i.quantity, 0);
+      updateCartBadgeOptimistic(freshCount);
+      renderCart();
+    }
+  } catch (e) {
+    console.error('Remove from cart background sync error:', e);
     updateCartCount();
     renderCart();
-    toast('Item removed from cart', 'info');
-  } catch (e) {
-    console.error('Remove from cart error:', e);
-    toast('Failed to remove item', 'error');
   }
 }
 
@@ -441,15 +568,67 @@ async function renderWishlist() {
 }
 
 async function removeFromWatchlist(productId, btn) {
+  if (!currentUser) return;
+  
+  // 1. Optimistic removal from DOM
+  const card = btn.closest('.product-card');
+  if (card) {
+    card.style.opacity = '0';
+    card.style.transform = 'scale(0.9)';
+    setTimeout(() => {
+      card.remove();
+      const remainingCards = document.querySelectorAll('#app .product-card');
+      if (remainingCards.length === 0) {
+        const app = document.getElementById('app');
+        app.innerHTML = `<div class="page-wrap"><h1 class="page-title">My Watchlist</h1><div class="empty-state"><div class="empty-icon">❤️</div><h3>Your watchlist is empty</h3><p>Add your favorite jewellery to come back to them later!</p><button class="btn-primary" onclick="navigate('/products')">Browse Collections</button></div></div>`;
+      }
+    }, 300);
+  }
+  
+  // 2. Optimistic update of cache and badge
+  const cacheKey = 'wishlist_cache_' + currentUser.id;
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) {
+      let cached = JSON.parse(raw) || [];
+      cached = cached.filter(p => (p.id || p._id) !== productId);
+      localStorage.setItem(cacheKey, JSON.stringify(cached));
+      
+      wishlistCount = cached.length;
+      const badge = document.getElementById('wishlist-count');
+      if (badge) {
+        badge.textContent = wishlistCount;
+        badge.style.display = wishlistCount > 0 ? 'flex' : 'none';
+      }
+      localStorage.setItem('wishlist_count_' + currentUser.id, wishlistCount);
+    }
+  } catch (e) {
+    console.error('Optimistic wishlist remove cache update failed:', e);
+  }
+  
+  toast('Removed from watchlist', 'info');
+  
+  // 3. Sync with server in background
   try {
     const r = await api('/api/wishlist/toggle', { method: 'POST', body: { productId } });
-    if (!r.added) {
-      toast('Removed from watchlist', 'info');
-      renderWishlist(); // Refresh the page
+    if (r.error) {
+      toast(r.error, 'error');
+      renderWishlist();
+      return;
+    }
+    const fresh = await api('/api/wishlist');
+    if (Array.isArray(fresh)) {
+      localStorage.setItem(cacheKey, JSON.stringify(fresh));
+      wishlistCount = fresh.length;
+      const badge = document.getElementById('wishlist-count');
+      if (badge) {
+        badge.textContent = wishlistCount;
+        badge.style.display = wishlistCount > 0 ? 'flex' : 'none';
+      }
     }
   } catch (e) {
     console.error('Remove from watchlist error:', e);
-    toast('Failed to remove from watchlist', 'error');
+    renderWishlist();
   }
 }
 

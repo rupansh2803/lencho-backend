@@ -190,7 +190,8 @@
         <div class="modal-logo"><img src="/images/logo.png" alt="Lencho Logo"/></div>
         <h2 class="modal-title">Create Account</h2>
         <p class="modal-sub">Join the Lencho family 💍</p>
-        <div class="modal-divider"><span>register with email</span></div>
+        <div class="google-auth-slot" id="google-auth-signup"></div>
+        <div class="modal-divider"><span>or register with email</span></div>
         <div class="form-row">
           <div class="form-group"><label>Full Name *</label><input type="text" id="signup-name" placeholder="Your full name"/></div>
           <div class="form-group">
@@ -330,7 +331,10 @@
           <div id="search-results" style="position:absolute;top:100%;left:0;right:0;background:white;border-radius:12px;box-shadow:var(--shadow-md);max-height:300px;overflow-y:auto;z-index:100;margin-top:0.5rem;display:none;"></div>
         </div>
         <button class="icon-btn" onclick="toggleSearch()" title="Search" id="header-search-btn" aria-label="Search products"><i class="fas fa-search"></i></button>
-        <button class="icon-btn" onclick="navigate('/wishlist')" title="Wishlist" id="header-wishlist-btn" aria-label="Open wishlist"><i class="fas fa-heart"></i></button>
+        <button class="icon-btn wishlist-btn" onclick="navigate('/wishlist')" title="Wishlist" id="header-wishlist-btn" aria-label="Open wishlist">
+          <i class="fas fa-heart"></i>
+          <span class="wishlist-badge" id="wishlist-count" style="display: none;">0</span>
+        </button>
         <button class="icon-btn cart-btn" onclick="navigate('/cart')" title="Cart" id="header-cart-btn" aria-label="Open shopping cart">
           <i class="fas fa-shopping-bag"></i>
           <span class="cart-badge" id="cart-count">0</span>
@@ -431,31 +435,19 @@
     </div>
   </div>
 
+  <!-- Core Application Scripts (Deferred for parallel download and in-order execution) -->
+  <script src="/js/firebase.js?v=1.1" defer></script>
+  <script src="/js/app.js?v=4.7" defer></script>
+  <script src="/js/pages.js?v=4.5" defer></script>
+  <script src="/js/dashboard.js?v=4.5" defer></script>
+  <script src="/js/admin.js?v=5.3" defer></script>
+  <script src="/js/admin-gst-settings.js?v=4.5" defer></script>
+  <script src="/js/chatbot.js?v=4.5" defer></script>
   <script>
-    (async () => {
-      const scripts = [
-        '/js/firebase.js?v=1.1',
-        '/js/app.js?v=4.7',
-        '/js/pages.js?v=4.5',
-        '/js/dashboard.js?v=4.5',
-        '/js/admin.js?v=5.3',
-        '/js/admin-gst-settings.js?v=4.5',
-        '/js/chatbot.js?v=4.5'
-      ];
-
-      for (const src of scripts) {
-        const response = await fetch(src, { cache: 'no-store' });
-        if (!response.ok) throw new Error(`Failed to load ${src} (${response.status})`);
-
-        const code = await response.text();
-        const script = document.createElement('script');
-        script.textContent = code;
-        document.body.appendChild(script);
-      }
-
+    window.addEventListener('DOMContentLoaded', () => {
       window.__lenchoScriptsReady = true;
       window.dispatchEvent(new Event('lencho-scripts-ready'));
-    })().catch((error) => console.error('Script loader failed:', error));
+    });
   </script>
 </body>
 </html>

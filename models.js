@@ -43,8 +43,8 @@ const productSchema = new mongoose.Schema({
   reviews:    [{ userId:String, userName:String, rating:Number, comment:String, date:Date }],
 }, { timestamps: true });
 
-// ── ORDER ─────────────────────────────────────────────────────
 const orderSchema = new mongoose.Schema({
+  id:         { type: String, unique: true },
   userId:     { type: String, required: true },
   userName:   { type: String, required: true },
   items:      [{ productId:String, name:String, image:String, price:Number, mrp:Number, quantity:Number, gstRate:Number, hsn:String, gstAmount:Number, total:Number }],
@@ -54,6 +54,7 @@ const orderSchema = new mongoose.Schema({
   couponCode: String,
   status:     { type: String, default: 'placed' },
   timeline:   [{ status:String, label:String, date:Date, done:Boolean }],
+  clearCart:  { type: Boolean, default: true },
   
   // ── PAYMENT & LOGISTICS ──
   razorpayOrderId:   String,
@@ -69,6 +70,8 @@ const orderSchema = new mongoose.Schema({
   trackingNumber:  String,
   estimatedDelivery: Date,
 }, { timestamps: true });
+
+orderSchema.index({ userId: 1 });
 
 // ── CART ──────────────────────────────────────────────────────
 const cartSchema = new mongoose.Schema({

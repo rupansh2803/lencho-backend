@@ -811,21 +811,23 @@ async function handlePhoneLogin() {
   if (err) err.textContent = 'Phone login is disabled. Please use Email login.';
 }
 
-async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '') {
+async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '', isResend = false) {
   const err = document.getElementById(errorId);
   const btnId = currentFormId === 'auth-login-form' ? 'login-btn' : 'signup-btn';
   const btn = document.getElementById(btnId);
-  err.textContent = '';
+  if (err) err.textContent = '';
 
   if (authOtpRequestInFlight) {
-    err.textContent = 'OTP request is already in progress. Please wait.';
+    if (err) err.textContent = 'OTP request is already in progress. Please wait.';
     return;
   }
 
-  // Validate captcha answer before sending
-  if (!captchaAnswer || !captchaAnswer.trim()) {
-    err.textContent = 'Please enter the security code';
-    return;
+  // Validate captcha answer before sending if not resending
+  if (!isResend) {
+    if (!captchaAnswer || !captchaAnswer.trim()) {
+      if (err) err.textContent = 'Please enter the security code';
+      return;
+    }
   }
 
   authOtpRequestInFlight = true;
@@ -834,19 +836,27 @@ async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '') {
   let resp = null;
   
   try {
-    resp = await api('/api/otp/send-email', { method: 'POST', body: { email: email.trim().toLowerCase(), captchaAnswer: captchaAnswer.trim() }, timeoutMs: 45000 });
+    resp = await api('/api/otp/send-email', { 
+      method: 'POST', 
+      body: { 
+        email: email.trim().toLowerCase(), 
+        captchaAnswer: isResend ? '' : captchaAnswer.trim(),
+        resend: isResend
+      }, 
+      timeoutMs: 45000 
+    });
     
     authOtpRequestInFlight = false;
     if (btn) { btn.disabled = false; btn.textContent = currentFormId === 'auth-login-form' ? 'Sign In' : 'Send OTP ✦'; }
     
     if (resp.error) {
       const raw = String(resp.error || '');
-      // Refresh captcha on any error so user can retry
-      await loadAuthCaptcha();
+      // Refresh captcha on any error so user can retry (only if not resending)
+      if (!isResend) await loadAuthCaptcha();
       if (/535|badcredentials|invalid login|username and password not accepted/i.test(raw)) {
-        err.textContent = 'Email OTP service is not configured correctly. Please try Google login or contact support.';
+        if (err) err.textContent = 'Email OTP service is not configured correctly. Please try Google login or contact support.';
       } else {
-        err.textContent = raw;
+        if (err) err.textContent = raw;
         toast(raw, 'error');
       }
       return;
@@ -1102,6 +1112,7 @@ async function verifyEmailOTP() {
   closeAuthModal();
   toast(`Welcome ${currentUser.name}! ✦`, 'success');
   updateCartCount();
+  updateWishlistCount();
   if (currentUser.role === 'admin') navigate('/admin');
   else navigate('/'); // Redirect to home page after login
 }
@@ -1126,6 +1137,7 @@ async function verifyPhoneOTP() {
   updateHeader();
   closeAuthModal();
   updateCartCount();
+  updateWishlistCount();
   navigate('/');
 }
 
@@ -1157,6 +1169,7 @@ async function completeSignupAfterOTP() {
   closeAuthModal();
   toast(`Welcome ${currentUser.name}! ✦`, 'success');
   updateCartCount();
+  updateWishlistCount();
   navigate('/'); // Redirect to home page after signup
 }
 
@@ -1167,7 +1180,7 @@ function resendEmailOTP() {
     if (window.pendingAuth.loginType === 'phone' && window.pendingAuth.phone) {
       sendPhoneOTP(window.pendingAuth.phone);
     } else if (window.pendingAuth.email) {
-      sendEmailOTP(window.pendingAuth.email, 'auth-otp-step', 'otp-error');
+      sendEmailOTP(window.pendingAuth.email, 'auth-otp-step', 'otp-error', '', true);
     }
   }
 }
@@ -1232,24 +1245,78 @@ async function handleLogout() {
   // Reset global state
   currentUser = null;
   cartCount = 0;
+  wishlistCount = 0;
   updateHeader();
   const cartCountEl = document.getElementById('cart-count');
   if (cartCountEl) cartCountEl.textContent = '0';
+  const wishlistCountEl = document.getElementById('wishlist-count');
+  if (wishlistCountEl) {
+    wishlistCountEl.textContent = '0';
+    wishlistCountEl.style.display = 'none';
+  }
   
   toast('Logged out successfully', 'info');
   navigate('/');
 }
 
-// ── CART COUNT (INSTANT UPDATES) ────────────────────────
+// ── CART COUNT (INSTANT UPDATES & LOCAL CACHE) ───────────
 async function updateCartCount() {
   if (!currentUser) { document.getElementById('cart-count').textContent = '0'; return; }
+  const cacheKey = 'cart_cache_' + currentUser.id;
   try {
+    // 1. Optimistic restore from local storage cache
+    const cachedRaw = localStorage.getItem(cacheKey);
+    if (cachedRaw) {
+      const cached = JSON.parse(cachedRaw);
+      cartCount = (cached.items || []).reduce((sum, i) => sum + i.quantity, 0);
+      const cartBadge = document.getElementById('cart-count');
+      if (cartBadge) cartBadge.textContent = cartCount;
+    }
+
+    // 2. Fetch fresh cart from server
     const r = await api('/api/cart');
-    cartCount = r.count || 0;
-    const cartBadge = document.getElementById('cart-count');
-    if (cartBadge) cartBadge.textContent = cartCount;
+    if (r && !r.error) {
+      localStorage.setItem(cacheKey, JSON.stringify(r));
+      cartCount = (r.items || []).reduce((sum, i) => sum + i.quantity, 0);
+      const cartBadge = document.getElementById('cart-count');
+      if (cartBadge) cartBadge.textContent = cartCount;
+    }
   } catch (e) {
     console.error('Cart count update error:', e);
+  }
+}
+
+// ── WISHLIST COUNT (INSTANT UPDATES & LOCAL CACHE) ────────
+let wishlistCount = 0;
+async function updateWishlistCount() {
+  const badge = document.getElementById('wishlist-count');
+  if (!badge) return;
+  if (!currentUser) {
+    badge.textContent = '0';
+    badge.style.display = 'none';
+    return;
+  }
+  const cacheKey = 'wishlist_cache_' + currentUser.id;
+  try {
+    // 1. Optimistic restore from cache
+    const cachedRaw = localStorage.getItem(cacheKey);
+    if (cachedRaw) {
+      const items = JSON.parse(cachedRaw) || [];
+      wishlistCount = items.length;
+      badge.textContent = wishlistCount;
+      badge.style.display = wishlistCount > 0 ? 'flex' : 'none';
+    }
+
+    // 2. Background fetch
+    const r = await api('/api/wishlist');
+    if (Array.isArray(r)) {
+      localStorage.setItem(cacheKey, JSON.stringify(r));
+      wishlistCount = r.length;
+      badge.textContent = wishlistCount;
+      badge.style.display = wishlistCount > 0 ? 'flex' : 'none';
+    }
+  } catch (e) {
+    console.error('Wishlist count update error:', e);
   }
 }
 
@@ -1263,6 +1330,7 @@ function updateCartBadgeOptimistic(newCount) {
 // Add to cart with INSTANT UI update (no waiting for server)
 async function addToCart(productId, showToast = true) {
   if (!currentUser) { openAuthModal(); return; }
+  const cacheKey = 'cart_cache_' + currentUser.id;
   
   // ✓ INSTANT OPTIMISTIC UPDATE
   updateCartBadgeOptimistic(cartCount + 1);
@@ -1276,9 +1344,18 @@ async function addToCart(productId, showToast = true) {
       updateCartBadgeOptimistic(Math.max(0, cartCount - 1)); // Revert on error
       return; 
     }
-    // Update with actual count from server
-    cartCount = r.count;
-    updateCartBadgeOptimistic(r.count);
+    
+    // Sync with server in background to get actual cart data
+    const fresh = await api('/api/cart');
+    if (fresh && !fresh.error) {
+      localStorage.setItem(cacheKey, JSON.stringify(fresh));
+      const freshCount = (fresh.items || []).reduce((sum, i) => sum + i.quantity, 0);
+      updateCartBadgeOptimistic(freshCount);
+      // Refresh cart page if open
+      if (location.pathname === '/cart') {
+        renderCart();
+      }
+    }
   } catch (e) {
     console.error('Add to cart error:', e);
     updateCartCount(); // Fallback: sync with server
@@ -1287,21 +1364,43 @@ async function addToCart(productId, showToast = true) {
 
 // Remove from cart with INSTANT feedback
 async function removeFromCart(productId) {
+  if (!currentUser) return;
+  const cacheKey = 'cart_cache_' + currentUser.id;
+
   // ✓ INSTANT OPTIMISTIC UPDATE
-  updateCartBadgeOptimistic(Math.max(0, cartCount - 1));
-  toast('Item removed from cart', 'info');
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) {
+      const cached = JSON.parse(raw);
+      cached.items = (cached.items || []).filter(i => i.productId !== productId);
+      localStorage.setItem(cacheKey, JSON.stringify(cached));
+      const freshCount = cached.items.reduce((sum, i) => sum + i.quantity, 0);
+      updateCartBadgeOptimistic(freshCount);
+      toast('Item removed from cart', 'info');
+      if (location.pathname === '/cart') {
+        renderCart();
+      }
+    }
+  } catch (e) {
+    console.error('Optimistic remove failed:', e);
+  }
   
   // Background: Sync with server
   try {
-    await api(`/api/cart/${productId}`, { method: 'DELETE' });
+    const r = await api(`/api/cart/${productId}`, { method: 'DELETE' });
+    if (r.error) {
+      toast(r.error, 'error');
+      updateCartCount();
+      return;
+    }
+    const fresh = await api('/api/cart');
+    if (fresh && !fresh.error) {
+      localStorage.setItem(cacheKey, JSON.stringify(fresh));
+      renderCart();
+    }
   } catch (e) {
     console.error('Remove from cart error:', e);
     updateCartCount(); // Fallback: sync with server
-  }
-  
-  // Refresh cart page if open
-  if (location.pathname === '/cart') {
-    renderCart();
   }
 }
 
@@ -1309,18 +1408,28 @@ async function removeFromCart(productId) {
 async function clearCart() {
   const confirmed = confirm('Are you sure you want to clear your entire cart? This action cannot be undone.');
   if (!confirmed) return;
+  if (!currentUser) return;
+  const cacheKey = 'cart_cache_' + currentUser.id;
   
   // ✓ INSTANT OPTIMISTIC UPDATE
-  updateCartBadgeOptimistic(0);
+  try {
+    localStorage.setItem(cacheKey, JSON.stringify({ items: [], count: 0 }));
+    updateCartBadgeOptimistic(0);
+    toast('Cart cleared!', 'success');
+    if (location.pathname === '/cart') {
+      renderCart();
+    }
+  } catch (e) {
+    console.error('Optimistic clear failed:', e);
+  }
   
   // Background: Sync with server
   try {
     const r = await api('/api/cart', { method: 'DELETE' });
-    if (r.success) {
-      toast('Cart cleared!', 'success');
-      if (location.pathname === '/cart') {
-        setTimeout(() => renderCart(), 300);
-      }
+    if (r.error) {
+      toast(r.error, 'error');
+      updateCartCount();
+      return;
     }
   } catch (e) {
     console.error('Clear cart error:', e);
@@ -1336,18 +1445,55 @@ async function toggleWishlist(productId, btn) {
   const willAdd = !btn.classList.contains('active');
   btn.classList.toggle('active');
   
+  if (btn.classList.contains('btn-wishlist-large')) {
+    btn.innerHTML = `<i class="fas fa-heart"></i> ${willAdd ? 'Remove from Watchlist' : 'Add to Watchlist'}`;
+  }
+  
+  // Optimistically update count
+  const badge = document.getElementById('wishlist-count');
+  if (badge) {
+    wishlistCount = Math.max(0, wishlistCount + (willAdd ? 1 : -1));
+    badge.textContent = wishlistCount;
+    badge.style.display = wishlistCount > 0 ? 'flex' : 'none';
+    localStorage.setItem('wishlist_count_' + currentUser.id, wishlistCount);
+  }
+  
   if (willAdd) toast('Added to watchlist ❤️', 'success');
   else toast('Removed from watchlist', 'info');
   
   // Background: Sync with server
   try {
     const r = await api('/api/wishlist/toggle', { method: 'POST', body: { productId } });
-    if (r.added !== willAdd) {
-      btn.classList.toggle('active'); // Revert if server disagrees
+    if (r.error) {
+      toast(r.error, 'error');
+      btn.classList.toggle('active');
+      if (btn.classList.contains('btn-wishlist-large')) {
+        btn.innerHTML = `<i class="fas fa-heart"></i> ${!willAdd ? 'Remove from Watchlist' : 'Add to Watchlist'}`;
+      }
+      updateWishlistCount();
+      return;
+    }
+    
+    // Sync with server in background to get actual wishlist items
+    const fresh = await api('/api/wishlist');
+    if (Array.isArray(fresh)) {
+      localStorage.setItem('wishlist_cache_' + currentUser.id, JSON.stringify(fresh));
+      wishlistCount = fresh.length;
+      if (badge) {
+        badge.textContent = wishlistCount;
+        badge.style.display = wishlistCount > 0 ? 'flex' : 'none';
+      }
+      if (location.pathname === '/wishlist') {
+        renderWishlist();
+      }
     }
   } catch (e) {
     console.error('Wishlist toggle error:', e);
     btn.classList.toggle('active'); // Revert on error
+    if (btn.classList.contains('btn-wishlist-large')) {
+      btn.innerHTML = `<i class="fas fa-heart"></i> ${!willAdd ? 'Remove from Watchlist' : 'Add to Watchlist'}`;
+    }
+    updateWishlistCount();
   }
 }
 
@@ -1360,7 +1506,6 @@ async function buyNow(productId) {
 
 // ── DISCOUNT POPUP (SHOW ONCE PER SESSION) ────────────────
 function showDiscountPopup() {
-  // Only show once per session using sessionStorage
   if (sessionStorage.getItem('popupShown')) return;
   
   const popup = document.getElementById('discount-popup');
@@ -1378,7 +1523,7 @@ function closePopup() {
   popup.style.display = 'none';
   document.body.style.overflow = '';
   document.documentElement.style.overflow = '';
-  // Don't clear sessionStorage - keep it for this session
+  sessionStorage.setItem('popupShown', '1'); // Force save just in case
 }
 async function claimDiscount() {
   const email = document.getElementById('popup-email')?.value;
@@ -1925,12 +2070,7 @@ async function renderHome(options = {}) {
   // Show discount popup after delay (non-blocking, detached from page load)
   if (!sessionStorage.getItem('popupShown')) {
     setTimeout(() => {
-      const popup = document.getElementById('discount-popup');
-      if (popup) {
-        popup.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
-        document.documentElement.style.overflow = 'hidden';
-      }
+      showDiscountPopup();
     }, 5000);
   }
 }
@@ -2358,6 +2498,7 @@ async function bootstrapApp() {
     // ── STEP 4: Run non-blocking background tasks ──
     const bgTasks = [
       updateCartCount().catch(e => console.error('updateCartCount error:', e)),
+      updateWishlistCount().catch(e => console.error('updateWishlistCount error:', e)),
       syncSocialLinks().catch(e => console.error('syncSocialLinks error:', e)),
       loadPublicSettings().catch(e => console.error('loadPublicSettings error:', e)),
       handleFirebaseRedirectAuth().catch(e => console.error('handleFirebaseRedirectAuth error:', e))
@@ -2607,14 +2748,10 @@ async function completeGoogleLogin(authResult, btn) {
   
     currentUser = result.user;
     saveCurrentUser(currentUser);
-    const sessionUser = await api('/api/me');
-    if (sessionUser && sessionUser.user) {
-      currentUser = sessionUser.user;
-      saveCurrentUser(currentUser);
-    }
     updateHeader();
     closeAuthModal();
     await updateCartCount();
+    await updateWishlistCount();
     toast(`🎉 Welcome, ${result.user.name}! ✦`, 'success');
     console.log('[GoogleAuth] ✓ Login complete — redirecting');
   

@@ -2100,13 +2100,31 @@ app.post('/api/razorpay/verify', requireAuth, async (req, res) => {
 
     if (expectedSignature === razorpay_signature) {
       if (useDB) {
-        await Order.findOneAndUpdate({ id: orderId }, {
+        const order = await Order.findOneAndUpdate({ id: orderId }, {
           status: 'placed',
           razorpayOrderId: razorpay_order_id,
           razorpayPaymentId: razorpay_payment_id,
           razorpaySignature: razorpay_signature,
           $push: { timeline: { status: 'paid', label: 'Payment Verified ✓', date: new Date(), done: true } }
         });
+        if (order && order.clearCart !== false) {
+          await Cart.findOneAndUpdate({ userId: req.session.userId }, { items: [] });
+        }
+      } else {
+        const orders = readJson(FILES.orders);
+        const order = orders.find(o => o.id === orderId);
+        if (order) {
+          order.status = 'placed';
+          if (order.clearCart !== false) {
+            const carts = readJson(FILES.carts);
+            const ci = carts.findIndex(c => c.userId === req.session.userId);
+            if (ci > -1) {
+              carts[ci].items = [];
+              writeJson(FILES.carts, carts);
+            }
+          }
+        }
+        writeJson(FILES.orders, orders);
       }
       res.json({ success: true, message: 'Payment verified successfully' });
     } else {
@@ -2247,18 +2265,21 @@ app.post('/api/otp/verify', async (req, res) => {
 
 app.post('/api/otp/send-email', async (req, res) => {
   try {
-    const { email, captchaAnswer } = req.body;
+    const { email, captchaAnswer, resend } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     if (!email) return res.status(400).json({ error: 'Email required' });
 
     // ── CAPTCHA validation ──
-    if (!captchaAnswer) {
-      return res.status(400).json({ error: 'Security code is required.' });
+    const isResend = resend === true || resend === 'true';
+    if (!isResend) {
+      if (!captchaAnswer) {
+        return res.status(400).json({ error: 'Security code is required.' });
+      }
+      if (String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
+        return res.status(400).json({ error: 'Invalid security code. Please try again.' });
+      }
+      delete req.session.captcha; // one-time use
     }
-    if (String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
-      return res.status(400).json({ error: 'Invalid security code. Please try again.' });
-    }
-    delete req.session.captcha; // one-time use
 
     // ── Email format validation ──
     const cleanEmail = String(email).trim().toLowerCase();
@@ -3186,7 +3207,7 @@ app.post('/api/wishlist/toggle', requireAuth, async (req, res) => {
 // ─── ORDERS ───────────────────────────────────────────────────
 app.post('/api/orders', requireAuth, async (req, res) => {
   try {
-    const { address, paymentMethod, items, couponCode } = req.body;
+    const { address, paymentMethod, items, couponCode, clearCart = true } = req.body;
     const globalDiscount = await getSetting('globalDiscount', 0);
     const freeShipMin = await getSetting('freeShippingMin', 999);
     const shipCharge = await getSetting('shippingCharge', 49);
@@ -3239,15 +3260,16 @@ app.post('/api/orders', requireAuth, async (req, res) => {
       id: orderId, userId: req.session.userId, userName: resolvedUserName, items: orderItems, 
       address, paymentMethod, subtotal, gstTotal: totalGst, shipping, discount, grandTotal, 
       couponCode: couponCode || null, status, timeline, 
+      clearCart: clearCart === true || clearCart === 'true',
       estimatedDelivery: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), createdAt: new Date() 
     };
 
     if (useDB) {
       await Order.create(orderData);
-      if (isCOD) await Cart.findOneAndUpdate({ userId: req.session.userId }, { items: [] });
+      if (isCOD && orderData.clearCart) await Cart.findOneAndUpdate({ userId: req.session.userId }, { items: [] });
     } else {
       const orders = readJson(FILES.orders); orders.push(orderData); writeJson(FILES.orders, orders);
-      if (isCOD) {
+      if (isCOD && orderData.clearCart) {
         const carts = readJson(FILES.carts); const ci = carts.findIndex(c => c.userId === req.session.userId);
         if (ci > -1) { carts[ci].items = []; writeJson(FILES.carts, carts); }
       }
