@@ -43,12 +43,7 @@ document.addEventListener('click', (e) => {
     closePopup();
     return;
   }
-  
-  // Header search button
-  if (e.target.closest('#header-search-btn')) {
-    toggleSearch();
-    return;
-  }
+
   
   // Modal close button
   if (e.target.closest('.modal-close')) {
@@ -1284,6 +1279,7 @@ async function updateCartCount() {
       cartCount = (cached.items || []).reduce((sum, i) => sum + i.quantity, 0);
       const cartBadge = document.getElementById('cart-count');
       if (cartBadge) cartBadge.textContent = cartCount;
+      updateCartButtonsUI();
     }
 
     // 2. Fetch fresh cart from server
@@ -1293,6 +1289,7 @@ async function updateCartCount() {
       cartCount = (r.items || []).reduce((sum, i) => sum + i.quantity, 0);
       const cartBadge = document.getElementById('cart-count');
       if (cartBadge) cartBadge.textContent = cartCount;
+      updateCartButtonsUI();
     }
   } catch (e) {
     console.error('Cart count update error:', e);
@@ -1346,7 +1343,24 @@ async function addToCart(productId, showToast = true) {
   const cacheKey = 'cart_cache_' + currentUser.id;
   
   // ✓ INSTANT OPTIMISTIC UPDATE
-  updateCartBadgeOptimistic(cartCount + 1);
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    let cached = { items: [] };
+    if (raw) cached = JSON.parse(raw);
+    const existing = (cached.items || []).find(i => i.productId === productId);
+    if (existing) {
+      existing.quantity = (existing.quantity || 1) + 1;
+    } else {
+      (cached.items || []).push({ productId, quantity: 1, product: { id: productId, _id: productId } });
+    }
+    localStorage.setItem(cacheKey, JSON.stringify(cached));
+    const freshCount = (cached.items || []).reduce((sum, i) => sum + i.quantity, 0);
+    updateCartBadgeOptimistic(freshCount);
+    updateCartButtonsUI();
+  } catch (e) {
+    updateCartBadgeOptimistic(cartCount + 1);
+  }
+  
   if (showToast) toast('Product added to cart successfully', 'success');
   
   // Background: Sync with server
@@ -1354,7 +1368,7 @@ async function addToCart(productId, showToast = true) {
     const r = await api('/api/cart/add', { method: 'POST', body: { productId, quantity: 1 } });
     if (r.error) { 
       toast(r.error, 'error'); 
-      updateCartBadgeOptimistic(Math.max(0, cartCount - 1)); // Revert on error
+      updateCartCount(); 
       return; 
     }
     
@@ -1364,6 +1378,7 @@ async function addToCart(productId, showToast = true) {
       localStorage.setItem(cacheKey, JSON.stringify(fresh));
       const freshCount = (fresh.items || []).reduce((sum, i) => sum + i.quantity, 0);
       updateCartBadgeOptimistic(freshCount);
+      updateCartButtonsUI();
       // Refresh cart page if open
       if (location.pathname === '/cart') {
         renderCart();
@@ -1682,85 +1697,102 @@ if (document.readyState === 'loading') {
 }
 window.addEventListener('resize', initFooterDropdowns);
 
-// ── SEARCH FUNCTIONALITY ──────────────────────────────────
-function toggleSearch() {
-  const searchBox = document.getElementById('search-box');
-  if (!searchBox) return;
-  const isVisible = searchBox.style.display !== 'none';
-  searchBox.style.display = isVisible ? 'none' : 'block';
-  if (!isVisible) {
-    setTimeout(() => {
-      const input = document.getElementById('header-search-input');
-      if (input) input.focus();
-    }, 100);
-  }
-}
-
-async function performSearch(query) {
-  if (!query || query.length < 2) {
-    const resultsDiv = document.getElementById('search-results');
-    if (resultsDiv) resultsDiv.style.display = 'none';
-    return;
-  }
-
-  const cacheKey = `search_${query.toLowerCase()}`;
-  if (searchCache.has(cacheKey)) {
-    const cached = searchCache.get(cacheKey);
-    if (Date.now() - cached.timestamp < SEARCH_CACHE_TTL) {
-      displaySearchResults(cached.results, query);
-      return;
-    }
-  }
-
+// ── DYNAMIC COLLECTIONS HEADER ────────────────────────────
+async function loadHeaderCollections() {
+  const container = document.getElementById('header-collections-menu');
+  if (!container) return;
   try {
-    const results = await api(`/api/products?search=${encodeURIComponent(query)}`);
-    const resultsArray = Array.isArray(results) ? results : [];
-    searchCache.set(cacheKey, { results: resultsArray, timestamp: Date.now() });
-    displaySearchResults(resultsArray, query);
+    const cats = await api('/api/categories');
+    if (Array.isArray(cats) && cats.length > 0) {
+      container.innerHTML = cats.map(c => `
+        <a href="/products?category=${c.slug}" onclick="event.preventDefault(); navigate('/products?category=${c.slug}')">${c.icon ? c.icon + ' ' : ''}${c.name}</a>
+      `).join('');
+    }
   } catch (e) {
-    console.error('Search error:', e);
+    console.error('Error loading header collections:', e);
   }
 }
 
-function displaySearchResults(products, query) {
-  const resultsDiv = document.getElementById('search-results');
-  if (!resultsDiv) return;
-
-  // Hide search results dropdown - don't show cards
-  resultsDiv.style.display = 'none';
-}
-
-// Setup search listeners
-document.addEventListener('DOMContentLoaded', () => {
-  const searchInput = document.getElementById('header-search-input');
-  const mobileSearchInput = document.getElementById('mobile-search-input');
-
-  if (searchInput) {
-    searchInput.addEventListener('input', (e) => {
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => performSearch(e.target.value), 300);
-    });
-    searchInput.addEventListener('focus', () => {
-      if (searchInput.value.length >= 2) performSearch(searchInput.value);
-    });
+// ── DYNAMIC CART ACTION BUTTONS UI ────────────────────────
+function updateCartButtonsUI() {
+  if (!currentUser) return;
+  const cacheKey = 'cart_cache_' + currentUser.id;
+  let cart = { items: [] };
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) cart = JSON.parse(raw);
+  } catch (e) {
+    console.error('Error reading cart cache:', e);
   }
-
-  if (mobileSearchInput) {
-    mobileSearchInput.addEventListener('input', (e) => {
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => performSearch(e.target.value), 300);
-    });
-  }
-
-  // Close search results on outside click
-  document.addEventListener('click', (e) => {
-    const resultsDiv = document.getElementById('search-results');
-    const searchBox = document.getElementById('search-box');
-    if (searchBox && !searchBox.contains(e.target) && !e.target.closest('#header-search-btn')) {
-      if (resultsDiv) resultsDiv.style.display = 'none';
+  
+  const items = cart.items || [];
+  
+  document.querySelectorAll('[data-product-actions]').forEach(el => {
+    const productId = el.getAttribute('data-product-actions');
+    const item = items.find(i => i.productId === productId);
+    
+    // Determine context (Details Page vs Product Card)
+    const isDetailPage = el.classList.contains('product-actions') && !el.closest('.product-card');
+    
+    if (item) {
+      const qty = item.quantity || 1;
+      el.innerHTML = `
+        <div class="qty-control" style="display:flex;align-items:center;justify-content:center;gap:0.75rem;width:100%;margin-bottom:0.5rem;background:var(--beige);padding:8px;border-radius:8px;">
+          <button class="qty-btn" onclick="event.stopPropagation(); updateQty('${productId}', ${qty - 1})" style="width:30px;height:30px;border-radius:50%;border:none;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.1);"><i class="fas fa-minus" style="font-size:0.8rem;color:var(--rose);"></i></button>
+          <span style="font-weight:700;font-size:1.1rem;color:var(--dark);min-width:1.5rem;text-align:center;">${qty}</span>
+          <button class="qty-btn" onclick="event.stopPropagation(); updateQty('${productId}', ${qty + 1})" style="width:30px;height:30px;border-radius:50%;border:none;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.1);"><i class="fas fa-plus" style="font-size:0.8rem;color:var(--rose);"></i></button>
+        </div>
+        ${!isDetailPage ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;width:100%;">
+          <button class="btn-outline btn-sm" onclick="navigate('/product/${productId}')" style="padding:10px;border-radius:8px;border:2px solid var(--rose);background:#fff;color:var(--rose);font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.background='var(--rose-light)'" onmouseout="this.style.background='#fff'">
+            <i class="fas fa-eye"></i> View
+          </button>
+          <button class="btn-gold btn-sm" onclick="event.stopPropagation(); buyNow('${productId}')" style="padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9954c,#a67a38);color:#fff;font-weight:600;cursor:pointer;transition:transform .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+            <i class="fas fa-bolt"></i> Buy Now
+          </button>
+        </div>
+        ` : `
+        <div style="display:flex;gap:.5rem;width:100%;margin-top:0.5rem;">
+          <button class="btn-buy-now" onclick="buyNow('${productId}')" style="flex:1;">
+            <i class="fas fa-bolt"></i> Buy Now
+          </button>
+          <button class="btn-wishlist-large" onclick="toggleWishlist('${productId}',this)">
+            <i class="fas fa-heart"></i> Watchlist
+          </button>
+        </div>
+        `}
+      `;
+    } else {
+      if (!isDetailPage) {
+        el.innerHTML = `
+          <button class="btn-primary btn-sm" onclick="addToCart('${productId}')" style="flex:1;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;font-weight:600;cursor:pointer;transition:transform .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+            <i class="fas fa-shopping-bag"></i> Add to Cart
+          </button>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;">
+            <button class="btn-outline btn-sm" onclick="navigate('/product/${productId}')" style="padding:10px;border-radius:8px;border:2px solid var(--rose);background:#fff;color:var(--rose);font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.background='var(--rose-light)'" onmouseout="this.style.background='#fff'">
+              <i class="fas fa-eye"></i> View
+            </button>
+            <button class="btn-gold btn-sm" onclick="event.stopPropagation(); buyNow('${productId}')" style="padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9954c,#a67a38);color:#fff;font-weight:600;cursor:pointer;transition:transform .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+              <i class="fas fa-bolt"></i> Buy Now
+            </button>
+          </div>
+        `;
+      } else {
+        el.innerHTML = `
+          <button class="btn-add-to-cart" onclick="addToCart('${productId}')">
+            <i class="fas fa-shopping-bag"></i> Add to Cart
+          </button>
+          <button class="btn-buy-now" onclick="buyNow('${productId}')">
+            <i class="fas fa-bolt"></i> Buy Now
+          </button>
+          <button class="btn-wishlist-large" onclick="toggleWishlist('${productId}',this)">
+            <i class="fas fa-heart"></i> Watchlist
+          </button>
+        `;
+      }
     }
   });
-});
+}
 
 // Close mobile dropdown when clicking outside
 document.addEventListener('click', (e) => {
@@ -1850,7 +1882,7 @@ function productCardHTML(p) {
         </div>
       </div>
       
-      <div class="product-actions" style="margin-top:1rem;display:flex;gap:.5rem;flex-direction:column;">
+      <div class="product-actions" data-product-actions="${p.id}" style="margin-top:1rem;display:flex;gap:.5rem;flex-direction:column;">
         <button class="btn-primary btn-sm" onclick="addToCart('${p.id}')" style="flex:1;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;font-weight:600;cursor:pointer;transition:transform .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
           <i class="fas fa-shopping-bag"></i> Add to Cart
         </button>
@@ -2162,7 +2194,7 @@ async function loadHomeCategories() {
       <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
         <img class="cat-img" src="${c.image}" alt="${c.name}" onerror="this.src='/images/hero.png'"/>
         <div class="cat-overlay"></div>
-        <div class="cat-content"><div class="cat-name">${c.name}</div><button class="cat-btn">Shop Now</button></div>
+        <div class="cat-content"><div class="cat-name">${c.icon ? c.icon + ' ' : ''}${c.name}</div><button class="cat-btn">Shop Now</button></div>
       </div>
     `).join('');
     initScrollReveal();
@@ -2348,6 +2380,7 @@ async function loadFeaturedProducts() {
     if (Array.isArray(fallback) && fallback.length > 0) {
       grid.innerHTML = shuffleArray(fallback).slice(0, 4).map(productCardHTML).join('');
       initScrollReveal();
+      updateCartButtonsUI();
       return;
     }
     renderFallbackFeaturedCards(grid);
@@ -2359,6 +2392,7 @@ async function loadFeaturedProducts() {
     if (r && Array.isArray(r) && r.length > 0) {
       grid.innerHTML = shuffleArray(r).map(productCardHTML).join('');
       initScrollReveal();
+      updateCartButtonsUI();
     } else if (Array.isArray(r) && r.length === 0) {
       await renderFallbackProducts('');
     } else {
@@ -2408,6 +2442,7 @@ async function renderProducts(params) {
   const grid = document.getElementById('products-grid');
   if (grid) grid.innerHTML = products.length ? products.map(productCardHTML).join('') : '<div class="empty-state"><div class="empty-icon">💎</div><h3>No products found</h3><p>Check back soon for new arrivals!</p></div>';
   initScrollReveal();
+  updateCartButtonsUI();
 }
 
 async function sortProducts(sort, category) {
@@ -2421,6 +2456,7 @@ async function sortProducts(sort, category) {
     grid.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Could not load products</h3><p>Please try again in a moment.</p></div>';
   }
   initScrollReveal();
+  updateCartButtonsUI();
 }
 
 async function loadPublicSettings() {
@@ -2525,6 +2561,7 @@ async function bootstrapApp() {
       updateWishlistCount().catch(e => console.error('updateWishlistCount error:', e)),
       syncSocialLinks().catch(e => console.error('syncSocialLinks error:', e)),
       loadPublicSettings().catch(e => console.error('loadPublicSettings error:', e)),
+      loadHeaderCollections().catch(e => console.error('loadHeaderCollections error:', e)),
       handleFirebaseRedirectAuth().catch(e => console.error('handleFirebaseRedirectAuth error:', e))
     ];
     
@@ -2809,7 +2846,8 @@ try {
     completeSignupAfterOTP,
     handleLogout,
     claimDiscount,
-    toggleSearch,
+    loadHeaderCollections,
+    updateCartButtonsUI,
     toggleNavDropdown,
     signInWithGoogle,
     completeGoogleLogin,

@@ -118,8 +118,10 @@ const categorySchema = new mongoose.Schema({
   name:        { type: String, required: true, unique: true },
   slug:        { type: String, required: true, unique: true },
   image:       { type: String, default: '' },
+  icon:        { type: String, default: '' },
   description: { type: String, default: '' },
   displayOrder:{ type: Number, default: 0 },
+  status:      { type: String, default: 'active' },
 }, { timestamps: true });
 
 // ── INQUIRY (CONTACT FORM) ────────────────────────────────────

@@ -768,6 +768,61 @@ function normalizeProductRecord(product) {
   };
 }
 
+async function findProductById(id) {
+  if (!id) return null;
+  try {
+    if (useDB) {
+      let p = null;
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        p = await Product.findById(id).lean();
+      }
+      if (!p) {
+        // Fallback: Query raw MongoDB collection directly to bypass Mongoose ObjectId casting
+        p = await Product.collection.findOne({ _id: id });
+        if (!p && mongoose.Types.ObjectId.isValid(id)) {
+          p = await Product.collection.findOne({ _id: new mongoose.Types.ObjectId(id) });
+        }
+      }
+      return p;
+    } else {
+      const products = getJsonCatalogProducts();
+      return products.find(p => p.id === id) || null;
+    }
+  } catch (err) {
+    console.error(`[DB] Error finding product by ID ${id}:`, err.message);
+    return null;
+  }
+}
+
+async function findProductsByIds(ids) {
+  if (!Array.isArray(ids) || !ids.length) return [];
+  try {
+    if (useDB) {
+      const objectIds = [];
+      const stringIds = [];
+      ids.forEach(id => {
+        if (mongoose.Types.ObjectId.isValid(id)) {
+          objectIds.push(new mongoose.Types.ObjectId(id));
+          objectIds.push(id);
+        } else {
+          stringIds.push(id);
+        }
+      });
+      const query = {
+        _id: { $in: [...objectIds, ...stringIds] }
+      };
+      const list = await Product.collection.find(query).toArray();
+      return list;
+    } else {
+      const catalog = getJsonCatalogProducts();
+      return catalog.filter(p => ids.includes(p.id));
+    }
+  } catch (err) {
+    console.error('[DB] Error finding products by IDs:', err.message);
+    return [];
+  }
+}
+
 function normalizeCategoryRecord(category) {
   if (!category) return null;
   const slug = String(category.slug || category.name || '').trim().toLowerCase().replace(/\s+/g, '-');
@@ -776,6 +831,8 @@ function normalizeCategoryRecord(category) {
     id: category._id?.toString?.() || category.id,
     slug,
     image: normalizeMediaUrl(category.image, { category: slug }),
+    icon: category.icon || '',
+    status: category.status || 'active',
     description: category.description || ''
   };
 }
@@ -1255,6 +1312,7 @@ async function getMeaningfulSetting(key, fallback) {
   const val = await getSetting(key, fallback);
   if (val === undefined || val === null) return fallback;
   if (typeof val === 'string' && !val.trim()) return fallback;
+  if (isPlaceholderSMTP(val)) return fallback;
   return val;
 }
 
@@ -2872,9 +2930,9 @@ app.get('/api/categories', async (req, res) => {
 
 app.post('/api/admin/categories', requireAdmin, async (req, res) => {
   try {
-    const { name, image, description, displayOrder } = req.body;
+    const { name, image, description, displayOrder, icon, status } = req.body;
     const slug = name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
-    const cat = await Category.create({ name, slug, image, description, displayOrder });
+    const cat = await Category.create({ name, slug, image, description, displayOrder, icon, status });
     res.json({ success: true, category: cat });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2943,7 +3001,7 @@ app.get('/api/products', async (req, res) => {
 app.get('/api/products/:id', async (req, res) => {
   try {
     if (useDB) {
-      const p = await Product.findById(req.params.id).lean();
+      const p = await findProductById(req.params.id);
       if (!p) return res.status(404).json({ error: 'Product not found' });
       return res.json(normalizeProductRecord(p));
     }
@@ -2986,7 +3044,13 @@ app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req
     if (Array.isArray(req.body.removedImages)) removed.push(...req.body.removedImages.filter(Boolean));
     else if (req.body.removedImages) removed.push(req.body.removedImages);
     if (useDB) {
-      const p = await Product.findByIdAndUpdate(req.params.id, updates, { new: true });
+      let p = null;
+      if (mongoose.Types.ObjectId.isValid(req.params.id)) {
+        p = await Product.findByIdAndUpdate(req.params.id, updates, { new: true });
+      } else {
+        await Product.collection.updateOne({ _id: req.params.id }, { $set: updates });
+        p = await Product.collection.findOne({ _id: req.params.id });
+      }
       if (!p) return res.status(404).json({ error: 'Not found' });
       // If images were removed, delete local files where applicable
       if (removed.length > 0) {
@@ -3004,7 +3068,7 @@ app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req
       }
       const products = readJson(FILES.products);
       const idx = products.findIndex(item => item.id === req.params.id || item._id === req.params.id);
-      const next = { ...p.toObject(), id: p._id.toString() };
+      const next = { ...p, id: (p._id || p.id).toString() };
       if (idx >= 0) products[idx] = { ...products[idx], ...next };
       else products.push(next);
       writeJson(FILES.products, products);
@@ -3036,7 +3100,15 @@ app.delete('/api/products/:id', requireAdmin, async (req, res) => {
   try {
     if (useDB) {
       // Delete product and remove any local media files
-      const p = await Product.findByIdAndDelete(req.params.id);
+      let p = null;
+      if (mongoose.Types.ObjectId.isValid(req.params.id)) {
+        p = await Product.findByIdAndDelete(req.params.id);
+      } else {
+        p = await Product.collection.findOne({ _id: req.params.id });
+        if (p) {
+          await Product.collection.deleteOne({ _id: req.params.id });
+        }
+      }
       const products = readJson(FILES.products).filter(p => p.id !== req.params.id && p._id !== req.params.id);
       // Remove local files referenced by product.images
       if (p && Array.isArray(p.images)) {
@@ -3076,47 +3148,112 @@ app.delete('/api/products/:id', requireAdmin, async (req, res) => {
 app.get('/api/cart', requireAuth, async (req, res) => {
   try {
     const uid = req.auth.userId;
+    console.log('[CART] GET /api/cart for userId:', uid);
+    
     if (useDB) {
-      const cart = await Cart.findOne({ userId: uid }) || { items: [] };
+      const cart = await Cart.findOne({ userId: uid });
+      if (!cart) {
+        console.log('[CART] No cart found for user, returning empty');
+        return res.json({ items: [], count: 0 });
+      }
+      
       const enriched = await Promise.all((cart.items || []).map(async item => {
-        const p = await Product.findById(item.productId).lean();
-        return p ? { ...item.toObject?.(), ...item, product: { ...p, id: p._id } } : null;
+        const p = await findProductById(item.productId);
+        if (!p) {
+          console.log('[CART] Product not found:', item.productId);
+          return null;
+        }
+        const cartItem = {
+          productId: item.productId,
+          quantity: item.quantity || 1,
+          product: {
+            ...p,
+            id: (p._id || p.id).toString(),
+            _id: (p._id || p.id).toString()
+          }
+        };
+        return cartItem;
       }));
-      return res.json({ items: enriched.filter(Boolean), count: enriched.filter(Boolean).length });
+      
+      const filtered = enriched.filter(Boolean);
+      const count = filtered.reduce((sum, item) => sum + (item.quantity || 1), 0);
+      console.log('[CART] Returning cart items:', filtered.length, 'total quantity:', count);
+      return res.json({ items: filtered, count });
     }
+    
     const carts = readJson(FILES.carts);
     const cart = carts.find(c => c.userId === uid) || { items: [] };
     const products = readJson(FILES.products);
     const enriched = cart.items.map(item => {
       const p = products.find(p => p.id === item.productId);
-      return p ? { ...item, product: p } : null;
+      if (!p) {
+        console.log('[CART] Product not found in JSON:', item.productId);
+        return null;
+      }
+      return { ...item, product: p };
     }).filter(Boolean);
-    res.json({ items: enriched, count: enriched.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    
+    const count = enriched.reduce((sum, item) => sum + (item.quantity || 1), 0);
+    console.log('[CART] JSON: Returning cart items:', enriched.length, 'total quantity:', count);
+    res.json({ items: enriched, count });
+  } catch (e) { 
+    console.error('[CART] GET Error:', e.message);
+    res.status(500).json({ error: e.message }); 
+  }
 });
 
 app.post('/api/cart/add', requireAuth, async (req, res) => {
   try {
     const { productId, quantity = 1 } = req.body;
     const uid = req.auth.userId;
+    console.log('[CART] POST /api/cart/add:', { productId, quantity, userId: uid });
+    
     if (useDB) {
       let cart = await Cart.findOne({ userId: uid });
-      if (!cart) cart = await Cart.create({ userId: uid, items: [] });
-      const idx = cart.items.findIndex(i => i.productId === productId);
-      if (idx > -1) cart.items[idx].quantity += +quantity;
-      else cart.items.push({ productId, quantity: +quantity });
+      if (!cart) {
+        console.log('[CART] Creating new cart for user');
+        cart = await Cart.create({ userId: uid, items: [] });
+      }
+      
+      const idx = cart.items.findIndex(i => i.productId.toString() === productId.toString());
+      if (idx > -1) {
+        cart.items[idx].quantity = (cart.items[idx].quantity || 1) + parseInt(quantity, 10);
+        console.log('[CART] Updated quantity:', cart.items[idx]);
+      } else {
+        cart.items.push({ productId, quantity: parseInt(quantity, 10) });
+        console.log('[CART] Added new item');
+      }
+      
       await cart.save();
-      return res.json({ success: true, count: cart.items.length });
+      const totalQty = cart.items.reduce((sum, i) => sum + i.quantity, 0);
+      console.log('[CART] Saved. Total quantity:', totalQty);
+      return res.json({ success: true, count: totalQty, itemCount: cart.items.length });
     }
+    
     const carts = readJson(FILES.carts);
     let ci = carts.findIndex(c => c.userId === uid);
-    if (ci === -1) { carts.push({ userId: uid, items: [] }); ci = carts.length - 1; }
+    if (ci === -1) { 
+      console.log('[CART] Creating new cart for user (JSON)');
+      carts.push({ userId: uid, items: [] }); 
+      ci = carts.length - 1; 
+    }
+    
     const ii = carts[ci].items.findIndex(i => i.productId === productId);
-    if (ii > -1) carts[ci].items[ii].quantity += +quantity;
-    else carts[ci].items.push({ productId, quantity: +quantity });
+    if (ii > -1) {
+      carts[ci].items[ii].quantity = (carts[ci].items[ii].quantity || 1) + parseInt(quantity, 10);
+      console.log('[CART] Updated quantity (JSON)');
+    } else {
+      carts[ci].items.push({ productId, quantity: parseInt(quantity, 10) });
+      console.log('[CART] Added new item (JSON)');
+    }
+    
     writeJson(FILES.carts, carts);
-    res.json({ success: true, count: carts[ci].items.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    const totalQty = carts[ci].items.reduce((sum, i) => sum + i.quantity, 0);
+    res.json({ success: true, count: totalQty, itemCount: carts[ci].items.length });
+  } catch (e) { 
+    console.error('[CART] POST Error:', e.message);
+    res.status(500).json({ error: e.message }); 
+  }
 });
 
 app.put('/api/cart/update', requireAuth, async (req, res) => {
@@ -3168,15 +3305,39 @@ app.delete('/api/cart', requireAuth, async (req, res) => {
 app.get('/api/wishlist', requireAuth, async (req, res) => {
   try {
     const uid = req.auth.userId;
+    console.log('[WISHLIST] GET /api/wishlist for userId:', uid);
+    
     if (useDB) {
-      const wl = await Wishlist.findOne({ userId: uid }) || { items: [] };
-      const products = await Product.find({ _id: { $in: wl.items } }).lean();
-      return res.json(products.map(p => ({ ...p, id: p._id })));
+      const wl = await Wishlist.findOne({ userId: uid });
+      if (!wl || !wl.items || wl.items.length === 0) {
+        console.log('[WISHLIST] Empty wishlist for user');
+        return res.json([]);
+      }
+      
+      const products = await findProductsByIds(wl.items);
+      const result = products.map(p => ({
+        ...p,
+        id: (p._id || p.id).toString(),
+        _id: (p._id || p.id).toString()
+      }));
+      console.log('[WISHLIST] Returning', result.length, 'items');
+      return res.json(result);
     }
+    
     const wl = (readJson(FILES.wishlists).find(w => w.userId === uid) || { items: [] });
+    if (!wl.items || wl.items.length === 0) {
+      console.log('[WISHLIST] Empty wishlist for user (JSON)');
+      return res.json([]);
+    }
+    
     const products = readJson(FILES.products);
-    res.json(wl.items.map(id => products.find(p => p.id === id)).filter(Boolean));
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    const result = wl.items.map(id => products.find(p => p.id === id)).filter(Boolean);
+    console.log('[WISHLIST] JSON: Returning', result.length, 'items');
+    res.json(result);
+  } catch (e) { 
+    console.error('[WISHLIST] GET Error:', e.message);
+    res.status(500).json({ error: e.message }); 
+  }
 });
 
 app.post('/api/wishlist/toggle', requireAuth, async (req, res) => {
@@ -3210,7 +3371,7 @@ app.post('/api/orders', requireAuth, async (req, res) => {
     let subtotal = 0, totalGst = 0;
     const orderItems = await Promise.all(items.map(async item => {
       let p;
-      if (useDB) { p = await Product.findById(item.productId).lean(); if (p) p.id = p._id; }
+      if (useDB) { p = await findProductById(item.productId); if (p) p.id = (p._id || p.id).toString(); }
       else { p = (readJson(FILES.products)).find(pr => pr.id === item.productId); }
       if (!p) throw new Error('Product not found');
       const gstAmt = (p.price * p.gstRate / 100) * item.quantity;

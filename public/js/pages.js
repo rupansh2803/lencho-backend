@@ -72,7 +72,7 @@ async function renderProductDetail(id) {
           </span>
         </div>
 
-        <div class="product-actions">
+        <div class="product-actions" data-product-actions="${p.id}">
           <button class="btn-add-to-cart" onclick="addToCart('${p.id}')" ${p.stock===0?'disabled':''}>
             <i class="fas fa-shopping-bag"></i> Add to Cart
           </button>
@@ -197,6 +197,7 @@ async function renderProductDetail(id) {
   window.scrollTo(0, 0);
   initScrollReveal();
   loadRecommended(p.category, p.id);
+  if (typeof updateCartButtonsUI === 'function') updateCartButtonsUI();
 }
 
 async function loadRecommended(category, currentId) {
@@ -327,7 +328,7 @@ async function renderCart() {
                 <div class="cart-item-cat">${i.product?.category || 'Uncategorized'}</div>
                 <div class="cart-item-price-unit" style="font-size:0.85rem;color:var(--gold);font-weight:600;margin:.5rem 0;">₹${price}</div>
                 <div class="qty-control" style="margin-top:.5rem;display:flex;align-items:center;gap:0.5rem;">
-                  <button class="qty-btn" onclick="updateQty('${i.productId}',Math.max(1,${qty-1}))"><i class="fas fa-minus" style="font-size:.7rem;"></i></button>
+                  <button class="qty-btn" onclick="updateQty('${i.productId}',${qty-1})"><i class="fas fa-minus" style="font-size:.7rem;"></i></button>
                   <span class="qty-num" style="min-width:2rem;text-align:center;">${qty}</span>
                   <button class="qty-btn" onclick="updateQty('${i.productId}',${qty+1})"><i class="fas fa-plus" style="font-size:.7rem;"></i></button>
                 </div>

@@ -1418,9 +1418,11 @@ async function deleteTestimonial(id) {
 }
 
 // ── COLLECTIONS (A-Z) ────────────────────────────────────────
+// ── COLLECTIONS (A-Z) ────────────────────────────────────────
 async function adminCollections() {
   const cats = await api('/api/categories');
   const products = await api('/api/products');
+  window.adminCachedCategories = cats;
   
   // Calculate counts
   const counts = products.reduce((acc, p) => { 
@@ -1441,16 +1443,20 @@ async function adminCollections() {
 
     <div class="admin-table-wrap">
       <table>
-        <thead><tr><th>Image</th><th>Name</th><th>Slug</th><th>Product Count</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Image</th><th>Name</th><th>Slug</th><th>Icon</th><th>Order</th><th>Status</th><th>Product Count</th><th>Actions</th></tr></thead>
         <tbody>${cats.map(c => `
           <tr>
             <td><img src="${c.image || ''}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;background:#f0f0f0;"/></td>
             <td>${c.name}</td>
             <td><code>${c.slug}</code></td>
+            <td>${c.icon || ''}</td>
+            <td>${c.displayOrder || 0}</td>
+            <td><span class="stock-badge ${c.status === 'active' || !c.status ? 'status-instock' : 'status-outofstock'}">${c.status?.toUpperCase() || 'ACTIVE'}</span></td>
             <td><span style="background:var(--rose-light);color:var(--rose-dark);padding:4px 8px;border-radius:6px;font-weight:600;">${counts[c.slug] || 0}</span></td>
             <td>
               <button class="btn-sm btn-outline" onclick="viewCategoryProducts('${c.slug}')"><i class="fas fa-boxes"></i> Inventory</button>
-              <button class="btn-sm" onclick="deleteCategory('${c._id}')" style="background:#fee2e2;color:#ef4444;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button>
+              <button class="btn-sm" onclick="showEditCategory('${c._id || c.id}')"><i class="fas fa-edit"></i> Edit</button>
+              <button class="btn-sm" onclick="deleteCategory('${c._id || c.id}')" style="background:#fee2e2;color:#ef4444;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button>
             </td>
           </tr>
         `).join('')}</tbody>
@@ -1511,9 +1517,18 @@ async function showAddCategory() {
     <div class="modal-card">
       <h3>Add New Collection</h3>
       <div class="form-group"><label>Name (e.g. Earrings)</label><input id="nc-name" placeholder="Name"/></div>
+      <div class="form-group"><label>Icon (e.g. 👂)</label><input id="nc-icon" placeholder="Icon"/></div>
       <div class="form-group"><label>Image URL</label><input id="nc-image" placeholder="Image URL"/></div>
       <div class="form-group"><label>Description</label><textarea id="nc-desc" rows="2"></textarea></div>
-      <div style="display:flex;gap:1rem;">
+      <div class="form-group"><label>Display Order</label><input id="nc-order" type="number" value="0"/></div>
+      <div class="form-group">
+        <label>Status</label>
+        <select id="nc-status">
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:1rem;margin-top:1.5rem;">
         <button class="btn-primary" onclick="saveCategory()">Create Collection</button>
         <button class="btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
       </div>
@@ -1525,12 +1540,60 @@ async function showAddCategory() {
 async function saveCategory() {
   const body = {
     name: document.getElementById('nc-name').value,
+    icon: document.getElementById('nc-icon').value,
     image: document.getElementById('nc-image').value,
-    description: document.getElementById('nc-desc').value
+    description: document.getElementById('nc-desc').value,
+    displayOrder: parseInt(document.getElementById('nc-order').value || 0, 10),
+    status: document.getElementById('nc-status').value
   };
   const r = await api('/api/admin/categories', { method: 'POST', body });
   if (r.error) { toast(r.error, 'error'); return; }
   toast('Collection Added! ✦', 'success');
+  document.querySelector('.modal-overlay').remove();
+  adminCollections();
+}
+
+async function showEditCategory(id) {
+  const cat = window.adminCachedCategories.find(c => (c._id || c.id) === id);
+  if (!cat) return;
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-card">
+      <h3>Edit Collection</h3>
+      <div class="form-group"><label>Name (e.g. Earrings)</label><input id="ec-name" value="${cat.name || ''}" placeholder="Name"/></div>
+      <div class="form-group"><label>Icon (e.g. 👂)</label><input id="ec-icon" value="${cat.icon || ''}" placeholder="Icon"/></div>
+      <div class="form-group"><label>Image URL</label><input id="ec-image" value="${cat.image || ''}" placeholder="Image URL"/></div>
+      <div class="form-group"><label>Description</label><textarea id="ec-desc" rows="2">${cat.description || ''}</textarea></div>
+      <div class="form-group"><label>Display Order</label><input id="ec-order" type="number" value="${cat.displayOrder || 0}"/></div>
+      <div class="form-group">
+        <label>Status</label>
+        <select id="ec-status">
+          <option value="active" ${cat.status === 'active' ? 'selected' : ''}>Active</option>
+          <option value="inactive" ${cat.status === 'inactive' ? 'selected' : ''}>Inactive</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:1rem;margin-top:1.5rem;">
+        <button class="btn-primary" onclick="updateCategory('${id}')">Save Changes</button>
+        <button class="btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function updateCategory(id) {
+  const body = {
+    name: document.getElementById('ec-name').value,
+    icon: document.getElementById('ec-icon').value,
+    image: document.getElementById('ec-image').value,
+    description: document.getElementById('ec-desc').value,
+    displayOrder: parseInt(document.getElementById('ec-order').value || 0, 10),
+    status: document.getElementById('ec-status').value
+  };
+  const r = await api('/api/admin/categories/' + id, { method: 'PUT', body });
+  if (r.error) { toast(r.error, 'error'); return; }
+  toast('Collection Updated! ✦', 'success');
   document.querySelector('.modal-overlay').remove();
   adminCollections();
 }
