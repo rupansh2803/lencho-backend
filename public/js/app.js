@@ -376,6 +376,7 @@ async function navigate(path, pushState = true) {
     else if (route === '/terms') { renderTerms(); }
     else if (route === '/privacy') { renderPrivacy(); }
     else if (route === '/disclaimer') { renderDisclaimer(); }
+    else if (route === '/woollen-collection') { renderWoollenCollection(); }
     else if (isAdmin) { renderAdmin(); }
     else { app.innerHTML = `<div class="page-wrap" style="text-align:center;padding-top:120px;"><div class="empty-icon">🔍</div><h2 style="font-family:'Cormorant Garamond',serif;font-size:2rem;">Page Not Found</h2><p style="color:var(--gray);margin:1rem 0 2rem;">The page you're looking for doesn't exist.</p><button class="btn-primary" onclick="navigate('/')">Go Home</button></div>`; }
   } catch (e) { console.error(e); }

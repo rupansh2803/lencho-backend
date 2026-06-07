@@ -1226,3 +1226,264 @@ function renderDisclaimer() {
   `);
   window.scrollTo(0,0);
 }
+
+// ── WOOLLEN COLLECTION PAGE ────────────────────────────────
+async function renderWoollenCollection() {
+  const app = document.getElementById('app');
+
+  const subCategories = [
+    { emoji: '🎀', name: 'Hair Clips', desc: 'Handcrafted clips for every mood', gradient: 'linear-gradient(135deg,#fce4ec,#f9c6d0)' },
+    { emoji: '🌸', name: 'Hair Bands', desc: 'Soft elastic bands for all hair types', gradient: 'linear-gradient(135deg,#f3e5f5,#f3d7f5)' },
+    { emoji: '🎗️', name: 'Scrunchies', desc: 'Gentle on hair, big on style', gradient: 'linear-gradient(135deg,#e8f5e9,#c8e6c9)' },
+    { emoji: '🦋', name: 'Bows', desc: 'Elegant bows for a princess look', gradient: 'linear-gradient(135deg,#fff3e0,#ffe0b2)' },
+    { emoji: '🍼', name: 'Baby Accessories', desc: 'Soft, safe and adorable for little ones', gradient: 'linear-gradient(135deg,#e1f5fe,#b3e5fc)' },
+    { emoji: '🌺', name: 'Crochet Flowers', desc: 'Delicate blooms of woollen art', gradient: 'linear-gradient(135deg,#fbe9e7,#ffccbc)' },
+    { emoji: '✨', name: 'Woollen Decor', desc: 'Beautiful handmade home decor pieces', gradient: 'linear-gradient(135deg,#f1f8e9,#dcedc8)' },
+    { emoji: '🧶', name: 'All Woollen', desc: 'Explore the complete collection', gradient: 'linear-gradient(135deg,#f9fbe7,#f0f4c3)' },
+  ];
+
+  const testimonials = [
+    { name: 'Priya S.', city: 'Delhi', review: 'The crochet hair clips are absolutely stunning! So soft and beautiful. My daughter loves them.', rating: 5, avatar: '👩‍🦱' },
+    { name: 'Ananya M.', city: 'Mumbai', review: 'Ordered scrunchies for my whole friend group. Every piece is made with such care and love!', rating: 5, avatar: '👩' },
+    { name: 'Ritu K.', city: 'Bangalore', review: 'The bows are perfect for my little one. Soft, gentle and so adorable. Best handmade accessories online.', rating: 5, avatar: '👩‍🦰' },
+    { name: 'Deepa V.', city: 'Chennai', review: 'Woollen flowers look so real! I use them as home decor. Bought 10 pieces and gifted them too!', rating: 5, avatar: '👩‍🦳' },
+  ];
+
+  const whyPoints = [
+    { icon: '🤝', title: 'Made with Love', desc: 'Every piece is handcrafted by skilled artisans. No machines, just heart and hands.' },
+    { icon: '🌿', title: 'Natural Materials', desc: 'We use premium woollen yarn that is soft, gentle and skin-friendly for all ages.' },
+    { icon: '♾️', title: 'One of a Kind', desc: 'Each piece is unique. No two handmade items are exactly alike — you get something truly special.' },
+    { icon: '🎁', title: 'Perfect for Gifting', desc: 'Beautiful packaging makes our woollen accessories the perfect gift for loved ones.' },
+    { icon: '💫', title: 'Premium Quality', desc: 'Durable stitching, vibrant colors, and attention to detail ensure long-lasting beauty.' },
+    { icon: '🏡', title: 'Support Artisans', desc: 'Your purchase directly supports local craftspeople and keeps traditional art alive.' },
+  ];
+
+  app.innerHTML = `
+  <section class="woollen-hero reveal" role="banner">
+    <div class="woollen-hero-bg">
+      <img src="/images/woollen_hero.png" alt="Woollen Collection" loading="eager"/>
+      <div class="woollen-hero-overlay"></div>
+    </div>
+    <div class="woollen-hero-content">
+      <div class="woollen-badge-top">🧶 HANDMADE WITH LOVE</div>
+      <h1 class="woollen-hero-title">Woollen Collection<span class="woollen-hero-italic">Artisan Crafted</span></h1>
+      <p class="woollen-hero-sub">Discover our exclusive range of handmade woollen hair accessories.<br/>Soft textures, vibrant colors, crafted with care — just for you.</p>
+      <div class="woollen-hero-btns">
+        <button class="woollen-btn-primary" onclick="navigate('/products?category=woollen')"><i class="fas fa-shopping-bag"></i> Shop Now</button>
+        <button class="woollen-btn-ghost" onclick="document.getElementById('woollen-categories').scrollIntoView({behavior:'smooth'})"><i class="fas fa-chevron-down"></i> Explore Categories</button>
+      </div>
+      <div class="woollen-hero-stats">
+        <div class="woollen-stat"><span class="woollen-stat-num">100%</span><span class="woollen-stat-label">Handmade</span></div>
+        <div class="woollen-stat-divider"></div>
+        <div class="woollen-stat"><span class="woollen-stat-num">500+</span><span class="woollen-stat-label">Happy Customers</span></div>
+        <div class="woollen-stat-divider"></div>
+        <div class="woollen-stat"><span class="woollen-stat-num">50+</span><span class="woollen-stat-label">Designs</span></div>
+      </div>
+    </div>
+    <div class="woollen-hero-scroll-hint"><div class="woollen-scroll-dot"></div></div>
+  </section>
+
+  <div class="woollen-trust-bar">
+    <div class="woollen-trust-item"><i class="fas fa-leaf"></i><span>Natural Yarn</span></div>
+    <div class="woollen-trust-item"><i class="fas fa-hands"></i><span>100% Handcrafted</span></div>
+    <div class="woollen-trust-item"><i class="fas fa-truck-fast"></i><span>Free Shipping &#x20B9;999+</span></div>
+    <div class="woollen-trust-item"><i class="fas fa-rotate-left"></i><span>7-Day Returns</span></div>
+    <div class="woollen-trust-item"><i class="fas fa-gift"></i><span>Gift Packaging</span></div>
+  </div>
+
+  <section class="woollen-categories-section" id="woollen-categories">
+    <div class="woollen-section-header reveal">
+      <div class="woollen-eyebrow">🌸 Browse by Type</div>
+      <h2 class="woollen-section-title">Our Collections</h2>
+      <p class="woollen-section-sub">Each piece tells a story of craftsmanship and creativity</p>
+    </div>
+    <div class="woollen-categories-grid">
+      ${subCategories.map((cat, i) => `
+        <div class="woollen-cat-card reveal" style="animation-delay:${i * 0.08}s;"
+             onclick="navigate('/products?category=woollen')">
+          <div class="woollen-cat-icon-wrap" style="background:${cat.gradient}"><span class="woollen-cat-emoji">${cat.emoji}</span></div>
+          <div class="woollen-cat-info"><h3 class="woollen-cat-name">${cat.name}</h3><p class="woollen-cat-desc">${cat.desc}</p></div>
+          <div class="woollen-cat-arrow"><i class="fas fa-arrow-right"></i></div>
+        </div>
+      `).join('')}
+    </div>
+  </section>
+
+  <section class="woollen-why-section">
+    <div class="woollen-why-bg-pattern"></div>
+    <div class="woollen-section-header reveal" style="position:relative;z-index:2;">
+      <div class="woollen-eyebrow">💚 Our Promise</div>
+      <h2 class="woollen-section-title" style="color:#2d4a2d;">Why Choose Handmade?</h2>
+    </div>
+    <div class="woollen-why-grid">
+      ${whyPoints.map((pt, i) => `
+        <div class="woollen-why-card reveal" style="animation-delay:${i * 0.1}s;">
+          <div class="woollen-why-icon">${pt.icon}</div>
+          <h3 class="woollen-why-title">${pt.title}</h3>
+          <p class="woollen-why-desc">${pt.desc}</p>
+        </div>
+      `).join('')}
+    </div>
+  </section>
+
+  <section class="woollen-products-section">
+    <div class="woollen-section-header reveal">
+      <div class="woollen-eyebrow">✨ New Arrivals</div>
+      <h2 class="woollen-section-title">Featured Woollen Picks</h2>
+      <p class="woollen-section-sub">Handpicked favorites from our artisan workshop</p>
+    </div>
+    <div class="woollen-products-grid" id="woollen-products-grid">
+      <div class="woollen-loading-spinner"><div class="woollen-spinner"></div><p style="color:#a8c5a0;margin-top:1rem;font-size:.95rem;">Loading beautiful pieces...</p></div>
+    </div>
+    <div style="text-align:center;margin-top:3rem;">
+      <button class="woollen-btn-primary" onclick="navigate('/products?category=woollen')" style="font-size:1rem;padding:16px 42px;"><i class="fas fa-th-large"></i> View All Woollen Products</button>
+    </div>
+  </section>
+
+  <section class="woollen-testimonials-section">
+    <div class="woollen-section-header reveal">
+      <div class="woollen-eyebrow">💬 Customer Love</div>
+      <h2 class="woollen-section-title">What Our Customers Say</h2>
+    </div>
+    <div class="woollen-testimonials-track">
+      <div class="woollen-testimonials-inner" id="woollen-testi-inner">
+        ${[...testimonials, ...testimonials].map(t => `
+          <div class="woollen-testi-card">
+            <div class="woollen-testi-avatar">${t.avatar}</div>
+            <div class="woollen-stars">${'⭐'.repeat(t.rating)}</div>
+            <p class="woollen-testi-text">"${t.review}"</p>
+            <div class="woollen-testi-name">${t.name}</div>
+            <div class="woollen-testi-city">📍 ${t.city}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    <div class="woollen-testi-controls">
+      <button class="woollen-testi-btn" onclick="scrollWoollenTestimonials(-1)" aria-label="Previous"><i class="fas fa-chevron-left"></i></button>
+      <div class="woollen-testi-dots" id="woollen-testi-dots">
+        ${testimonials.map((_, i) => `<span class="woollen-dot ${i===0?'active':''}" onclick="goToWoollenSlide(${i})"></span>`).join('')}
+      </div>
+      <button class="woollen-testi-btn" onclick="scrollWoollenTestimonials(1)" aria-label="Next"><i class="fas fa-chevron-right"></i></button>
+    </div>
+  </section>
+
+  <section class="woollen-cta-section reveal">
+    <div class="woollen-cta-inner">
+      <div class="woollen-cta-icon">🧶</div>
+      <h2 class="woollen-cta-title">Get Notified for New Arrivals</h2>
+      <p class="woollen-cta-sub">Be the first to know when our new handmade woollen collections drop. Plus, get exclusive offers!</p>
+      <div class="woollen-cta-form">
+        <input type="email" id="woollen-email-input" placeholder="Enter your email address" class="woollen-email-input"/>
+        <button class="woollen-btn-primary" onclick="subscribeWoollenNewsletter()" style="border-radius:12px;white-space:nowrap;"><i class="fas fa-bell"></i> Notify Me</button>
+      </div>
+      <p class="woollen-cta-note">*No spam, ever. Unsubscribe anytime.</p>
+    </div>
+  </section>
+  `;
+
+  _loadWoollenProducts();
+  _initWoollenTestimonials();
+  initScrollReveal();
+}
+
+async function _loadWoollenProducts() {
+  const grid = document.getElementById('woollen-products-grid');
+  if (!grid) return;
+  try {
+    const data = await api('/api/products?category=woollen&limit=8');
+    const products = Array.isArray(data) ? data : (data.products || data.items || []);
+    if (!products || products.length === 0) {
+      const placeholders = [
+        { emoji: '🎀', name: 'Crochet Hair Clip Set', price: '149', badge: 'New', color: '#fce4ec' },
+        { emoji: '🌸', name: 'Floral Scrunchie Bundle', price: '99', badge: 'Popular', color: '#f3e5f5' },
+        { emoji: '🦋', name: 'Handmade Butterfly Bow', price: '79', badge: 'Trending', color: '#e8f5e9' },
+        { emoji: '🌺', name: 'Woollen Flower Pin', price: '119', badge: 'Sale', color: '#fff3e0' },
+      ];
+      grid.innerHTML = placeholders.map(p => `
+        <div class="woollen-product-placeholder reveal">
+          <div class="wpp-image" style="background:${p.color};">
+            <span class="wpp-emoji">${p.emoji}</span>
+            <div class="wpp-badge">${p.badge}</div>
+          </div>
+          <div class="wpp-info">
+            <p class="wpp-name">${p.name}</p>
+            <div class="wpp-price-row">
+              <span class="wpp-price">&#x20B9;${p.price}</span>
+              <button class="wpp-cart-btn" onclick="showToast('Add products from Admin panel to show here!', 'info')"><i class="fas fa-shopping-bag"></i></button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+      return;
+    }
+    grid.innerHTML = products.map(p => {
+      const img = (p.images && p.images[0]) ? safeImageUrl(p.images[0], p.category) : '';
+      const fallback = typeof imageFallbackAttr === 'function' ? imageFallbackAttr(p.category, p.images?.[0]) : '';
+      const discount = p.mrp ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0;
+      return `
+      <div class="woollen-product-card reveal" onclick="navigate('/product/${p.id || p._id}')">
+        <div class="wpc-image-wrap">
+          <img src="${img}" ${fallback} alt="${p.name}" loading="lazy"/>
+          ${discount ? '<div class="wpc-badge">' + discount + '% OFF</div>' : ''}
+          <div class="wpc-overlay"><button class="wpc-quick-btn" onclick="event.stopPropagation();addToCart('${p.id || p._id}')"><i class="fas fa-shopping-bag"></i> Add to Cart</button></div>
+        </div>
+        <div class="wpc-info">
+          <p class="wpc-name">${p.name}</p>
+          <div class="wpc-price-row">
+            <span class="wpc-price">&#x20B9;${p.price}</span>
+            ${p.mrp ? '<span class="wpc-mrp">&#x20B9;' + p.mrp + '</span>' : ''}
+          </div>
+          <div class="wpc-stars">${typeof renderStars === 'function' ? renderStars(p.rating || 4.5) : '⭐⭐⭐⭐⭐'}</div>
+        </div>
+      </div>`;
+    }).join('');
+    initScrollReveal();
+  } catch(e) {
+    console.warn('Woollen products load error:', e);
+    if (grid) grid.innerHTML = '<p style="text-align:center;color:#a8c5a0;padding:2rem;">Products coming soon! 🧶</p>';
+  }
+}
+
+let _woollenTestiIdx = 0;
+let _woollenTestiTimer = null;
+function _initWoollenTestimonials() {
+  _woollenTestiIdx = 0;
+  _startWoollenAutoPlay();
+}
+function _startWoollenAutoPlay() {
+  if (_woollenTestiTimer) clearInterval(_woollenTestiTimer);
+  _woollenTestiTimer = setInterval(() => { scrollWoollenTestimonials(1); }, 3800);
+}
+function scrollWoollenTestimonials(dir) {
+  const inner = document.getElementById('woollen-testi-inner');
+  if (!inner) { clearInterval(_woollenTestiTimer); return; }
+  const total = 4;
+  _woollenTestiIdx = (_woollenTestiIdx + dir + total) % total;
+  const card = inner.querySelector('.woollen-testi-card');
+  const cardW = card ? card.offsetWidth + 24 : 340;
+  inner.style.transform = 'translateX(-' + (_woollenTestiIdx * cardW) + 'px)';
+  document.querySelectorAll('.woollen-dot').forEach((d, i) => d.classList.toggle('active', i === _woollenTestiIdx));
+  _startWoollenAutoPlay();
+}
+function goToWoollenSlide(idx) {
+  const inner = document.getElementById('woollen-testi-inner');
+  if (!inner) return;
+  _woollenTestiIdx = idx;
+  const card = inner.querySelector('.woollen-testi-card');
+  const cardW = card ? card.offsetWidth + 24 : 340;
+  inner.style.transform = 'translateX(-' + (idx * cardW) + 'px)';
+  document.querySelectorAll('.woollen-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+  _startWoollenAutoPlay();
+}
+function subscribeWoollenNewsletter() {
+  const input = document.getElementById('woollen-email-input');
+  if (!input) return;
+  const email = input.value.trim();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showToast('Please enter a valid email address', 'error');
+    return;
+  }
+  input.value = '';
+  showToast('🧶 You\'re subscribed! We\'ll notify you of new woollen drops.', 'success');
+}
+
