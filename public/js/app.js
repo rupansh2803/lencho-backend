@@ -1599,9 +1599,9 @@ async function buyNow(productId) {
   toast('Opening checkout...', 'success');
 }
 
-// ── DISCOUNT POPUP (SHOW ONCE PER SESSION) ────────────────
+// ── DISCOUNT POPUP (SHOW ONCE PER USER) ──────────────────
 function showDiscountPopup() {
-  if (sessionStorage.getItem('popupShown')) return;
+  if (localStorage.getItem('popupShown')) return;
   
   const popup = document.getElementById('discount-popup');
   if (!popup) return;
@@ -1609,7 +1609,7 @@ function showDiscountPopup() {
   popup.style.display = 'flex';
   document.body.style.overflow = 'hidden';
   document.documentElement.style.overflow = 'hidden';
-  sessionStorage.setItem('popupShown', '1');
+  localStorage.setItem('popupShown', '1');
 }
 
 function closePopup() {
@@ -1618,7 +1618,7 @@ function closePopup() {
   popup.style.display = 'none';
   document.body.style.overflow = '';
   document.documentElement.style.overflow = '';
-  sessionStorage.setItem('popupShown', '1'); // Force save just in case
+  localStorage.setItem('popupShown', '1'); // Force save just in case
 }
 async function claimDiscount() {
   const email = document.getElementById('popup-email')?.value;
@@ -2219,7 +2219,7 @@ async function renderHome(options = {}) {
   if (isOn('showPromo')) startOfferTimer();
   
   // Show discount popup after delay (non-blocking, detached from page load)
-  if (!sessionStorage.getItem('popupShown')) {
+  if (!localStorage.getItem('popupShown')) {
     setTimeout(() => {
       showDiscountPopup();
     }, 5000);
