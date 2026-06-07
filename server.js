@@ -758,6 +758,7 @@ function normalizeProductRecord(product) {
     ...product,
     id: product._id?.toString?.() || product.id,
     category,
+    subcategory: product.subcategory || '',
     price: Number(product.price) || 0,
     mrp: Number(product.mrp) || Number(product.price) || 0,
     discount: Number(product.discount) || 0,
@@ -1788,6 +1789,41 @@ app.post('/api/admin/settings', requireAdmin, async (req, res) => {
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// Woollen Settings Routes
+app.get('/api/woollen/settings', async (req, res) => {
+  try {
+    if (useDB) {
+      const doc = await Settings.findOne({ key: 'woollen_collection_settings' });
+      if (doc) return res.json(doc.value);
+    }
+    const fallbackSettings = getFallbackSettingsObject();
+    res.json(fallbackSettings.woollen_collection_settings || {
+      heroTitle: 'Woollen Collection',
+      heroSubtitle: 'Artisan Crafted',
+      heroDescription: 'Discover our exclusive range of handmade woollen hair accessories.',
+      heroImage: '/images/woollen_hero.png'
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/woollen/settings', requireAdmin, async (req, res) => {
+  try {
+    if (useDB) {
+      await Settings.findOneAndUpdate(
+        { key: 'woollen_collection_settings' },
+        { value: req.body },
+        { upsert: true }
+      );
+    } else {
+      const fallbackSettings = getFallbackSettingsObject();
+      fallbackSettings.woollen_collection_settings = req.body;
+      saveFallbackSettingsObject(fallbackSettings);
+    }
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 // ──── TEST SMTP ENDPOINT ──────────────────────────────────────
 app.post('/api/admin/test-smtp', requireAdmin, async (req, res) => {
@@ -2966,10 +3002,11 @@ app.get('/api/recommendations', async (req, res) => {
 app.get('/api/products', async (req, res) => {
   try {
     await incrementStoreVisitorCount(req);
-    const { category, featured, search, sort } = req.query;
+    const { category, subcategory, featured, search, sort } = req.query;
     if (useDB) {
       let query = {};
       if (category) query.category = category;
+      if (subcategory) query.subcategory = subcategory;
       if (featured === 'true') query.featured = true;
       if (search) query.$or = [{ name: { $regex: search, $options: 'i' } }, { description: { $regex: search, $options: 'i' } }];
       let q = Product.find(query);
@@ -2981,6 +3018,7 @@ app.get('/api/products', async (req, res) => {
 
       let fallbackProducts = getJsonCatalogProducts();
       if (category) fallbackProducts = fallbackProducts.filter(p => p.category === category);
+      if (subcategory) fallbackProducts = fallbackProducts.filter(p => p.subcategory === subcategory);
       if (featured === 'true') fallbackProducts = fallbackProducts.filter(p => p.featured);
       if (search) fallbackProducts = fallbackProducts.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
       if (sort === 'price-asc') fallbackProducts.sort((a, b) => a.price - b.price);
@@ -2990,6 +3028,7 @@ app.get('/api/products', async (req, res) => {
     }
     let products = getJsonCatalogProducts();
     if (category) products = products.filter(p => p.category === category);
+    if (subcategory) products = products.filter(p => p.subcategory === subcategory);
     if (featured === 'true') products = products.filter(p => p.featured);
     if (search) products = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
     if (sort === 'price-asc') products.sort((a, b) => a.price - b.price);
@@ -3014,19 +3053,19 @@ app.get('/api/products/:id', async (req, res) => {
 
 app.post('/api/products', requireAdmin, upload.array('images', 5), async (req, res) => {
   try {
-    const { name, category, price, mrp, discount, stock, description, gstRate, hsn, featured } = req.body;
+    const { name, category, subcategory, price, mrp, discount, stock, description, gstRate, hsn, featured } = req.body;
     const images = req.files?.length
       ? await uploadMediaFiles(req.files, `products/${category || 'general'}`)
       : [getCategoryFallbackImage(category)];
     if (useDB) {
-      const p = await Product.create({ name, category, price: +price, mrp: +mrp, discount: +(discount || 0), stock: +stock, description, images, gstRate: +(gstRate || 18), hsn: hsn || '7117', featured: featured === 'true' });
+      const p = await Product.create({ name, category, subcategory, price: +price, mrp: +mrp, discount: +(discount || 0), stock: +stock, description, images, gstRate: +(gstRate || 18), hsn: hsn || '7117', featured: featured === 'true' });
       const products = readJson(FILES.products);
       products.push({ ...p.toObject(), id: p._id.toString() });
       writeJson(FILES.products, products);
       return res.json({ success: true, product: normalizeProductRecord({ ...p.toObject(), id: p._id.toString() }) });
     }
     const products = readJson(FILES.products);
-    const p = { id: uuidv4(), name, category, price: +price, mrp: +mrp, discount: +(discount || 0), stock: +stock, description, images, gstRate: +(gstRate || 18), hsn: hsn || '7117', featured: featured === 'true', rating: 0, reviews: [], createdAt: new Date().toISOString() };
+    const p = { id: uuidv4(), name, category, subcategory, price: +price, mrp: +mrp, discount: +(discount || 0), stock: +stock, description, images, gstRate: +(gstRate || 18), hsn: hsn || '7117', featured: featured === 'true', rating: 0, reviews: [], createdAt: new Date().toISOString() };
     products.push(p);
     writeJson(FILES.products, products);
     res.json({ success: true, product: normalizeProductRecord(p) });

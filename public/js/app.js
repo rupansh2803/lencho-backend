@@ -32,6 +32,7 @@ const MEDIA_FALLBACKS = {
   chains: '/images/showcase.png',
   'maang-tikka': '/images/showcase.png',
   sets: '/images/showcase.png',
+  woollen: '/images/woollen_hero.png',
   default: '/images/hero.png'
 };
 let currentPageContext = { route: '/', category: '', product: null };
@@ -376,7 +377,9 @@ async function navigate(path, pushState = true) {
     else if (route === '/terms') { renderTerms(); }
     else if (route === '/privacy') { renderPrivacy(); }
     else if (route === '/disclaimer') { renderDisclaimer(); }
-    else if (route === '/woollen-collection') { renderWoollenCollection(); }
+    else if (route === '/woollen') { renderWoollen(); }
+    else if (route === '/woollen/products') { renderWoollenProducts(); }
+    else if (route === '/woollen-collection') { navigate('/woollen', true); }
     else if (isAdmin) { renderAdmin(); }
     else { app.innerHTML = `<div class="page-wrap" style="text-align:center;padding-top:120px;"><div class="empty-icon">🔍</div><h2 style="font-family:'Cormorant Garamond',serif;font-size:2rem;">Page Not Found</h2><p style="color:var(--gray);margin:1rem 0 2rem;">The page you're looking for doesn't exist.</p><button class="btn-primary" onclick="navigate('/')">Go Home</button></div>`; }
   } catch (e) { console.error(e); }
@@ -1466,6 +1469,69 @@ async function clearCart() {
   }
 }
 
+// Expose updateQty globally so it can be called from any page or dynamically generated elements
+window.updateQty = async function(productId, qty) {
+  if (typeof updateQty === 'function' && updateQty !== window.updateQty) {
+    return updateQty(productId, qty);
+  }
+  
+  // Fallback direct implementation
+  if (qty <= 0) {
+    const confirmed = confirm('Remove this item from cart?');
+    if (!confirmed) return;
+    return removeFromCart(productId);
+  }
+  
+  if (!currentUser) return;
+  const cacheKey = 'cart_cache_' + currentUser.id;
+  
+  // 1. Optimistic Update
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) {
+      const cached = JSON.parse(raw);
+      const items = cached.items || [];
+      const item = items.find(i => i.productId === productId);
+      if (item) {
+        item.quantity = qty;
+        localStorage.setItem(cacheKey, JSON.stringify({ ...cached, items }));
+        const freshCount = items.reduce((sum, i) => sum + i.quantity, 0);
+        updateCartBadgeOptimistic(freshCount);
+        updateCartButtonsUI();
+        if (location.pathname === '/cart') {
+          renderCart();
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Optimistic qty update failed:', e);
+  }
+  
+  // 2. Background Sync
+  try {
+    const r = await api('/api/cart/update', { method: 'PUT', body: { productId, quantity: qty } });
+    if (r.error) {
+      toast(r.error, 'error');
+      updateCartCount();
+      return;
+    }
+    const fresh = await api('/api/cart');
+    if (fresh && !fresh.error) {
+      localStorage.setItem(cacheKey, JSON.stringify(fresh));
+      const freshCount = (fresh.items || []).reduce((sum, i) => sum + i.quantity, 0);
+      updateCartBadgeOptimistic(freshCount);
+      updateCartButtonsUI();
+      if (location.pathname === '/cart') {
+        renderCart();
+      }
+    }
+  } catch (e) {
+    console.error('Update qty background sync error:', e);
+    updateCartCount();
+  }
+};
+
+
 // Wishlist with INSTANT updates
 async function toggleWishlist(productId, btn) {
   if (!currentUser) { openAuthModal(); return; }
@@ -2080,6 +2146,34 @@ async function renderHome(options = {}) {
       }
     </div>
   </section>` : ''}
+
+  <!-- WOOLLEN COLLECTION BANNER SECTION -->
+  <section class="woollen-home-banner" style="background: linear-gradient(135deg, #f3f7f2 0%, #e6efe3 100%); padding: 5rem 5%; margin: 2rem 0; border-radius: 24px; box-shadow: 0 15px 35px rgba(74, 124, 74, 0.08); display: flex; align-items: center; gap: 3rem; flex-wrap: wrap; position: relative; overflow: hidden; border: 1px solid rgba(74, 124, 74, 0.15);">
+    <div style="position: absolute; top: -50px; right: -50px; width: 200px; height: 200px; border-radius: 50%; background: rgba(74, 124, 74, 0.03); z-index: 1;"></div>
+    <div style="position: absolute; bottom: -80px; left: -80px; width: 250px; height: 250px; border-radius: 50%; background: rgba(74, 124, 74, 0.03); z-index: 1;"></div>
+    
+    <div class="woollen-banner-content" style="flex: 1.2; min-width: 300px; position: relative; z-index: 2;">
+      <div class="woollen-badge" style="display: inline-block; background: #4a7c4a; color: #fff; padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 700; letter-spacing: 1px; margin-bottom: 1.5rem; text-transform: uppercase;">🧶 New Handmade Collection</div>
+      <h2 style="font-family: 'Playfair Display', serif; font-size: clamp(2rem, 4vw, 3rem); color: #2d4a2d; line-height: 1.2; margin-bottom: 1.25rem;">Exquisite Handmade<br/><span style="color: #4a7c4a; font-style: italic;">Woollen Accessories</span></h2>
+      <p style="color: #607d60; font-size: 1.1rem; line-height: 1.6; margin-bottom: 2rem; max-width: 580px;">Discover the charm of soft textures and artisan craftsmanship. Beautifully knitted hair clips, bands, scrunchies, and bows designed with love and detail.</p>
+      
+      <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+        <button class="btn-primary" onclick="navigate('/woollen')" style="background: linear-gradient(135deg, #4a7c4a, #386038); border: none; font-weight: 600; padding: 16px 36px; border-radius: 8px; cursor: pointer; color: #fff; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 8px 20px rgba(74, 124, 74, 0.25); transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+          Explore Collection <i class="fas fa-arrow-right"></i>
+        </button>
+        <button class="btn-outline" onclick="navigate('/woollen/products')" style="border: 2px solid #4a7c4a; color: #4a7c4a; background: transparent; font-weight: 600; padding: 16px 36px; border-radius: 8px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(74,124,74,0.05)'" onmouseout="this.style.background='transparent'">
+          View Products
+        </button>
+      </div>
+    </div>
+    
+    <div class="woollen-banner-image" style="flex: 1; min-width: 280px; position: relative; z-index: 2; display: flex; justify-content: center; align-items: center;">
+      <div style="position: relative; width: 100%; max-width: 380px; aspect-ratio: 1/1; border-radius: 24px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.12); transform: rotate(-2deg); transition: transform 0.3s ease;" onmouseover="this.style.transform='rotate(0deg) scale(1.02)'" onmouseout="this.style.transform='rotate(-2deg) scale(1)'">
+        <img src="/images/woollen_hero.png" alt="Woollen Collection Products" style="width: 100%; height: 100%; object-fit: cover; display: block;" onerror="this.src='/images/showcase.png'"/>
+        <div style="position: absolute; inset: 0; background: linear-gradient(to top, rgba(45,74,45,0.4), transparent);"></div>
+      </div>
+    </div>
+  </section>
 
   ${isOn('showCollections') ? `<section class="categories" style="padding:4rem 5%;${g('homeCollectionsBg') ? `background:${g('homeCollectionsBg')};` : ''}">
     <div class="section-header reveal">

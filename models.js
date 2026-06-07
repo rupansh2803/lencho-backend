@@ -30,6 +30,7 @@ const userSchema = new mongoose.Schema({
 const productSchema = new mongoose.Schema({
   name:       { type: String, required: true },
   category:   { type: String, required: true },
+  subcategory:{ type: String, default: '' },
   price:      { type: Number, required: true },
   mrp:        { type: Number, required: true },
   discount:   { type: Number, default: 0 },

@@ -1228,7 +1228,7 @@ function renderDisclaimer() {
 }
 
 // ── WOOLLEN COLLECTION PAGE ────────────────────────────────
-async function renderWoollenCollection() {
+async function renderWoollen() {
   const app = document.getElementById('app');
 
   const subCategories = [
@@ -1269,7 +1269,7 @@ async function renderWoollenCollection() {
       <h1 class="woollen-hero-title">Woollen Collection<span class="woollen-hero-italic">Artisan Crafted</span></h1>
       <p class="woollen-hero-sub">Discover our exclusive range of handmade woollen hair accessories.<br/>Soft textures, vibrant colors, crafted with care — just for you.</p>
       <div class="woollen-hero-btns">
-        <button class="woollen-btn-primary" onclick="navigate('/products?category=woollen')"><i class="fas fa-shopping-bag"></i> Shop Now</button>
+        <button class="woollen-btn-primary" onclick="navigate('/woollen/products')"><i class="fas fa-shopping-bag"></i> Shop Now</button>
         <button class="woollen-btn-ghost" onclick="document.getElementById('woollen-categories').scrollIntoView({behavior:'smooth'})"><i class="fas fa-chevron-down"></i> Explore Categories</button>
       </div>
       <div class="woollen-hero-stats">
@@ -1300,7 +1300,7 @@ async function renderWoollenCollection() {
     <div class="woollen-categories-grid">
       ${subCategories.map((cat, i) => `
         <div class="woollen-cat-card reveal" style="animation-delay:${i * 0.08}s;"
-             onclick="navigate('/products?category=woollen')">
+             onclick="navigate('/woollen/products?subcategory=${encodeURIComponent(cat.name)}')">
           <div class="woollen-cat-icon-wrap" style="background:${cat.gradient}"><span class="woollen-cat-emoji">${cat.emoji}</span></div>
           <div class="woollen-cat-info"><h3 class="woollen-cat-name">${cat.name}</h3><p class="woollen-cat-desc">${cat.desc}</p></div>
           <div class="woollen-cat-arrow"><i class="fas fa-arrow-right"></i></div>
@@ -1336,7 +1336,7 @@ async function renderWoollenCollection() {
       <div class="woollen-loading-spinner"><div class="woollen-spinner"></div><p style="color:#a8c5a0;margin-top:1rem;font-size:.95rem;">Loading beautiful pieces...</p></div>
     </div>
     <div style="text-align:center;margin-top:3rem;">
-      <button class="woollen-btn-primary" onclick="navigate('/products?category=woollen')" style="font-size:1rem;padding:16px 42px;"><i class="fas fa-th-large"></i> View All Woollen Products</button>
+      <button class="woollen-btn-primary" onclick="navigate('/woollen/products')" style="font-size:1rem;padding:16px 42px;"><i class="fas fa-th-large"></i> View All Woollen Products</button>
     </div>
   </section>
 
@@ -1486,4 +1486,124 @@ function subscribeWoollenNewsletter() {
   input.value = '';
   showToast('🧶 You\'re subscribed! We\'ll notify you of new woollen drops.', 'success');
 }
+
+// ── WOOLLEN PRODUCTS LIST PAGE (With premium grid and filters) ──
+async function renderWoollenProducts() {
+  const app = document.getElementById('app');
+  const params = new URLSearchParams(location.search);
+  const selectedSub = params.get('subcategory') || '';
+
+  app.innerHTML = `
+  <section class="woollen-products-hero" style="background: linear-gradient(135deg, #e8f0e5, #f5f8f3); padding: 5rem 0 3rem; text-align: center;">
+    <div class="container reveal">
+      <div class="woollen-eyebrow" style="color: #4a7c4a; font-weight: 600; text-transform: uppercase; letter-spacing: 2px;">Handcrafted Elegance</div>
+      <h1 style="font-family: 'Playfair Display', serif; font-size: 3rem; color: #2d4a2d; margin: 0.5rem 0 1rem;">The Woollen Collection</h1>
+      <p style="color: #607d60; max-width: 600px; margin: 0 auto 2rem; line-height: 1.6;">Explore our beautiful range of premium, handmade woollen hair bands, clips, scrunchies, and accessories. Soft, delicate, and crafted with love.</p>
+    </div>
+  </section>
+
+  <div class="container" style="padding: 2rem 0 5rem;">
+    <!-- Subcategory Filters -->
+    <div class="woollen-filters" style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-bottom: 3rem;">
+      <button class="filter-chip ${!selectedSub ? 'active' : ''}" onclick="navigate('/woollen/products')" style="padding: 10px 20px; border-radius: 30px; border: 1px solid #c8d8c8; background: ${!selectedSub ? '#4a7c4a' : '#fff'}; color: ${!selectedSub ? '#fff' : '#4a7c4a'}; font-weight: 600; cursor: pointer; transition: all 0.2s;">All Woollen</button>
+      ${[
+        'Hair Clips', 'Hair Bands', 'Scrunchies', 'Bows', 'Baby Accessories', 'Crochet Flowers', 'Woollen Decor'
+      ].map(sub => {
+        const isActive = selectedSub === sub;
+        return `
+          <button class="filter-chip ${isActive ? 'active' : ''}" 
+                  onclick="navigate('/woollen/products?subcategory=${encodeURIComponent(sub)}')" 
+                  style="padding: 10px 20px; border-radius: 30px; border: 1px solid #c8d8c8; background: ${isActive ? '#4a7c4a' : '#fff'}; color: ${isActive ? '#fff' : '#4a7c4a'}; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+            ${sub}
+          </button>
+        `;
+      }).join('')}
+    </div>
+
+    <!-- Woollen Products Grid -->
+    <div class="woollen-products-grid" id="woollen-products-list-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 2rem;">
+      <div style="grid-column: 1/-1; text-align: center; padding: 5rem 0;">
+        <div class="woollen-spinner" style="border: 4px solid rgba(74, 124, 74, 0.1); border-left-color: #4a7c4a; width: 40px; height: 40px; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1rem;"></div>
+        <p style="color: #607d60;">Loading Woollen products...</p>
+      </div>
+    </div>
+  </div>
+  `;
+
+  // Fetch Woollen products and render them
+  try {
+    let url = '/api/products?category=woollen';
+    if (selectedSub) {
+      url += `&subcategory=${encodeURIComponent(selectedSub)}`;
+    }
+    const data = await api(url);
+    const products = Array.isArray(data) ? data : (data.products || data.items || []);
+    const grid = document.getElementById('woollen-products-list-grid');
+
+    if (!grid) return;
+
+    if (!products || products.length === 0) {
+      grid.innerHTML = `
+        <div style="grid-column: 1/-1; text-align: center; padding: 5rem 0;">
+          <span style="font-size: 3rem;">🧶</span>
+          <h3 style="font-family: 'Playfair Display', serif; color: #2d4a2d; margin-top: 1rem;">No Products Found</h3>
+          <p style="color: #607d60; margin-bottom: 2rem;">We couldn't find any products in this section yet.</p>
+          ${selectedSub ? `<button class="btn-primary" onclick="navigate('/woollen/products')">View All Woollen</button>` : ''}
+        </div>
+      `;
+      return;
+    }
+
+    let wishlistCached = [];
+    if (currentUser) {
+      try {
+        const cachedRaw = localStorage.getItem('wishlist_cache_' + currentUser.id);
+        if (cachedRaw) wishlistCached = JSON.parse(cachedRaw) || [];
+      } catch (e) {}
+    }
+
+    grid.innerHTML = products.map(p => {
+      const img = safeImageUrl(p.image || (p.images && p.images[0]), p.category);
+      const fallback = typeof imageFallbackAttr === 'function' ? imageFallbackAttr(p.category, p.image || p.images?.[0]) : '';
+      const discount = p.mrp ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0;
+      const inWishlist = wishlistCached.some(item => (item.id || item._id) === p.id);
+
+      return `
+      <div class="product-card reveal" style="border-radius:16px; overflow:hidden; border: 1px solid #e2ece2; background: #fff;" onclick="navigate('/product/${p.id}')">
+        <div class="product-img-wrap" style="position:relative; aspect-ratio:1/1.15; cursor:pointer;">
+          <img class="product-img" src="${img}" ${fallback} alt="${p.name}" style="width:100%; height:100%; object-fit:cover; transition: transform 0.5s ease;"/>
+          ${discount ? `<div class="product-badge" style="background:#4a7c4a; color:#fff; font-weight:600;">${discount}% OFF</div>` : ''}
+          <button class="wishlist-btn-badge ${inWishlist ? 'active' : ''}" onclick="event.stopPropagation(); toggleWishlist('${p.id}', this)" style="position:absolute; top:15px; right:15px; width:36px; height:36px; border-radius:50%; border:none; background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 3px 10px rgba(0,0,0,0.1); z-index:2; transition: all 0.2s;">
+            <i class="fa${inWishlist ? 's' : 'r'} fa-heart" style="color:${inWishlist ? 'var(--rose)' : 'var(--gray)'};"></i>
+          </button>
+        </div>
+        <div class="product-body" style="padding: 1.25rem;">
+          <div class="product-name" style="font-weight:600; font-size:1rem; color:#2d4a2d; margin-bottom:0.5rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.name}</div>
+          <div class="product-price" style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+            <span class="price-current" style="color:#2d4a2d; font-weight:700;">${formatCurrency(p.price)}</span>
+            ${p.mrp ? `<span class="price-mrp" style="color:var(--gray); text-decoration:line-through; font-size:0.9rem;">${formatCurrency(p.mrp)}</span>` : ''}
+          </div>
+          
+          <div class="product-actions-wrap" data-product-actions="${p.id}" onclick="event.stopPropagation()">
+            <button class="btn-primary full-width" onclick="addToCart('${p.id}')" style="background: linear-gradient(135deg, #4a7c4a, #386038); border:none; font-weight:600; padding:12px; border-radius:8px;">
+              <i class="fas fa-shopping-bag"></i> Add to Cart
+            </button>
+          </div>
+        </div>
+      </div>
+      `;
+    }).join('');
+
+    if (typeof updateCartButtonsUI === 'function') {
+      updateCartButtonsUI();
+    }
+    initScrollReveal();
+
+  } catch(e) {
+    console.error('Error rendering woollen products:', e);
+    const grid = document.getElementById('woollen-products-list-grid');
+    if (grid) grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; color: #a8c5a0; padding:3rem;">Failed to load woollen products. Please try again later.</div>';
+  }
+}
+
 

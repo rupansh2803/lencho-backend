@@ -376,6 +376,7 @@ function buildAdminPanel() {
         <div class="admin-menu-item" id="am-inquiries" onclick="adminTab('inquiries')"><i class="fas fa-envelope-open-text" style="width:20px;"></i> Inquiries</div>
         <div class="admin-menu-item" id="am-users" onclick="adminTab('users')"><i class="fas fa-users" style="width:20px;"></i> Users</div>
         <div class="admin-menu-item" id="am-gst" onclick="adminTab('gst')"><i class="fas fa-file-invoice" style="width:20px;"></i> GST Hub</div>
+        <div class="admin-menu-item" id="am-woollen" onclick="adminTab('woollen')"><i class="fas fa-hat-cowboy-side" style="width:20px;"></i> 🧶 Woollen</div>
         <div class="admin-menu-item" id="am-testimonials" onclick="adminTab('testimonials')"><i class="fas fa-comment-dots" style="width:20px;"></i> Testimonials</div>
         <div class="admin-menu-item" id="am-login-logs" onclick="adminTab('login-logs')"><i class="fas fa-user-clock" style="width:20px;"></i> Login Logs</div>
         <div class="admin-menu-item" id="am-delivery-manager" onclick="adminTab('delivery-manager')"><i class="fas fa-truck-fast" style="width:20px;"></i> Delivery Manager</div>
@@ -441,6 +442,7 @@ function adminTab(tab) {
   if (tab === 'inquiries') adminInquiries();
   if (tab === 'users') adminUsers();
   if (tab === 'gst') adminGST();
+  if (tab === 'woollen') adminWoollen();
   if (tab === 'testimonials') adminTestimonials();
   if (tab === 'login-logs') adminLoginLogs();
   if (tab === 'delivery-manager') adminDeliveryManager();
@@ -2168,4 +2170,180 @@ async function restoreBackup(backupId) {
 function loadBackupRecovery() {
   adminTab('backup');
 }
+
+// ── ADMIN WOOLLEN MODULE ───────────────────────────────────
+async function adminWoollen() {
+  const content = document.getElementById('admin-content');
+  if (!content) return;
+
+  // Store active tab
+  let activeTab = localStorage.getItem('admin-woollen-subtab') || 'products';
+
+  content.innerHTML = `
+    <div class="admin-header">
+      <h1 class="admin-page-title">🧶 Woollen Collection Management</h1>
+    </div>
+    
+    <div class="woollen-admin-tabs" style="display:flex; gap:1rem; border-bottom: 2px solid var(--border); padding-bottom: 1rem; margin-bottom: 1.5rem;">
+      <button class="btn-${activeTab === 'products' ? 'primary' : 'outline'}" onclick="setWoollenSubtab('products')">
+        <i class="fas fa-box-open"></i> Products
+      </button>
+      <button class="btn-${activeTab === 'settings' ? 'primary' : 'outline'}" onclick="setWoollenSubtab('settings')">
+        <i class="fas fa-sliders-h"></i> Page Editor & Settings
+      </button>
+    </div>
+
+    <div id="woollen-admin-subcontent"></div>
+  `;
+
+  // Define setWoollenSubtab globally so it can be called
+  window.setWoollenSubtab = function(tab) {
+    localStorage.setItem('admin-woollen-subtab', tab);
+    adminWoollen();
+  };
+
+  if (activeTab === 'products') {
+    renderWoollenAdminProducts();
+  } else {
+    renderWoollenAdminSettings();
+  }
+}
+
+async function renderWoollenAdminProducts() {
+  const container = document.getElementById('woollen-admin-subcontent');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+      <h3>Woollen Products List</h3>
+      <button class="btn-primary" onclick="adminTab('add-product')"><i class="fas fa-plus"></i> Add New Product</button>
+    </div>
+    <div class="admin-table-wrap">
+      <table id="woollen-prod-table">
+        <thead>
+          <tr>
+            <th>Image</th>
+            <th>Name</th>
+            <th>Sub-Category</th>
+            <th>Price</th>
+            <th>MRP</th>
+            <th>Stock</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="woollen-prod-tbody">
+          <tr><td colspan="7" style="text-align:center; color:var(--gray); padding:3rem;">Loading woollen products...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  try {
+    const products = await api('/api/products?category=woollen');
+    const list = Array.isArray(products) ? products : (products.products || products.items || []);
+    const tbody = document.getElementById('woollen-prod-tbody');
+    if (!tbody) return;
+
+    if (list.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--gray); padding:3rem;">No woollen products found. Click 'Add New Product' and choose category 'Woollen' to get started!</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = list.map(p => `
+      <tr>
+        <td><img src="${safeImageUrl(p.image || p.images?.[0], 'woollen')}" style="width:50px; height:50px; object-fit:cover; border-radius:8px;" onerror="this.src='/images/showcase.png'"/></td>
+        <td><strong>${p.name}</strong></td>
+        <td><span style="background:#e8f0e5; color:#4a7c4a; padding:4px 10px; border-radius:20px; font-size:0.75rem; font-weight:700;">${p.subcategory || 'Default'}</span></td>
+        <td>₹${p.price}</td>
+        <td>${p.mrp ? `₹${p.mrp}` : '-'}</td>
+        <td><span style="color:${p.stock > 0 ? '#15803d' : '#ef4444'}; font-weight:700;">${p.stock}</span></td>
+        <td>
+          <button class="btn-outline btn-sm" onclick="editProduct('${p.id || p._id}')" title="Edit"><i class="fas fa-edit"></i></button>
+          <button class="btn-danger btn-sm" onclick="deleteWoollenProduct('${p.id || p._id}')" title="Delete"><i class="fas fa-trash"></i></button>
+        </td>
+      </tr>
+    `).join('');
+
+    // Define deleteWoollenProduct
+    window.deleteWoollenProduct = async function(id) {
+      if (!confirm('Are you sure you want to delete this woollen product?')) return;
+      const r = await api(`/api/admin/products/${id}`, { method: 'DELETE' });
+      if (r.error) {
+        toast(r.error, 'error');
+      } else {
+        toast('Product deleted successfully', 'success');
+        renderWoollenAdminProducts();
+      }
+    };
+
+  } catch (e) {
+    console.error('Error loading admin woollen products:', e);
+  }
+}
+
+async function renderWoollenAdminSettings() {
+  const container = document.getElementById('woollen-admin-subcontent');
+  if (!container) return;
+
+  // Load existing woollen settings
+  let settings = { heroTitle: 'Woollen Collection', heroSubtitle: 'Artisan Crafted', heroDescription: 'Discover our exclusive range of handmade woollen hair accessories.' };
+  try {
+    const r = await api('/api/woollen/settings');
+    if (r && !r.error) settings = r;
+  } catch (e) {}
+
+  container.innerHTML = `
+    <div class="admin-form" style="max-width: 700px;">
+      <h3 style="margin-bottom:1.5rem; border-bottom:1px solid var(--border); padding-bottom:0.5rem;">Hero Section Content</h3>
+      <div class="form-group">
+        <label>Hero Title</label>
+        <input type="text" id="ws-title" value="${settings.heroTitle || ''}" placeholder="Woollen Collection"/>
+      </div>
+      <div class="form-group">
+        <label>Hero Subtitle (Italic Part)</label>
+        <input type="text" id="ws-subtitle" value="${settings.heroSubtitle || ''}" placeholder="Artisan Crafted"/>
+      </div>
+      <div class="form-group">
+        <label>Hero Description</label>
+        <textarea id="ws-desc" rows="3" placeholder="Discover our exclusive range...">${settings.heroDescription || ''}</textarea>
+      </div>
+      <div class="form-group">
+        <label>Hero Banner Image URL (Optional)</label>
+        <input type="text" id="ws-image" value="${settings.heroImage || ''}" placeholder="/images/woollen_hero.png"/>
+      </div>
+      
+      <button class="btn-primary" onclick="saveWoollenSettings()"><i class="fas fa-save"></i> Save Settings</button>
+    </div>
+  `;
+
+  window.saveWoollenSettings = async function() {
+    const btn = event.target.closest('button');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner" style="animation:spin 1s linear infinite;"></i> Saving...';
+
+    const payload = {
+      heroTitle: document.getElementById('ws-title').value,
+      heroSubtitle: document.getElementById('ws-subtitle').value,
+      heroDescription: document.getElementById('ws-desc').value,
+      heroImage: document.getElementById('ws-image').value
+    };
+
+    try {
+      const r = await api('/api/woollen/settings', { method: 'POST', body: payload });
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-save"></i> Save Settings';
+      
+      if (r.error) {
+        toast(r.error, 'error');
+      } else {
+        toast('Woollen settings saved successfully! 🧶', 'success');
+      }
+    } catch (e) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-save"></i> Save Settings';
+      toast('Failed to save settings', 'error');
+    }
+  };
+}
+
 
