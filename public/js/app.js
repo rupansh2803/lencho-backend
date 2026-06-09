@@ -1715,14 +1715,15 @@ function productCardHTML(p) {
   const product = normalizeClientProduct(p);
   const secondaryImg = product.images[1] || product.images[0];
   const stockStatus = p.stock < 5 && p.stock > 0 ? '⚡ Only ' + p.stock + ' left!' : '';
-  const isFeatured = p.featured ? '⭐ Trending' : '';
-  const badge = isFeatured || stockStatus || (p.discount > 30 ? '🔥 Hot Deal' : '');
+  const isBestSeller = p.popular ? '⭐ Best Seller' : '';
+  const isFeatured = p.featured ? '✨ Featured' : '';
+  const badge = isBestSeller || isFeatured || stockStatus || (p.discount > 30 ? '🔥 Hot Deal' : '');
   
   return `
   <div class="product-card reveal" style="border-radius:16px !important;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08) !important;transition:transform .3s ease,box-shadow .3s ease !important;background:#fff;border:1px solid rgba(201,106,138,.08);" onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 12px 32px rgba(201,106,138,.15) !important';" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 16px rgba(0,0,0,.08) !important';">
     <div class="product-img-wrap" onclick="navigate('/product/${product.id}')" style="position:relative;overflow:hidden;aspect-ratio:1/1.15;cursor:pointer;">
-      <img class="product-img" src="${safeImageUrl(product.images[0], product.category)}" alt="${product.name}" loading="lazy" decoding="async" ${imageFallbackAttr(product.category)} style="width:100%;height:100%;object-fit:cover;transition:transform .5s ease !important;display:block;"/>
-      <img class="product-img img-hover" src="${safeImageUrl(secondaryImg, product.category)}" alt="${product.name}" loading="lazy" decoding="async" ${imageFallbackAttr(product.category)} style="width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;opacity:0;transition:opacity .4s ease !important;display:block;"/>
+      <img class="product-img" src="${safeImageUrl(product.images[0], product.category)}" alt="${product.name}" loading="lazy" decoding="async" ${imageFallbackAttr(product.category)} style="width:100%;height:100%;object-fit:contain;object-position:center;background:#fff;transition:opacity .4s ease !important;display:block;"/>
+      <img class="product-img img-hover" src="${safeImageUrl(secondaryImg, product.category)}" alt="${product.name}" loading="lazy" decoding="async" ${imageFallbackAttr(product.category)} style="width:100%;height:100%;object-fit:contain;object-position:center;background:#fff;position:absolute;top:0;left:0;opacity:0;transition:opacity .4s ease !important;display:block;"/>
       
       ${p.discount ? `<span class="product-badge" style="position:absolute;top:12px;left:12px;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;padding:6px 12px;border-radius:8px;font-weight:700;font-size:.75rem;z-index:2;">✦ ${p.discount}% OFF ✦</span>` : ''}
       
@@ -1933,7 +1934,7 @@ async function renderHome(options = {}) {
     <div class="trust-item"><i class="fas fa-shield-check"></i> <span><strong>100%</strong> Authentic</span></div>
   </div>` : ''}
 
-  ${isOn('showPromo') ? `<section class="promo-limited-banner">
+  ${false && isOn('showPromo') ? `<section class="promo-limited-banner">
     <div class="promo-content reveal-left">
       <div class="hero-badge" style="background:rgba(255,255,255,0.1); border-color:rgba(255,255,255,0.2); color:#fff; margin-bottom:1rem;">✦ LIMITED EDITION 2026 ✦</div>
       <h2 style="font-family:'Playfair Display',serif; font-size:2.8rem; margin-bottom:1rem; line-height:1.2;">${g('promoTitle', 'Exclusive Seasonal Drop')}<br/><span style="color:var(--gold-light);">${g('promoSubtitle', 'Sale Ends In')}</span></h2>
@@ -1954,15 +1955,15 @@ async function renderHome(options = {}) {
     </div>
   </section>` : ''}
 
-  ${isOn('showFeaturedProducts') ? `<!-- FEATURED PRODUCTS -->
-  <section class="home-trending-section" style="background:${g('homeFeaturedBg', 'var(--beige)')};">
+  ${isOn('showFeaturedProducts') ? `<!-- BEST SELLERS -->
+  <section class="home-bestseller-section" style="background:${g('homeFeaturedBg', 'var(--beige)')};">
     <div class="section-header reveal">
-      <div class="section-eyebrow">Bestsellers</div>
-      <h2 class="section-title">Trending Products</h2>
+      <div class="section-eyebrow">Most Loved</div>
+      <h2 class="section-title">Best Sellers</h2>
       <div class="divider"></div>
     </div>
     <div class="products-grid" id="featured-grid"></div>
-    <div style="text-align:center;margin-top:3rem;"><button class="btn-outline" onclick="navigate('/products?sort=trending')">View All Products <i class="fas fa-arrow-right"></i></button></div>
+    <div class="home-view-more-row"><button class="btn-outline" onclick="navigate('/products?sort=best-selling')">View All Best Sellers <i class="fas fa-arrow-right"></i></button></div>
   </section>` : ''}
 
   <section class="home-woollen-entry">
@@ -1977,7 +1978,7 @@ async function renderHome(options = {}) {
     </div>
   </section>
 
-  ${isOn('showCollections') ? `<section class="categories home-collections-section" style="padding:4rem 5%;${g('homeCollectionsBg') ? `background:${g('homeCollectionsBg')};` : ''}">
+  ${isOn('showCollections') ? `<section class="categories home-collections-section" style="padding:3rem 5%;${g('homeCollectionsBg') ? `background:${g('homeCollectionsBg')};` : ''}">
     <div class="section-header reveal">
       <div class="section-eyebrow">Shop by Category</div>
       <h2 class="section-title">Exclusive Collections</h2>
@@ -1987,6 +1988,18 @@ async function renderHome(options = {}) {
       <div style="grid-column:1/-1;text-align:center;color:var(--gray);">Loading exclusive collections...</div>
     </div>
     <div class="home-view-more-row"><button class="btn-outline" onclick="navigate('/products')">View More Collections <i class="fas fa-arrow-right"></i></button></div>
+  </section>` : ''}
+
+  ${isOn('showPromo') ? `<section class="home-promo-compact">
+    <div class="home-promo-copy reveal-left">
+      <div class="section-eyebrow">Limited Drop</div>
+      <h2>${g('promoTitle', 'Exclusive Seasonal Drop')}</h2>
+      <p>${g('promoDescription', 'Our most awaited collection is here. Limited quantities available.')}</p>
+      <button class="btn-gold" onclick="navigate('/products')">${g('promoButtonText', 'Explore Collection')} <i class="fas fa-arrow-right"></i></button>
+    </div>
+    <div class="home-promo-image reveal-right">
+      <img src="${g('promoImage', '/images/showcase.png')}" alt="Promo" loading="lazy" decoding="async" onerror="this.src='/images/showcase.png'"/>
+    </div>
   </section>` : ''}
 
   ${isOn('showTestimonials') ? `<!-- TESTIMONIALS -->
@@ -2280,13 +2293,18 @@ async function loadFeaturedProducts() {
   };
 
   try {
-    const r = await withTimeout(api('/api/products?storeType=main&sort=trending'), 2500);
-    console.log('Featured products response:', r);
+    const r = await withTimeout(api('/api/products?storeType=main&popular=true&sort=best-selling'), 2500);
     if (r && Array.isArray(r) && r.length > 0) {
-      grid.innerHTML = shuffleArray(r).map(productCardHTML).join('');
+      grid.innerHTML = shuffleArray(r).slice(0, 4).map(productCardHTML).join('');
       initScrollReveal();
     } else if (Array.isArray(r) && r.length === 0) {
-      await renderFallbackProducts('');
+      const ranked = await withTimeout(api('/api/products?storeType=main&sort=best-selling'), 2500);
+      if (Array.isArray(ranked) && ranked.length > 0) {
+        grid.innerHTML = ranked.slice(0, 4).map(productCardHTML).join('');
+        initScrollReveal();
+      } else {
+        await renderFallbackProducts('');
+      }
     } else {
       console.error('Invalid response format:', r);
       await renderFallbackProducts('');
@@ -2339,12 +2357,15 @@ async function renderWoollen() {
   const settings = await fetchPublicSettings({ timeoutMs: 2500 });
   const [collectionsRaw, featuredRaw, allRaw] = await Promise.all([
     api('/api/categories?storeType=woollen', { timeoutMs: 3000 }),
-    api('/api/products?storeType=woollen&featured=true&sort=featured', { timeoutMs: 3000 }),
+    api('/api/products?storeType=woollen&popular=true&sort=best-selling', { timeoutMs: 3000 }),
     api('/api/products?storeType=woollen&sort=trending', { timeoutMs: 3000 })
   ]);
   const collections = Array.isArray(collectionsRaw) ? collectionsRaw : [];
   const featured = Array.isArray(featuredRaw) && featuredRaw.length ? featuredRaw : (Array.isArray(allRaw) ? allRaw.slice(0, 8) : []);
-  const heroBanner = safeImageUrl(settings.woollenHeroBanner, '', '/images/premium_hero.png');
+  const configuredWoollenBanner = settings.woollenHeroBanner && settings.woollenHeroBanner !== '/images/premium_hero.png'
+    ? settings.woollenHeroBanner
+    : '/images/woollen_hero.png';
+  const heroBanner = safeImageUrl(configuredWoollenBanner, '', '/images/woollen_hero.png');
 
   app.innerHTML = `
   <div class="woollen-store" style="--woollen-button:${settings.woollenButtonColor || '#9b4065'};--woollen-hover:${settings.woollenHoverColor || '#c9748f'};">
@@ -2352,7 +2373,7 @@ async function renderWoollen() {
       <strong>${settings.woollenHeaderTitle || 'Lencho Woollen'}</strong>
       <button style="background:${settings.woollenButtonColor || '#9b4065'};" onclick="navigate('/woollen/products')">${settings.woollenHeroButtonText || 'View All Woollen'}</button>
     </div>
-    <section class="woollen-hero" style="background-image:linear-gradient(90deg,rgba(63,36,52,.78),rgba(63,36,52,.28)),url('${heroBanner}')">
+    <section class="woollen-hero" style="background-image:linear-gradient(90deg,rgba(63,36,52,.74),rgba(63,36,52,.22)),url('${heroBanner}')">
       <div class="woollen-hero-inner">
         <div class="woollen-kicker">${settings.woollenHeaderTitle || 'Lencho Woollen'}</div>
         <h1>${settings.woollenHeroTitle || 'Handmade Woollen Collection'}</h1>
@@ -2383,8 +2404,8 @@ async function renderWoollen() {
     <section class="woollen-band woollen-featured-band">
       <div class="woollen-section-head">
         <div>
-          <h2>Featured Woollen Products</h2>
-          <p>Featured, popular, trending, new arrival, and sale items are controlled from admin.</p>
+          <h2>Woollen Best Sellers</h2>
+          <p>Best seller, featured, trending, new arrival, and sale tags are controlled from admin.</p>
         </div>
       </div>
       <div class="products-grid">${featured.length ? featured.map(productCardHTML).join('') : '<div class="empty-state"><h3>No woollen products yet</h3><p>Add woollen products from admin.</p></div>'}</div>

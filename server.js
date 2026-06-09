@@ -495,7 +495,7 @@ const DEFAULT_FALLBACK_SETTINGS = {
   woollenHeroTitle: 'Handmade Woollen Collection',
   woollenHeroSubtitle: 'Premium crochet accessories, decor, and soft festive pieces.',
   woollenHeroButtonText: 'View All Woollen',
-  woollenHeroBanner: '/images/premium_hero.png',
+  woollenHeroBanner: '/images/woollen_hero.png',
   woollenAbout: 'A separate handmade store experience for crochet, woollen accessories, gifts, and decor.',
   woollenHeaderBg: '#fff7fb',
   woollenHeaderText: '#3f2434',

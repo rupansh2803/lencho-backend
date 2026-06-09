@@ -733,7 +733,7 @@ async function adminProducts() {
   <div class="admin-header"><h1 class="admin-page-title">Catalog Inventory (${products.length})</h1><button class="btn-primary" onclick="adminTab('add-product')"><i class="fas fa-plus"></i> Add New Product</button></div>
   <div class="admin-table-wrap">
     <table>
-      <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>HSN Code</th><th>GST %</th><th>Featured</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>HSN Code</th><th>GST %</th><th>Tags</th><th>Actions</th></tr></thead>
       <tbody>${products.map(p=>`
       <tr>
         <td><img src="${safeImageUrl(p.images[0], p.category)}" ${imageFallbackAttr(p.category,p.images[0])} style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid #eee;"/></td>
@@ -743,7 +743,13 @@ async function adminProducts() {
         <td><span style="color:${p.stock>10?'#22c55e':p.stock>0?'#f59e0b':'#ef4444'};font-weight:700;background:${p.stock>10?'#f0fdf4':'#fffbeb'};padding:4px 8px;border-radius:6px;">${p.stock}</span></td>
         <td><code>${p.hsn || '7117'}</code></td>
         <td><span style="font-weight:600;color:var(--rose);">${p.gstRate || 18}%</span></td>
-        <td>${p.featured?'<i class="fas fa-star" style="color:var(--gold);"></i>':'<span style="color:#aaa;">—</span>'}</td>
+        <td>${[
+          p.popular ? 'Best Seller' : '',
+          p.featured ? 'Featured' : '',
+          p.trending ? 'Trending' : '',
+          p.newArrival ? 'New Arrival' : '',
+          p.sale ? 'Sale' : ''
+        ].filter(Boolean).map(t => `<span class="product-badge" style="position:static;font-size:.65rem;padding:3px 7px;margin:2px;display:inline-block;">${t}</span>`).join('') || '<span style="color:#aaa;">—</span>'}</td>
         <td>
           <div style="display:flex;gap:4px;">
             <button class="btn-outline btn-sm" onclick="adminEditProduct('${p.id}')" title="Edit"><i class="fas fa-edit"></i></button>
@@ -808,10 +814,10 @@ async function adminAddProduct(product = null) {
     <div class="form-group"><label>Description *</label><textarea id="p-desc" rows="4" placeholder="Product description...">${product?.description||''}</textarea></div>
     <div class="form-group">
       <label>Featured Product</label>
-      <select id="p-featured"><option value="false" ${!product?.featured?'selected':''}>No</option><option value="true" ${product?.featured?'selected':''}>Yes – Show on Homepage</option></select>
+      <select id="p-featured"><option value="false" ${!product?.featured?'selected':''}>No</option><option value="true" ${product?.featured?'selected':''}>Yes</option></select>
     </div>
     <div class="form-grid">
-      <div class="form-group"><label>Popular</label><select id="p-popular"><option value="false" ${!product?.popular?'selected':''}>No</option><option value="true" ${product?.popular?'selected':''}>Yes</option></select></div>
+      <div class="form-group"><label>Best Seller</label><select id="p-popular"><option value="false" ${!product?.popular?'selected':''}>No</option><option value="true" ${product?.popular?'selected':''}>Yes - Show in Best Sellers</option></select></div>
       <div class="form-group"><label>Trending</label><select id="p-trending"><option value="false" ${!product?.trending?'selected':''}>No</option><option value="true" ${product?.trending?'selected':''}>Yes</option></select></div>
       <div class="form-group"><label>New Arrival</label><select id="p-new-arrival"><option value="false" ${!product?.newArrival?'selected':''}>No</option><option value="true" ${product?.newArrival?'selected':''}>Yes</option></select></div>
       <div class="form-group"><label>Sale</label><select id="p-sale"><option value="false" ${!product?.sale?'selected':''}>No</option><option value="true" ${product?.sale?'selected':''}>Yes</option></select></div>
@@ -1138,7 +1144,7 @@ async function adminWoollen() {
     <div class="stats-grid" style="margin-bottom:2rem;">
       <div class="stat-card"><div class="stat-label">Woollen Products</div><div class="stat-value">${list.length}</div></div>
       <div class="stat-card"><div class="stat-label">Collections</div><div class="stat-value">${cats.length}</div></div>
-      <div class="stat-card"><div class="stat-label">Featured</div><div class="stat-value">${list.filter(p=>p.featured).length}</div></div>
+      <div class="stat-card"><div class="stat-label">Best Sellers</div><div class="stat-value">${list.filter(p=>p.popular).length}</div></div>
     </div>
 
     <div class="admin-form" style="margin-bottom:2rem;">
@@ -1188,7 +1194,13 @@ async function adminWoollen() {
           <td>${p.category}</td>
           <td>${formatCurrency(p.price)}</td>
           <td>${p.stock}</td>
-          <td>${['featured','popular','trending','newArrival','sale'].filter(k=>p[k]).join(', ') || '-'}</td>
+          <td>${[
+            p.popular ? 'Best Seller' : '',
+            p.featured ? 'Featured' : '',
+            p.trending ? 'Trending' : '',
+            p.newArrival ? 'New Arrival' : '',
+            p.sale ? 'Sale' : ''
+          ].filter(Boolean).join(', ') || '-'}</td>
           <td><button class="btn-outline btn-sm" onclick="adminEditProduct('${p.id}')"><i class="fas fa-edit"></i></button></td>
         </tr>`).join('')}</tbody>
       </table>
@@ -1772,7 +1784,7 @@ async function adminSiteManager() {
   <div class="admin-form" style="margin-bottom:2rem;">
     <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-toggle-on"></i> Section Visibility</h3>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
-      ${['showOfferBanner:Offer Banner', 'showTrustHub:Trust Hub Strip', 'showCollections:Collections Grid', 'showFeaturedProducts:Trending Products', 'showPromo:Promo/Timer Section', 'showTestimonials:Testimonials'].map(item => {
+      ${['showOfferBanner:Offer Banner', 'showTrustHub:Trust Hub Strip', 'showFeaturedProducts:Best Seller Section', 'showCollections:Collections Grid', 'showPromo:Promo Section', 'showTestimonials:Testimonials'].map(item => {
         const [key, label] = item.split(':');
         return `<label style="display:flex;align-items:center;gap:10px;padding:12px;background:#f9f9f9;border-radius:10px;cursor:pointer;border:1px solid var(--border);">
           <input type="checkbox" id="cms-${key}" ${isOn(key) ? 'checked' : ''} style="width:18px;height:18px;accent-color:var(--rose);"/>
