@@ -301,10 +301,12 @@
       <nav class="main-nav" id="main-nav">
         <button class="nav-close" id="nav-close-btn"><i class="fas fa-times"></i></button>
         <a href="/" class="nav-link" onclick="navigate('/')">Home</a>
+        <a href="/woollen" class="nav-link" onclick="event.preventDefault(); navigate('/woollen')">Woollen</a>
         <div class="nav-dropdown" id="nav-collections-dd">
           <span class="nav-link" style="cursor:pointer;" onclick="toggleNavDropdown(event)" data-href="/products">Collections <i class="fas fa-chevron-down" style="font-size:.65rem;transition:transform .2s;" id="coll-arrow"></i></span>
           <div class="nav-dropdown-menu">
             <a href="/products" onclick="event.preventDefault(); navigate('/products')">✦ All Collections</a>
+            <a href="/woollen" onclick="event.preventDefault(); navigate('/woollen')">🧶 Woollen Collection</a>
             <a href="/products?category=earrings" onclick="event.preventDefault(); navigate('/products?category=earrings')">💍 Earrings</a>
             <a href="/products?category=necklace" onclick="event.preventDefault(); navigate('/products?category=necklace')">📿 Necklace</a>
             <a href="/products?category=toe-rings" onclick="event.preventDefault(); navigate('/products?category=toe-rings')">🦶 Toe Rings</a>
@@ -433,12 +435,13 @@
 
   <script>
     (async () => {
+      setTimeout(() => document.getElementById('loading-screen')?.classList.add('hidden'), 2500);
       const scripts = [
         '/js/firebase.js?v=1.1',
-        '/js/app.js?v=4.8',
-        '/js/pages.js?v=4.6',
+        '/js/app.js?v=4.9',
+        '/js/pages.js?v=4.7',
         '/js/dashboard.js?v=4.5',
-        '/js/admin.js?v=5.4',
+        '/js/admin.js?v=5.5',
         '/js/admin-gst-settings.js?v=4.5',
         '/js/chatbot.js?v=4.5'
       ];
@@ -455,7 +458,10 @@
 
       window.__lenchoScriptsReady = true;
       window.dispatchEvent(new Event('lencho-scripts-ready'));
-    })().catch((error) => console.error('Script loader failed:', error));
+    })().catch((error) => {
+      console.error('Script loader failed:', error);
+      document.getElementById('loading-screen')?.classList.add('hidden');
+    });
   </script>
 </body>
 </html>

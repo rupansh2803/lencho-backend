@@ -260,18 +260,36 @@ async function buyNow(productId) {
 }
 
 /* ── CART PAGE ────────────────────────────────────────────── */
+async function getLocalCartItemsWithProducts() {
+  if (typeof readLocalCart !== 'function') return [];
+  const localItems = readLocalCart();
+  if (!localItems.length) return [];
+  const products = await api('/api/products', { timeoutMs: 3000 });
+  if (!Array.isArray(products)) return [];
+  return localItems.map(item => {
+    const product = products.find(p => String(p.id || p._id) === String(item.productId));
+    return product ? { productId: item.productId, quantity: Number(item.quantity) || 1, product } : null;
+  }).filter(Boolean);
+}
+
 async function renderCart() {
-  if (!currentUser) { openAuthModal(); navigate('/'); return; }
   const app = document.getElementById('app');
   app.innerHTML = '<div class="page-wrap"><div style="text-align:center;padding:3rem;color:var(--gray);">⏳ Loading your cart...</div></div>';
   
   try {
-    const r = await Promise.race([
-      api('/api/cart'),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
-    ]);
+    const r = currentUser
+      ? await Promise.race([
+          api('/api/cart'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
+        ])
+        .catch(() => ({ items: [], count: 0, error: 'cart-timeout' }))
+      : { items: [], count: 0 };
     
-    const items = r.items || [];
+    let items = r.error ? [] : (r.items || []);
+    if (!items.length) {
+      const localItems = await getLocalCartItemsWithProducts();
+      if (localItems.length) items = localItems;
+    }
     const totalQty = Number(r.count) || items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
     if (!items.length) {
       app.innerHTML = `<div class="page-wrap"><h1 class="page-title">My Cart</h1><div class="empty-state"><div class="empty-icon">🛍️</div><h3>Your cart is empty</h3><p>Add some beautiful jewellery to your cart!</p><button class="btn-primary" onclick="navigate('/products')">Shop Now</button></div></div>`;
@@ -346,15 +364,16 @@ async function updateQty(productId, qty) {
     if (!confirmed) return;
   }
   
+  if (typeof setLocalCartQty === 'function') setLocalCartQty(productId, qty);
+  await updateCartCount();
   try {
     const r = await api('/api/cart/update', { method: 'PUT', body: { productId, quantity: qty } });
-    if (r.error) { toast(r.error, 'error'); return; }
-    if (typeof setLocalCartQty === 'function') setLocalCartQty(productId, qty);
+    if (r.error) console.warn('Cart quantity server sync failed, kept local cart:', r.error);
     await updateCartCount();
     renderCart();
   } catch (e) {
     console.error('Update quantity error:', e);
-    toast('Failed to update quantity', 'error');
+    renderCart();
   }
 }
 
@@ -362,16 +381,18 @@ async function removeFromCart(productId) {
   const confirmed = confirm('Remove this item from cart?');
   if (!confirmed) return;
   
+  if (typeof setLocalCartQty === 'function') setLocalCartQty(productId, 0);
+  await updateCartCount();
   try {
     const r = await api(`/api/cart/${productId}`, { method: 'DELETE' });
-    if (r.error) { toast(r.error, 'error'); return; }
-    if (typeof setLocalCartQty === 'function') setLocalCartQty(productId, 0);
+    if (r.error) console.warn('Cart remove server sync failed, kept local cart:', r.error);
     await updateCartCount();
     renderCart();
     toast('Item removed from cart', 'info');
   } catch (e) {
     console.error('Remove from cart error:', e);
-    toast('Failed to remove item', 'error');
+    renderCart();
+    toast('Item removed from cart', 'info');
   }
 }
 

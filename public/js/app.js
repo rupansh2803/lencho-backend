@@ -470,8 +470,8 @@ async function api(url, opts = {}) {
       try { errData = JSON.parse(text); } catch(e) {}
       console.error(`API Error [${res.status}]:`, text);
       
-      // If unauthorized, clear stored token
-      if (res.status === 401) {
+      // If unauthorized, clear stored token except for cart/wishlist reads where local fallback keeps UX working.
+      if (res.status === 401 && !/^\/api\/(cart|wishlist)\b/.test(url)) {
         clearAuth();
       }
       
@@ -635,9 +635,11 @@ async function autoLoginWithToken() {
     
     // Server returned { user: null } — token is explicitly invalid/expired
     if (r.error && (r.error.includes('401') || r.error.includes('expired') || r.error.includes('invalid'))) {
-      console.warn('[Auth] Token explicitly rejected by server, clearing auth');
-      clearAuth();
-      updateHeader();
+      console.warn('[Auth] Token validation failed, keeping local session until user logs in again');
+      if (!currentUser && savedUser) {
+        currentUser = savedUser;
+        updateHeader();
+      }
       return;
     }
     
@@ -1295,11 +1297,21 @@ async function updateCartCount() {
   }
   try {
     const r = await api('/api/cart');
+    if (r.error) {
+      cartCount = getCartQuantity(localCartCache);
+      if (cartBadge) cartBadge.textContent = cartCount;
+      return;
+    }
     const items = Array.isArray(r.items)
       ? r.items.map(item => ({ productId: item.productId, quantity: Number(item.quantity) || 1 }))
       : [];
-    writeLocalCart(items);
-    cartCount = Number(r.count ?? getCartQuantity(items)) || 0;
+    if (items.length || localCartCache.length === 0) {
+      writeLocalCart(items);
+    }
+    const sourceItems = items.length ? items : localCartCache;
+    cartCount = items.length || localCartCache.length === 0
+      ? (Number(r.count ?? getCartQuantity(sourceItems)) || 0)
+      : getCartQuantity(sourceItems);
     if (cartBadge) cartBadge.textContent = cartCount;
   } catch (e) {
     console.error('Cart count update error:', e);
@@ -1317,28 +1329,28 @@ function updateCartBadgeOptimistic(newCount) {
 
 // Add to cart with INSTANT UI update (no waiting for server)
 async function addToCart(productId, showToast = true) {
-  if (!currentUser) { openAuthModal(); return; }
-  
   const before = readLocalCart();
   const optimistic = upsertLocalCart(productId, 1);
   updateCartBadgeOptimistic(getCartQuantity(optimistic));
   if (showToast) toast('Added to cart!', 'cart');
+
+  if (!currentUser) {
+    return;
+  }
   
   // Background: Sync with server
   try {
     const r = await api('/api/cart/add', { method: 'POST', body: { productId, quantity: 1 } });
     if (r.error) { 
-      toast(r.error, 'error'); 
-      writeLocalCart(before);
-      updateCartBadgeOptimistic(getCartQuantity(before));
+      console.warn('Cart server sync failed, kept local cart:', r.error);
+      updateCartBadgeOptimistic(getCartQuantity(readLocalCart()));
       return; 
     }
     updateCartBadgeOptimistic(Number(r.count) || getCartQuantity(readLocalCart()));
     await updateCartCount();
   } catch (e) {
     console.error('Add to cart error:', e);
-    writeLocalCart(before);
-    updateCartCount();
+    updateCartBadgeOptimistic(getCartQuantity(readLocalCart()));
   }
 }
 
@@ -1353,14 +1365,12 @@ async function removeFromCart(productId) {
   try {
     const r = await api(`/api/cart/${productId}`, { method: 'DELETE' });
     if (r.error) {
-      writeLocalCart(before);
-      toast(r.error, 'error');
+      console.warn('Cart remove server sync failed, kept local cart:', r.error);
     }
     await updateCartCount();
   } catch (e) {
     console.error('Remove from cart error:', e);
-    writeLocalCart(before);
-    updateCartCount();
+    updateCartBadgeOptimistic(getCartQuantity(readLocalCart()));
   }
   
   // Refresh cart page if open
@@ -1389,8 +1399,7 @@ async function clearCart() {
     }
   } catch (e) {
     console.error('Clear cart error:', e);
-    writeLocalCart(before);
-    updateCartCount();
+    updateCartBadgeOptimistic(0);
   }
 }
 
@@ -1783,7 +1792,7 @@ function renderFallbackCollectionCards(container) {
     { name: 'Bracelets', slug: 'bracelets', image: '/images/p1.png' },
   ]);
 
-  container.innerHTML = fallbackCollections.map((c, i) => `
+  container.innerHTML = fallbackCollections.slice(0, 3).map((c, i) => `
     <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
       <img class="cat-img" src="${safeImageUrl(c.image, c.slug)}" alt="${c.name}" ${imageFallbackAttr(c.slug)}/>
       <div class="cat-overlay"></div>
@@ -1893,7 +1902,7 @@ async function renderHome(options = {}) {
   
   const heroBackground = heroMediaType === 'video' && heroVideo
     ? ''
-    : `background: linear-gradient(135deg, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.42) 100%), url('${optimizedHeroImage}') center/cover no-repeat; background-attachment: fixed; background-size: cover;`;
+    : `background: linear-gradient(135deg, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.42) 100%), url('${optimizedHeroImage}') center/cover no-repeat; background-size: cover;`;
 
   app.innerHTML = `
   <section class="hero-premium" style="${heroBackground} justify-content: center; text-align: center; border-radius:0; position:relative;">
@@ -1945,7 +1954,30 @@ async function renderHome(options = {}) {
     </div>
   </section>` : ''}
 
-  ${isOn('showCollections') ? `<section class="categories" style="padding:4rem 5%;${g('homeCollectionsBg') ? `background:${g('homeCollectionsBg')};` : ''}">
+  ${isOn('showFeaturedProducts') ? `<!-- FEATURED PRODUCTS -->
+  <section class="home-trending-section" style="background:${g('homeFeaturedBg', 'var(--beige)')};">
+    <div class="section-header reveal">
+      <div class="section-eyebrow">Bestsellers</div>
+      <h2 class="section-title">Trending Products</h2>
+      <div class="divider"></div>
+    </div>
+    <div class="products-grid" id="featured-grid"></div>
+    <div style="text-align:center;margin-top:3rem;"><button class="btn-outline" onclick="navigate('/products?sort=trending')">View All Products <i class="fas fa-arrow-right"></i></button></div>
+  </section>` : ''}
+
+  <section class="home-woollen-entry">
+    <div class="home-woollen-copy reveal-left">
+      <div class="section-eyebrow">Handmade Store</div>
+      <h2 class="section-title">Woollen Collection</h2>
+      <p>Soft handmade hair accessories, crochet flowers, baby pieces, decor, and limited seasonal drops.</p>
+      <button class="btn-primary" onclick="navigate('/woollen')">Explore Woollen Store <i class="fas fa-arrow-right"></i></button>
+    </div>
+    <div class="home-woollen-media reveal-right">
+      <img src="/images/woollen_hero.png" alt="Woollen Collection" loading="lazy" decoding="async" onerror="this.src='/images/woollen_pattern_bg.png'"/>
+    </div>
+  </section>
+
+  ${isOn('showCollections') ? `<section class="categories home-collections-section" style="padding:4rem 5%;${g('homeCollectionsBg') ? `background:${g('homeCollectionsBg')};` : ''}">
     <div class="section-header reveal">
       <div class="section-eyebrow">Shop by Category</div>
       <h2 class="section-title">Exclusive Collections</h2>
@@ -1954,17 +1986,7 @@ async function renderHome(options = {}) {
     <div class="categories-grid" id="home-categories-grid">
       <div style="grid-column:1/-1;text-align:center;color:var(--gray);">Loading exclusive collections...</div>
     </div>
-  </section>` : ''}
-
-  ${isOn('showFeaturedProducts') ? `<!-- FEATURED PRODUCTS -->
-  <section style="background:${g('homeFeaturedBg', 'var(--beige)')};">
-    <div class="section-header reveal">
-      <div class="section-eyebrow">Bestsellers</div>
-      <h2 class="section-title">🔥 Trending Now</h2>
-      <div class="divider"></div>
-    </div>
-    <div class="products-grid" id="featured-grid"></div>
-    <div style="text-align:center;margin-top:3rem;"><button class="btn-outline" onclick="navigate('/products')">View All Collections <i class="fas fa-arrow-right"></i></button></div>
+    <div class="home-view-more-row"><button class="btn-outline" onclick="navigate('/products')">View More Collections <i class="fas fa-arrow-right"></i></button></div>
   </section>` : ''}
 
   ${isOn('showTestimonials') ? `<!-- TESTIMONIALS -->
@@ -2038,14 +2060,16 @@ async function loadHomeCategories() {
   if (!container) return;
   try {
     const cats = await withTimeout(api('/api/categories'), 2500);
-    let categories = Array.isArray(cats) ? cats : [];
+    let categories = Array.isArray(cats)
+      ? cats.filter(c => (c?.storeType || 'main') === 'main')
+      : [];
 
     if (categories.length === 0) {
-      const products = await withTimeout(api('/api/products'), 2500);
+      const products = await withTimeout(api('/api/products?storeType=main'), 2500);
       const byCategory = new Map();
       if (Array.isArray(products)) {
         products.forEach(product => {
-          if (!product || !product.category || byCategory.has(product.category)) return;
+          if (!product || product.storeType === 'woollen' || !product.category || byCategory.has(product.category)) return;
           byCategory.set(product.category, {
             name: product.category.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
             slug: product.category,
@@ -2060,7 +2084,7 @@ async function loadHomeCategories() {
       renderFallbackCollectionCards(container);
       return;
     }
-    container.innerHTML = shuffleArray(categories).map((c, i) => `
+    container.innerHTML = shuffleArray(categories).slice(0, 3).map((c, i) => `
       <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
         <img class="cat-img" src="${c.image}" alt="${c.name}" onerror="this.src='/images/hero.png'"/>
         <div class="cat-overlay"></div>
@@ -2069,11 +2093,11 @@ async function loadHomeCategories() {
     `).join('');
     initScrollReveal();
   } catch (e) {
-    const products = await withTimeout(api('/api/products'), 2500);
+    const products = await withTimeout(api('/api/products?storeType=main'), 2500);
     if (Array.isArray(products) && products.length > 0) {
       const byCategory = new Map();
       products.forEach(product => {
-        if (!product || !product.category || byCategory.has(product.category)) return;
+        if (!product || product.storeType === 'woollen' || !product.category || byCategory.has(product.category)) return;
         byCategory.set(product.category, {
           name: product.category.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
           slug: product.category,
@@ -2082,7 +2106,7 @@ async function loadHomeCategories() {
       });
       const categories = [...byCategory.values()];
       if (categories.length > 0) {
-        container.innerHTML = shuffleArray(categories).map((c, i) => `
+        container.innerHTML = shuffleArray(categories).slice(0, 3).map((c, i) => `
           <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
             <img class="cat-img" src="${c.image}" alt="${c.name}" onerror="this.src='/images/hero.png'"/>
             <div class="cat-overlay"></div>
@@ -2246,7 +2270,7 @@ async function loadFeaturedProducts() {
   const grid = document.getElementById('featured-grid');
   if (!grid) return;
   const renderFallbackProducts = async (message) => {
-    const fallback = await withTimeout(api('/api/products'), 2500);
+    const fallback = await withTimeout(api('/api/products?storeType=main'), 2500);
     if (Array.isArray(fallback) && fallback.length > 0) {
       grid.innerHTML = shuffleArray(fallback).slice(0, 4).map(productCardHTML).join('');
       initScrollReveal();
@@ -2256,7 +2280,7 @@ async function loadFeaturedProducts() {
   };
 
   try {
-    const r = await withTimeout(api('/api/products?featured=true'), 2500);
+    const r = await withTimeout(api('/api/products?storeType=main&sort=trending'), 2500);
     console.log('Featured products response:', r);
     if (r && Array.isArray(r) && r.length > 0) {
       grid.innerHTML = shuffleArray(r).map(productCardHTML).join('');
@@ -2445,55 +2469,153 @@ function buildWoollenFilterQuery(update = {}) {
 }
 
 // ── PRODUCTS PAGE ─────────────────────────────────────────
+function buildProductsFilterQuery(update = {}) {
+  const params = new URLSearchParams(location.search);
+  Object.entries(update).forEach(([key, value]) => {
+    if (value) params.set(key, value);
+    else params.delete(key);
+  });
+  const str = params.toString();
+  return str ? '?' + str : '';
+}
+
+function productCategoryLabel(slug = '') {
+  if (!slug) return 'All';
+  return String(slug).replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function escapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function escapeInlineJsString(value = '') {
+  return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function getProductCategoryOptions(categoriesRaw = [], products = []) {
+  const defaults = [
+    ['', 'All'],
+    ['earrings', 'Earrings'],
+    ['necklace', 'Necklace'],
+    ['toe-rings', 'Toe Rings'],
+    ['rings', 'Rings'],
+    ['chains', 'Chains'],
+    ['payal', 'Payal'],
+    ['bangles', 'Bangles'],
+    ['bracelets', 'Bracelets'],
+    ['maang-tikka', 'Maang Tikka'],
+    ['sets', 'Bridal Sets']
+  ];
+  const bySlug = new Map(defaults.map(([val, label]) => [val, { val, label }]));
+
+  if (Array.isArray(categoriesRaw)) {
+    categoriesRaw.forEach(cat => {
+      const val = String(cat?.slug || cat?.name || '').trim().toLowerCase().replace(/\s+/g, '-');
+      if (!val || cat?.storeType === 'woollen') return;
+      bySlug.set(val, { val, label: cat.name || productCategoryLabel(val) });
+    });
+  }
+
+  if (Array.isArray(products)) {
+    products.forEach(product => {
+      const val = String(product?.category || '').trim().toLowerCase();
+      if (!val) return;
+      if (!bySlug.has(val)) bySlug.set(val, { val, label: productCategoryLabel(val) });
+    });
+  }
+
+  return Array.from(bySlug.values());
+}
+
 async function renderProducts(params) {
   const category = params.get('category') || '';
+  const sort = params.get('sort') || '';
+  const stock = params.get('stock') || '';
   const app = document.getElementById('app');
-  const ALL_CATS = [
-    { val: '', label: 'All' }, { val: 'earrings', label: 'Earrings' }, { val: 'necklace', label: 'Necklace' },
-    { val: 'toe-rings', label: 'Toe Rings' }, { val: 'rings', label: 'Rings' }, { val: 'chains', label: 'Chains' },
-    { val: 'payal', label: 'Payal' }, { val: 'bangles', label: 'Bangles' }, { val: 'bracelets', label: 'Bracelets' },
-    { val: 'maang-tikka', label: 'Maang Tikka' }, { val: 'sets', label: 'Bridal Sets' },
-  ];
+  const query = new URLSearchParams();
+  query.set('storeType', 'main');
+  if (category) query.set('category', category);
+  if (sort) query.set('sort', sort);
+  if (stock) query.set('stock', stock);
+  const url = '/api/products' + (query.toString() ? `?${query.toString()}` : '');
+
   app.innerHTML = `
-  <div class="page-wrap">
-    <h1 class="page-title">${ALL_CATS.find(ct => ct.val === category)?.label || 'All Collections'}</h1>
-    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:2rem;align-items:center;">
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
-        ${ALL_CATS.map(c => `<button class="btn-${c.val === category ? 'primary' : 'outline'} btn-sm" onclick="navigate('/products${c.val ? '?category=' + c.val : ''}')">${c.label}</button>`).join('')}
-      </div>
-      <select id="sort-select" onchange="sortProducts(this.value,'${category}')" style="margin-left:auto;padding:10px 18px;border:2px solid var(--border);border-radius:99px;font-size:.85rem;outline:none;cursor:pointer;background:#fff;color:var(--dark);font-family:'Inter',sans-serif;appearance:none;-webkit-appearance:none;padding-right:2rem;background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%226%22 viewBox=%220 0 10 6%22><path fill=%22%23c9748f%22 d=%22M0 0l5 6 5-6z%22/></svg>');background-repeat:no-repeat;background-position:right 12px center;">
-        <option value="">Sort By</option>
-        <option value="price-asc">Price: Low to High</option>
-        <option value="price-desc">Price: High to Low</option>
-        <option value="rating">Top Rated</option>
-      </select>
+  <div class="page-wrap products-page-wrap">
+    <div class="products-page-layout">
+      <aside class="products-sidebar">
+        <h3>Categories</h3>
+        <div class="category-filter-list">
+          <button class="category-filter active">Loading...</button>
+        </div>
+      </aside>
+      <section class="products-main">
+        <div class="products-main-header">
+          <div>
+            <div class="section-eyebrow">Collections</div>
+            <h1 class="page-title">${productCategoryLabel(category)}</h1>
+          </div>
+          <div class="products-filter-controls">
+            <select onchange="navigate('/products' + buildProductsFilterQuery({sort:this.value}))">
+              <option value="" ${!sort ? 'selected' : ''}>Newest</option>
+              <option value="price-asc" ${sort === 'price-asc' ? 'selected' : ''}>Price Low to High</option>
+              <option value="price-desc" ${sort === 'price-desc' ? 'selected' : ''}>Price High to Low</option>
+              <option value="oldest" ${sort === 'oldest' ? 'selected' : ''}>Oldest</option>
+              <option value="best-selling" ${sort === 'best-selling' ? 'selected' : ''}>Best Selling</option>
+              <option value="featured" ${sort === 'featured' ? 'selected' : ''}>Featured</option>
+              <option value="trending" ${sort === 'trending' ? 'selected' : ''}>Trending</option>
+              <option value="rating" ${sort === 'rating' ? 'selected' : ''}>Top Rated</option>
+            </select>
+            <select onchange="navigate('/products' + buildProductsFilterQuery({stock:this.value}))">
+              <option value="" ${!stock ? 'selected' : ''}>All Stock</option>
+              <option value="in" ${stock === 'in' ? 'selected' : ''}>In Stock</option>
+              <option value="out" ${stock === 'out' ? 'selected' : ''}>Out Of Stock</option>
+            </select>
+          </div>
+        </div>
+        <div class="products-grid" id="products-grid"><div style="text-align:center;padding:3rem;color:var(--gray);">Loading...</div></div>
+      </section>
     </div>
-    <div class="products-grid" id="products-grid"><div style="text-align:center;padding:3rem;color:var(--gray);">Loading...</div></div>
   </div>`;
-  const url = '/api/products' + (category ? `?category=${category}` : '');
-  let products = await api(url, { timeoutMs: 3000 });
-  if (!Array.isArray(products)) {
-    const fallback = await api('/api/products', { timeoutMs: 2500 });
+
+  const [categoriesRaw, productsRaw] = await Promise.all([
+    api('/api/categories', { timeoutMs: 2500 }),
+    api(url, { timeoutMs: 3500 })
+  ]);
+
+  let products = Array.isArray(productsRaw) ? productsRaw : [];
+  if (!products.length && productsRaw?.error) {
+    const fallback = await api('/api/products?storeType=main', { timeoutMs: 2500 });
     products = Array.isArray(fallback)
-      ? (category ? fallback.filter(p => p && p.category === category) : fallback)
+      ? fallback.filter(p => (!category || p.category === category) && (stock !== 'in' || Number(p.stock) > 0) && (stock !== 'out' || Number(p.stock) <= 0))
       : [];
   }
+
+  const categories = getProductCategoryOptions(categoriesRaw, products);
+  const list = document.querySelector('.category-filter-list');
+  if (list) {
+    list.innerHTML = categories.map(c => `
+      <button class="category-filter ${c.val === category ? 'active' : ''}" onclick="navigate('/products' + buildProductsFilterQuery({category:'${escapeInlineJsString(c.val)}'}))">
+        <span>${escapeHtml(c.label)}</span>
+      </button>
+    `).join('');
+  }
+
   const grid = document.getElementById('products-grid');
-  if (grid) grid.innerHTML = products.length ? products.map(productCardHTML).join('') : '<div class="empty-state"><div class="empty-icon">💎</div><h3>No products found</h3><p>Check back soon for new arrivals!</p></div>';
+  if (grid) {
+    grid.innerHTML = products.length
+      ? products.map(productCardHTML).join('')
+      : '<div class="empty-state"><div class="empty-icon">💎</div><h3>No products found</h3><p>Try another category or stock filter.</p></div>';
+  }
   initScrollReveal();
 }
 
 async function sortProducts(sort, category) {
-  const url = '/api/products?' + new URLSearchParams({ ...(category && { category }), ...(sort && { sort }) });
-  const products = await api(url, { timeoutMs: 3000 });
-  const grid = document.getElementById('products-grid');
-  if (!grid) return;
-  if (Array.isArray(products)) {
-    grid.innerHTML = products.map(productCardHTML).join('');
-  } else {
-    grid.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Could not load products</h3><p>Please try again in a moment.</p></div>';
-  }
-  initScrollReveal();
+  navigate('/products' + buildProductsFilterQuery({ sort, category }));
 }
 
 async function loadPublicSettings() {
@@ -2579,7 +2701,7 @@ async function syncSocialLinks() {
 async function bootstrapApp() {
   try {
     // ── STEP 1: Instantly restore saved session (synchronous, no flicker) ──
-    await autoLoginWithToken();
+    autoLoginWithToken().catch(e => console.warn('autoLoginWithToken error:', e));
     
     // ── STEP 2: Render page immediately with restored auth state ──
     navigate(location.pathname + location.search, false);
@@ -2600,12 +2722,13 @@ async function bootstrapApp() {
       handleFirebaseRedirectAuth().catch(e => console.error('handleFirebaseRedirectAuth error:', e))
     ];
     
-    await Promise.allSettled(bgTasks);
-    updateHeader(); // Final header sync after all tasks complete
+    Promise.allSettled(bgTasks)
+      .then(() => updateHeader())
+      .catch(() => {});
 
     // Warm common read-only endpoints for snappier next navigation.
     Promise.allSettled([
-      api('/api/products'),
+      api('/api/products?storeType=main'),
       api('/api/categories'),
       api('/api/testimonials')
     ]).catch(() => {});
