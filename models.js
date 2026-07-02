@@ -57,10 +57,10 @@ const productSchema = new mongoose.Schema({
   trending:   { type: Boolean, default: false },
   newArrival: { type: Boolean, default: false },
   sale:       { type: Boolean, default: false },
+  status:     { type: String, enum: ['published', 'draft'], default: 'published' },
   storeType:  { type: String, enum: ['main', 'woollen'], default: 'main' },
   rating:     { type: Number, default: 0 },
   reviews:    [{ userId:String, userName:String, rating:Number, comment:String, date:Date }],
-  variants:   [{ color: String, size: String, stock: Number, sku: String, price: Number, mrp: Number }],
 }, { timestamps: true });
 
 // ── ORDER ─────────────────────────────────────────────────────

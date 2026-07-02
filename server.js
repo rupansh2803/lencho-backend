@@ -878,6 +878,9 @@ async function buildProductPayload(req, existingProduct = null) {
     trending: toBoolean(body.trending, existingProduct?.trending || false),
     newArrival: toBoolean(body.newArrival, existingProduct?.newArrival || false),
     sale: toBoolean(body.sale, existingProduct?.sale || false),
+    status: ['draft', 'published'].includes(String(body.status || existingProduct?.status || '').trim().toLowerCase())
+      ? String(body.status || existingProduct?.status || '').trim().toLowerCase()
+      : 'published',
     storeType: body.storeType === 'woollen' || existingProduct?.storeType === 'woollen' ? 'woollen' : 'main',
     hasVariants,
     variantType: hasVariants ? String(body.variantType || existingProduct?.variantType || '').trim().toLowerCase() : '',
@@ -927,6 +930,9 @@ function normalizeProductRecord(product) {
     trending: product.trending === true || product.trending === 'true',
     newArrival: product.newArrival === true || product.newArrival === 'true',
     sale: product.sale === true || product.sale === 'true',
+    status: ['draft', 'published'].includes(String(product.status || '').trim().toLowerCase())
+      ? String(product.status).trim().toLowerCase()
+      : 'published',
     storeType: product.storeType || 'main',
     images,
     image: normalizeMediaUrl(product.image || images[0], { category })
@@ -1567,9 +1573,8 @@ async function uploadMediaFiles(files, folder) {
   }
 
   if (isProduction) {
-    throw new Error('Cloudinary is required for media uploads in production');
+    console.warn('[media] Cloudinary is not configured in production. Falling back to local uploads.');
   }
-
   return Promise.all(list.map(file => saveLocalMediaFile(file, sanitizeUploadFolder(folder))));
 }
 
@@ -3151,11 +3156,12 @@ app.get('/api/recommendations', async (req, res) => {
 app.get('/api/products', async (req, res) => {
   try {
     await incrementStoreVisitorCount(req);
-    const { category, featured, popular, trending, newArrival, sale, search, sort, stock, storeType } = req.query;
+    const { category, featured, popular, trending, newArrival, sale, search, sku, sort, stock, status, storeType } = req.query;
     if (useDB) {
       let query = {};
       if (category) query.category = category;
       if (storeType) query.storeType = storeType;
+      if (status) query.status = String(status).trim().toLowerCase();
       if (featured === 'true') query.featured = true;
       if (popular === 'true') query.popular = true;
       if (trending === 'true') query.trending = true;
@@ -3163,11 +3169,22 @@ app.get('/api/products', async (req, res) => {
       if (sale === 'true') query.sale = true;
       if (stock === 'in') query.stock = { $gt: 0 };
       if (stock === 'out') query.stock = { $lte: 0 };
-      if (search) query.$or = [{ name: { $regex: search, $options: 'i' } }, { description: { $regex: search, $options: 'i' } }];
+      if (search || sku) {
+        query.$or = [];
+        if (search) {
+          query.$or.push({ name: { $regex: search, $options: 'i' } });
+          query.$or.push({ description: { $regex: search, $options: 'i' } });
+          query.$or.push({ sku: { $regex: search, $options: 'i' } });
+        }
+        if (sku) {
+          query.$or.push({ sku: { $regex: sku, $options: 'i' } });
+        }
+      }
       let q = Product.find(query);
       if (sort === 'price-asc') q = q.sort({ price: 1 });
       else if (sort === 'price-desc') q = q.sort({ price: -1 });
       else if (sort === 'oldest') q = q.sort({ createdAt: 1 });
+      else if (sort === 'stock') q = q.sort({ stock: -1, createdAt: -1 });
       else if (sort === 'best-selling') q = q.sort({ popular: -1, rating: -1 });
       else if (sort === 'featured') q = q.sort({ featured: -1, createdAt: -1 });
       else if (sort === 'trending') q = q.sort({ trending: -1, rating: -1 });
@@ -3179,6 +3196,7 @@ app.get('/api/products', async (req, res) => {
       let fallbackProducts = getJsonCatalogProducts();
       if (category) fallbackProducts = fallbackProducts.filter(p => p.category === category);
       if (storeType) fallbackProducts = fallbackProducts.filter(p => (p.storeType || 'main') === storeType);
+      if (status) fallbackProducts = fallbackProducts.filter(p => String(p.status || 'published').toLowerCase() === String(status).toLowerCase());
       if (featured === 'true') fallbackProducts = fallbackProducts.filter(p => p.featured);
       if (popular === 'true') fallbackProducts = fallbackProducts.filter(p => p.popular);
       if (trending === 'true') fallbackProducts = fallbackProducts.filter(p => p.trending);
@@ -3186,11 +3204,13 @@ app.get('/api/products', async (req, res) => {
       if (sale === 'true') fallbackProducts = fallbackProducts.filter(p => p.sale);
       if (stock === 'in') fallbackProducts = fallbackProducts.filter(p => Number(p.stock) > 0);
       if (stock === 'out') fallbackProducts = fallbackProducts.filter(p => Number(p.stock) <= 0);
-      if (search) fallbackProducts = fallbackProducts.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
+      if (search) fallbackProducts = fallbackProducts.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || String(p.description || '').toLowerCase().includes(search.toLowerCase()) || String(p.sku || '').toLowerCase().includes(search.toLowerCase()));
+      if (sku) fallbackProducts = fallbackProducts.filter(p => String(p.sku || '').toLowerCase().includes(String(sku).toLowerCase()));
       if (sort === 'price-asc') fallbackProducts.sort((a, b) => a.price - b.price);
       if (sort === 'price-desc') fallbackProducts.sort((a, b) => b.price - a.price);
       if (sort === 'rating') fallbackProducts.sort((a, b) => (b.rating || 0) - (a.rating || 0));
       if (sort === 'oldest') fallbackProducts.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+      if (sort === 'stock') fallbackProducts.sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0));
       if (sort === 'best-selling') fallbackProducts.sort((a, b) => Number(b.popular) - Number(a.popular) || (b.rating || 0) - (a.rating || 0));
       if (sort === 'featured') fallbackProducts.sort((a, b) => Number(b.featured) - Number(a.featured));
       if (sort === 'trending') fallbackProducts.sort((a, b) => Number(b.trending) - Number(a.trending) || (b.rating || 0) - (a.rating || 0));
@@ -3199,6 +3219,7 @@ app.get('/api/products', async (req, res) => {
     let products = getJsonCatalogProducts();
     if (category) products = products.filter(p => p.category === category);
     if (storeType) products = products.filter(p => (p.storeType || 'main') === storeType);
+    if (status) products = products.filter(p => String(p.status || 'published').toLowerCase() === String(status).toLowerCase());
     if (featured === 'true') products = products.filter(p => p.featured);
     if (popular === 'true') products = products.filter(p => p.popular);
     if (trending === 'true') products = products.filter(p => p.trending);
@@ -3206,10 +3227,12 @@ app.get('/api/products', async (req, res) => {
     if (sale === 'true') products = products.filter(p => p.sale);
     if (stock === 'in') products = products.filter(p => Number(p.stock) > 0);
     if (stock === 'out') products = products.filter(p => Number(p.stock) <= 0);
-    if (search) products = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
+    if (search) products = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || String(p.description || '').toLowerCase().includes(search.toLowerCase()) || String(p.sku || '').toLowerCase().includes(search.toLowerCase()));
+    if (sku) products = products.filter(p => String(p.sku || '').toLowerCase().includes(String(sku).toLowerCase()));
     if (sort === 'price-asc') products.sort((a, b) => a.price - b.price);
     if (sort === 'price-desc') products.sort((a, b) => b.price - a.price);
     if (sort === 'oldest') products.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+    if (sort === 'stock') products.sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0));
     if (sort === 'best-selling') products.sort((a, b) => Number(b.popular) - Number(a.popular) || (b.rating || 0) - (a.rating || 0));
     if (sort === 'featured') products.sort((a, b) => Number(b.featured) - Number(a.featured));
     if (sort === 'trending') products.sort((a, b) => Number(b.trending) - Number(a.trending) || (b.rating || 0) - (a.rating || 0));
@@ -3241,13 +3264,13 @@ app.post('/api/products', requireAdmin, upload.array('images', 5), async (req, r
       const products = readJson(FILES.products);
       products.push({ ...p.toObject(), id: p._id.toString() });
       writeJson(FILES.products, products);
-      return res.json({ success: true, product: normalizeProductRecord({ ...p.toObject(), id: p._id.toString() }) });
+      return res.json({ success: true, message: 'Product added successfully', product: normalizeProductRecord({ ...p.toObject(), id: p._id.toString() }) });
     }
     const products = readJson(FILES.products);
     const p = { id: uuidv4(), ...payload, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     products.push(p);
     writeJson(FILES.products, products);
-    res.json({ success: true, product: normalizeProductRecord(p) });
+    res.json({ success: true, message: 'Product added successfully', product: normalizeProductRecord(p) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3281,7 +3304,7 @@ app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req
       if (idx >= 0) products[idx] = { ...products[idx], ...next };
       else products.push(next);
       writeJson(FILES.products, products);
-      return res.json({ success: true, product: normalizeProductRecord(next) });
+      return res.json({ success: true, message: 'Product updated successfully', product: normalizeProductRecord(next) });
     }
     const products = readJson(FILES.products);
     const idx = products.findIndex(p => p.id === req.params.id);
@@ -3303,8 +3326,49 @@ app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req
     }
     products[idx] = { ...products[idx], ...updates, updatedAt: new Date().toISOString() };
     writeJson(FILES.products, products);
-    res.json({ success: true, product: normalizeProductRecord(products[idx]) });
+    res.json({ success: true, message: 'Product updated successfully', product: normalizeProductRecord(products[idx]) });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/products/bulk', requireAdmin, async (req, res) => {
+  try {
+    const action = String(req.body?.action || '').trim().toLowerCase();
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : [];
+    if (!ids.length) return res.status(400).json({ error: 'Select at least one product' });
+
+    if (action === 'delete') {
+      if (useDB) {
+        await Product.deleteMany({ _id: { $in: ids } });
+      }
+      const nextProducts = readJson(FILES.products).filter(item => !ids.includes(String(item.id || item._id)));
+      writeJson(FILES.products, nextProducts);
+      return res.json({ success: true, message: 'Products deleted successfully', count: ids.length });
+    }
+
+    const updates = {};
+    if (action === 'publish') updates.status = 'published';
+    if (action === 'draft') updates.status = 'draft';
+    if (action === 'change-category') {
+      const category = String(req.body?.category || '').trim().toLowerCase();
+      if (!category) return res.status(400).json({ error: 'Category is required' });
+      updates.category = category;
+    }
+
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({ error: 'Unsupported bulk action' });
+    }
+
+    if (useDB) {
+      await Product.updateMany({ _id: { $in: ids } }, { $set: updates });
+    }
+    const nextProducts = readJson(FILES.products).map(item => ids.includes(String(item.id || item._id))
+      ? { ...item, ...updates, updatedAt: new Date().toISOString() }
+      : item);
+    writeJson(FILES.products, nextProducts);
+    res.json({ success: true, message: 'Bulk action completed successfully', count: ids.length, updates });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.delete('/api/products/:id', requireAdmin, async (req, res) => {

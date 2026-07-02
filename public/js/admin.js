@@ -2432,3 +2432,730 @@ async function adminCollections() {
   const counts = products.reduce((acc, p) => { acc[p.category] = (acc[p.category] || 0) + 1; return acc; }, {});
   document.getElementById('admin-content').innerHTML = `<div class="admin-header"><h1 class="admin-page-title">Product Collections (${cats.length})</h1><button class="btn-primary" onclick="showAddCategory()"><i class="fas fa-plus"></i> New Collection</button></div><div class="stats-grid" style="margin-bottom:2rem;"><div class="stat-card"><div class="stat-label">Total Categories</div><div class="stat-value">${cats.length}</div></div><div class="stat-card"><div class="stat-label">Active Slugs</div><div class="stat-value">${cats.filter(c=>c.slug).length}</div></div></div><div class="admin-table-wrap"><table><thead><tr><th>Image</th><th>Name</th><th>Slug</th><th>Product Count</th><th>Actions</th></tr></thead><tbody>${cats.map(c => `<tr><td><img src="${safeImageUrl(c.image, c.slug)}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;background:#f0f0f0;"/></td><td>${c.name}</td><td><code>${c.slug}</code></td><td><span style="background:var(--rose-light);color:var(--rose-dark);padding:4px 8px;border-radius:6px;font-weight:600;">${counts[c.slug] || 0}</span></td><td><button class="btn-sm btn-outline" onclick="viewCategoryProducts('${c.slug}')"><i class="fas fa-boxes"></i> Inventory</button> <button class="btn-sm btn-outline" onclick="editCategoryById('${c.id || c._id}')"><i class="fas fa-pen"></i> Edit</button> <button class="btn-sm" onclick="deleteCategory('${c.id || c._id}')" style="background:#fee2e2;color:#ef4444;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button></td></tr>`).join('')}</tbody></table></div><div id="category-inventory" style="margin-top:3rem;display:none;"><div class="admin-header"><h2 id="inv-title" class="admin-page-title">Inventory: <span>All Products</span></h2><button class="btn-outline" onclick="document.getElementById('category-inventory').style.display='none'">Close</button></div><div class="admin-table-wrap"><table id="inv-table"><thead><tr><th>Product</th><th>Original Price</th><th>Stock Status</th><th>Action</th></tr></thead><tbody id="inv-body"></tbody></table></div></div>`;
 }
+
+let adminProductManagerState = {
+  storeType: 'main',
+  products: [],
+  categories: [],
+  selectedIds: new Set(),
+  filters: { search: '', sku: '', category: '', status: '', sort: 'latest' },
+  page: 1,
+  pageSize: 10,
+  keepValues: false,
+  editingProduct: null,
+  uploadingCount: 0
+};
+
+function getAdminStoreLabel(storeType = 'main') {
+  return storeType === 'woollen' ? 'Woollen' : 'Jewellery';
+}
+
+function adminProductManagerEscape(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function adminProductManagerSlugLabel(slug = '') {
+  const category = adminProductManagerState.categories.find(item => item.slug === slug);
+  if (category?.name) return category.name;
+  return String(slug || '').replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function snapshotAdminProductManagerDraft() {
+  if (!document.getElementById('p-name') || !adminProductFormState) return adminProductManagerState.editingProduct;
+  try {
+    const payload = collectAdminProductPayload();
+    return {
+      ...adminProductManagerState.editingProduct,
+      ...payload,
+      id: adminProductManagerState.editingProduct?.id || '',
+      images: [...(payload.existingImages || [])],
+      variants: [...(payload.variants || [])],
+      storeType: payload.storeType || adminProductManagerState.storeType,
+      status: payload.status || 'published',
+      hasVariants: Boolean(payload.hasVariants),
+      featured: payload.featured === true || payload.featured === 'true',
+      popular: payload.popular === true || payload.popular === 'true',
+      trending: payload.trending === true || payload.trending === 'true',
+      newArrival: payload.newArrival === true || payload.newArrival === 'true',
+      sale: payload.sale === true || payload.sale === 'true'
+    };
+  } catch {
+    return adminProductManagerState.editingProduct;
+  }
+}
+
+async function loadAdminProductManagerData(storeType = 'main') {
+  const [productsRaw, categoriesRaw] = await Promise.all([
+    api(`/api/products?storeType=${storeType}`),
+    api(`/api/categories?storeType=${storeType}`)
+  ]);
+  adminProductManagerState.storeType = storeType;
+  adminProductManagerState.products = Array.isArray(productsRaw) ? [...productsRaw] : [];
+  adminProductManagerState.categories = Array.isArray(categoriesRaw) ? [...categoriesRaw] : [];
+  adminProductManagerState.selectedIds = new Set();
+}
+
+function getAdminProductManagerFilteredProducts() {
+  const { search, sku, category, status, sort } = adminProductManagerState.filters;
+  let products = [...adminProductManagerState.products];
+  if (search) {
+    const needle = String(search).trim().toLowerCase();
+    products = products.filter(product =>
+      String(product.name || '').toLowerCase().includes(needle) ||
+      String(product.description || '').toLowerCase().includes(needle) ||
+      String(product.sku || '').toLowerCase().includes(needle)
+    );
+  }
+  if (sku) {
+    const needle = String(sku).trim().toLowerCase();
+    products = products.filter(product => String(product.sku || '').toLowerCase().includes(needle));
+  }
+  if (category) products = products.filter(product => product.category === category);
+  if (status) products = products.filter(product => String(product.status || 'published') === status);
+
+  if (sort === 'price-asc') products.sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
+  else if (sort === 'price-desc') products.sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+  else if (sort === 'stock') products.sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0));
+  else if (sort === 'oldest') products.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+  else products.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+  return products;
+}
+
+function renderAdminProductManagerTable() {
+  const filtered = getAdminProductManagerFilteredProducts();
+  const total = filtered.length;
+  const pageSize = Number(adminProductManagerState.pageSize || 10);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  adminProductManagerState.page = Math.min(Math.max(1, adminProductManagerState.page), totalPages);
+  const start = (adminProductManagerState.page - 1) * pageSize;
+  const visible = filtered.slice(start, start + pageSize);
+  const selectedCount = adminProductManagerState.selectedIds.size;
+
+  return `
+    <div id="admin-product-manager-list" class="admin-form" style="margin-top:1.5rem;">
+      <div class="admin-header" style="margin-bottom:1rem;align-items:flex-end;">
+        <div>
+          <h2 class="admin-page-title" style="font-size:1.45rem;margin-bottom:.2rem;">${getAdminStoreLabel(adminProductManagerState.storeType)} Product List</h2>
+          <p style="color:var(--gray);font-size:.88rem;">${total} total products. Saved items appear here instantly.</p>
+        </div>
+        <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
+          <label style="font-size:.85rem;color:var(--gray);">Per page
+            <select id="admin-product-page-size" onchange="setAdminProductManagerPageSize(this.value)" style="margin-left:.45rem;">
+              ${[10,25,50,100].map(size => `<option value="${size}" ${pageSize === size ? 'selected' : ''}>${size}</option>`).join('')}
+            </select>
+          </label>
+          <button class="btn-outline" onclick="refreshAdminProductManagerList(true)"><i class="fas fa-rotate-right"></i> Refresh</button>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem;margin-bottom:1rem;">
+        <input id="admin-product-filter-search" placeholder="Search by name" value="${adminProductManagerEscape(adminProductManagerState.filters.search)}" oninput="updateAdminProductManagerFilter('search', this.value)" />
+        <input id="admin-product-filter-sku" placeholder="Search by SKU" value="${adminProductManagerEscape(adminProductManagerState.filters.sku)}" oninput="updateAdminProductManagerFilter('sku', this.value)" />
+        <select onchange="updateAdminProductManagerFilter('category', this.value)">
+          <option value="">All Collections</option>
+          ${adminProductManagerState.categories.map(category => `<option value="${category.slug}" ${adminProductManagerState.filters.category === category.slug ? 'selected' : ''}>${adminProductManagerEscape(category.name)}</option>`).join('')}
+        </select>
+        <select onchange="updateAdminProductManagerFilter('status', this.value)">
+          <option value="">All Status</option>
+          <option value="published" ${adminProductManagerState.filters.status === 'published' ? 'selected' : ''}>Published</option>
+          <option value="draft" ${adminProductManagerState.filters.status === 'draft' ? 'selected' : ''}>Draft</option>
+        </select>
+        <select onchange="updateAdminProductManagerFilter('sort', this.value)">
+          <option value="latest" ${adminProductManagerState.filters.sort === 'latest' ? 'selected' : ''}>Latest</option>
+          <option value="oldest" ${adminProductManagerState.filters.sort === 'oldest' ? 'selected' : ''}>Oldest</option>
+          <option value="price-asc" ${adminProductManagerState.filters.sort === 'price-asc' ? 'selected' : ''}>Price Low to High</option>
+          <option value="price-desc" ${adminProductManagerState.filters.sort === 'price-desc' ? 'selected' : ''}>Price High to Low</option>
+          <option value="stock" ${adminProductManagerState.filters.sort === 'stock' ? 'selected' : ''}>Stock</option>
+        </select>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:1rem;padding:.85rem 1rem;border:1px solid var(--border);border-radius:14px;background:#fffafc;">
+        <div style="font-size:.9rem;color:var(--dark);font-weight:600;">${selectedCount ? `${selectedCount} selected` : 'Bulk actions ready'}</div>
+        <div style="display:flex;gap:.65rem;flex-wrap:wrap;align-items:center;">
+          <select id="admin-product-bulk-action">
+            <option value="">Select bulk action</option>
+            <option value="publish">Publish</option>
+            <option value="draft">Move to Draft</option>
+            <option value="change-category">Change Collection</option>
+            <option value="delete">Delete</option>
+            <option value="export">Export CSV</option>
+          </select>
+          <button class="btn-outline" onclick="applyAdminProductBulkAction()">Apply</button>
+        </div>
+      </div>
+
+      <div class="admin-table-wrap">
+        <table style="min-width:1240px;">
+          <thead>
+            <tr>
+              <th><input type="checkbox" onchange="toggleAdminProductSelectionForVisible(this.checked)" ${visible.length && visible.every(product => adminProductManagerState.selectedIds.has(product.id)) ? 'checked' : ''}></th>
+              <th>Product Image</th>
+              <th>Product Name</th>
+              <th>Category</th>
+              <th>Collection</th>
+              <th>SKU</th>
+              <th>Price</th>
+              <th>Stock</th>
+              <th>Status</th>
+              <th>Created Date</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${visible.length ? visible.map(product => {
+              const safeName = String(product.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+              return `<tr>
+                <td><input type="checkbox" onchange="toggleAdminProductSelection('${product.id}', this.checked)" ${adminProductManagerState.selectedIds.has(product.id) ? 'checked' : ''}></td>
+                <td><img src="${safeImageUrl(product.images?.[0], product.category)}" ${imageFallbackAttr(product.category, product.images?.[0])} style="width:48px;height:48px;border-radius:10px;object-fit:cover;background:#fff;border:1px solid #eee;"></td>
+                <td><div style="font-weight:700;">${adminProductManagerEscape(product.name)}</div><div style="font-size:.72rem;color:var(--gray);">${adminProductManagerEscape(product.id || '')}</div></td>
+                <td>${getAdminStoreLabel(product.storeType || adminProductManagerState.storeType)}</td>
+                <td>${adminProductManagerEscape(adminProductManagerSlugLabel(product.category))}</td>
+                <td>${adminProductManagerEscape(product.sku || '-')}</td>
+                <td>${formatCurrency(product.price || 0)}</td>
+                <td><span style="color:${Number(product.stock || 0) > 0 ? '#166534' : '#b91c1c'};font-weight:700;">${Number(product.stock || 0)}</span></td>
+                <td><span style="padding:4px 10px;border-radius:999px;font-size:.72rem;font-weight:700;background:${String(product.status || 'published') === 'draft' ? '#fff7ed' : '#ecfdf3'};color:${String(product.status || 'published') === 'draft' ? '#b45309' : '#166534'};">${String(product.status || 'published') === 'draft' ? 'Draft' : 'Published'}</span></td>
+                <td>${formatDate(product.createdAt || product.updatedAt || Date.now())}</td>
+                <td>
+                  <div style="display:flex;gap:.35rem;flex-wrap:wrap;">
+                    <button class="btn-outline btn-sm" onclick="viewAdminProduct('${product.id}')" title="View"><i class="fas fa-eye"></i></button>
+                    <button class="btn-outline btn-sm" onclick="adminEditProduct('${product.id}')" title="Edit"><i class="fas fa-edit"></i></button>
+                    <button class="btn-outline btn-sm" onclick="duplicateAdminProduct('${product.id}')" title="Duplicate"><i class="fas fa-copy"></i></button>
+                    <button class="btn-outline btn-sm" onclick="openAdminProductInventory('${product.id}')" title="Inventory"><i class="fas fa-box"></i></button>
+                    <button class="btn-danger btn-sm" onclick="adminDeleteProduct('${product.id}','${safeName}')" style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;" title="Delete"><i class="fas fa-trash"></i></button>
+                  </div>
+                </td>
+              </tr>`;
+            }).join('') : `<tr><td colspan="11" style="text-align:center;padding:1.5rem;color:var(--gray);">No products found for the current filters.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;margin-top:1rem;">
+        <div style="font-size:.85rem;color:var(--gray);">Showing ${total ? start + 1 : 0}-${Math.min(start + pageSize, total)} of ${total}</div>
+        <div style="display:flex;gap:.5rem;align-items:center;">
+          <button class="btn-outline btn-sm" onclick="setAdminProductManagerPage(${adminProductManagerState.page - 1})" ${adminProductManagerState.page <= 1 ? 'disabled' : ''}>Previous</button>
+          <span style="font-size:.85rem;font-weight:600;">Page ${adminProductManagerState.page} / ${totalPages}</span>
+          <button class="btn-outline btn-sm" onclick="setAdminProductManagerPage(${adminProductManagerState.page + 1})" ${adminProductManagerState.page >= totalPages ? 'disabled' : ''}>Next</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAdminProductManager(preserveDraft = false) {
+  if (preserveDraft) {
+    adminProductManagerState.editingProduct = snapshotAdminProductManagerDraft();
+  }
+  const product = adminProductManagerState.editingProduct;
+  const isEdit = !!(product && product.id);
+  const cats = adminProductManagerState.categories || [];
+  const catOptions = cats.length
+    ? cats.map(category => `<option value="${category.slug}" ${product?.category === category.slug ? 'selected' : ''}>${adminProductManagerEscape(category.name)}</option>`).join('')
+    : '<option value="others">General</option>';
+
+  adminProductFormState = {
+    allCategories: [...cats],
+    images: Array.isArray(product?.images) ? [...product.images] : [],
+    hasVariants: Boolean(product?.hasVariants),
+    variantType: product?.variantType || 'color',
+    variants: Array.isArray(product?.variants) && product.variants.length ? product.variants.map(variant => createEmptyVariantRow(product?.variantType || 'color', variant)) : []
+  };
+
+  document.getElementById('admin-content').innerHTML = `
+    <div class="admin-header" style="align-items:flex-end;">
+      <div>
+        <h1 class="admin-page-title">${getAdminStoreLabel(adminProductManagerState.storeType)} Product Manager</h1>
+        <p style="color:var(--gray);font-size:.9rem;">Shopify-style add, edit, preview, and manage flow for ${getAdminStoreLabel(adminProductManagerState.storeType).toLowerCase()} products.</p>
+      </div>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
+        <button class="btn-primary" onclick="adminAddProduct()"><i class="fas fa-plus"></i> New Product</button>
+        <button class="btn-outline" onclick="showAddCategory('${adminProductManagerState.storeType}')"><i class="fas fa-layer-group"></i> ${getAdminStoreLabel(adminProductManagerState.storeType)} Collections</button>
+      </div>
+    </div>
+
+    <div class="admin-form">
+      <div class="admin-header" style="margin-bottom:1rem;align-items:flex-end;">
+        <div>
+          <h2 class="admin-page-title" style="font-size:1.45rem;">${isEdit ? 'Edit Product' : 'Add Product'}</h2>
+          <p style="color:var(--gray);font-size:.88rem;">Upload multiple images, preview instantly, and keep adding products without leaving the page.</p>
+        </div>
+        <label style="display:flex;align-items:center;gap:.5rem;font-size:.88rem;font-weight:600;">
+          <input type="checkbox" ${adminProductManagerState.keepValues ? 'checked' : ''} onchange="toggleAdminProductKeepValues(this.checked)">
+          Keep form values
+        </label>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group"><label>Product Name *</label><input id="p-name" value="${adminProductManagerEscape(product?.name || '')}" placeholder="e.g. Rose Gold Hoop Earrings"/></div>
+        <div class="form-group"><label>Collection *</label><select id="p-cat">${catOptions}</select></div>
+        <div class="form-group"><label>Store</label><select id="p-store-type" disabled><option value="main" ${adminProductManagerState.storeType !== 'woollen' ? 'selected' : ''}>Main Jewellery Store</option><option value="woollen" ${adminProductManagerState.storeType === 'woollen' ? 'selected' : ''}>Woollen Store</option></select></div>
+        <div class="form-group"><label>Status</label><select id="p-status"><option value="published" ${String(product?.status || 'published') === 'published' ? 'selected' : ''}>Published</option><option value="draft" ${String(product?.status || '') === 'draft' ? 'selected' : ''}>Draft</option></select></div>
+        <div class="form-group"><label>Has Variants?</label><select id="p-has-variants" onchange="toggleAdminVariantSection()"><option value="false" ${!adminProductFormState.hasVariants ? 'selected' : ''}>No</option><option value="true" ${adminProductFormState.hasVariants ? 'selected' : ''}>Yes</option></select></div>
+        <div class="form-group"><label>Selling Price (₹) *</label><input id="p-price" type="number" value="${product?.price || ''}" placeholder="599"/></div>
+        <div class="form-group"><label>MRP (₹) *</label><input id="p-mrp" type="number" value="${product?.mrp || ''}" placeholder="999"/></div>
+        <div class="form-group"><label>Discount (%)</label><input id="p-discount" type="number" value="${product?.discount || ''}" placeholder="40"/></div>
+        <div class="form-group"><label>Stock Quantity *</label><input id="p-stock" type="number" value="${product?.stock || ''}" placeholder="50"/></div>
+        <div class="form-group"><label>SKU</label><input id="p-sku" value="${adminProductManagerEscape(product?.sku || '')}" placeholder="LEN-001"/></div>
+        <div class="form-group"><label>GST Rate (%)</label><input id="p-gst" type="number" value="${product?.gstRate || 3}" placeholder="3"/></div>
+        <div class="form-group"><label>HSN Code</label><input id="p-hsn" value="${adminProductManagerEscape(product?.hsn || '7117')}" placeholder="7117"/></div>
+      </div>
+
+      <div class="form-group"><label>Description *</label><textarea id="p-desc" rows="4" placeholder="Product description...">${adminProductManagerEscape(product?.description || '')}</textarea></div>
+
+      <div id="admin-variant-section" style="display:${adminProductFormState.hasVariants ? 'block' : 'none'};margin-bottom:1.5rem;border:1px solid var(--border);border-radius:16px;padding:1rem;">
+        <div class="form-grid"><div class="form-group"><label>Variant Type</label><select id="p-variant-type" onchange="renderAdminVariantRows()">${['color','size','weight','material','length','custom'].map(type => `<option value="${type}" ${adminProductFormState.variantType===type?'selected':''}>${type.charAt(0).toUpperCase()+type.slice(1)}</option>`).join('')}</select></div></div>
+        <div id="admin-variant-rows"></div>
+        <button class="btn-outline" type="button" onclick="addAdminVariantRow()"><i class="fas fa-plus"></i> Add Variant</button>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group"><label>Featured Product</label><select id="p-featured"><option value="false" ${!product?.featured?'selected':''}>No</option><option value="true" ${product?.featured?'selected':''}>Yes</option></select></div>
+        <div class="form-group"><label>Best Seller</label><select id="p-popular"><option value="false" ${!product?.popular?'selected':''}>No</option><option value="true" ${product?.popular?'selected':''}>Yes - Show in Best Sellers</option></select></div>
+        <div class="form-group"><label>Trending</label><select id="p-trending"><option value="false" ${!product?.trending?'selected':''}>No</option><option value="true" ${product?.trending?'selected':''}>Yes</option></select></div>
+        <div class="form-group"><label>New Arrival</label><select id="p-new-arrival"><option value="false" ${!product?.newArrival?'selected':''}>No</option><option value="true" ${product?.newArrival?'selected':''}>Yes</option></select></div>
+        <div class="form-group"><label>Sale</label><select id="p-sale"><option value="false" ${!product?.sale?'selected':''}>No</option><option value="true" ${product?.sale?'selected':''}>Yes</option></select></div>
+      </div>
+
+      <div class="form-group">
+        <label>Product Images (First image becomes main image)</label>
+        <div id="admin-product-dropzone" style="border:2px dashed rgba(201,106,138,.35);border-radius:16px;padding:1rem;background:#fffafc;">
+          <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin-bottom:.75rem;">
+            <input type="file" id="p-image-upload" accept="image/*" multiple onchange="handleAdminProductImageInput(event)" />
+            <span style="font-size:.82rem;color:var(--gray);">Drag and drop or choose multiple images. Preview appears below.</span>
+          </div>
+          <div id="admin-product-upload-status" style="font-size:.8rem;color:${adminProductManagerState.uploadingCount ? '#b45309' : 'var(--gray)'};">${adminProductManagerState.uploadingCount ? `Uploading ${adminProductManagerState.uploadingCount} image(s)...` : 'Upload now, preview instantly, and reorder before saving.'}</div>
+        </div>
+        <div id="admin-product-image-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:1rem;"></div>
+      </div>
+
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+        <button class="btn-primary" id="admin-product-submit" onclick="${isEdit ? `saveEditProduct('${product.id}')` : 'saveNewProduct()'}">${isEdit ? 'Save Changes' : 'Add Product ✦'}</button>
+        <button class="btn-outline" onclick="resetAdminProductForm()">Clear Form</button>
+      </div>
+    </div>
+
+    ${renderAdminProductManagerTable()}
+  `;
+
+  const storeSelect = document.getElementById('p-store-type');
+  const categorySelect = document.getElementById('p-cat');
+  if (storeSelect) storeSelect.addEventListener('change', () => {
+    adminProductManagerState.storeType = storeSelect.value === 'woollen' ? 'woollen' : 'main';
+    refreshAdminProductCategoryOptions(product?.category || '');
+  });
+  if (categorySelect) categorySelect.addEventListener('change', () => {
+    renderAdminProductImages();
+    renderAdminVariantRows();
+  });
+
+  toggleAdminVariantSection();
+  refreshAdminProductCategoryOptions(product?.category || '');
+  renderAdminProductImages();
+  renderAdminVariantRows();
+  bindAdminProductDropzone();
+}
+
+function bindAdminProductDropzone() {
+  const zone = document.getElementById('admin-product-dropzone');
+  if (!zone) return;
+  ['dragenter', 'dragover'].forEach(eventName => zone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    zone.style.borderColor = 'var(--rose)';
+    zone.style.background = '#fff5f8';
+  }));
+  ['dragleave', 'drop'].forEach(eventName => zone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    zone.style.borderColor = 'rgba(201,106,138,.35)';
+    zone.style.background = '#fffafc';
+  }));
+  zone.addEventListener('drop', async (event) => {
+    const files = Array.from(event.dataTransfer?.files || []).filter(file => file.type.startsWith('image/'));
+    await handleAdminProductFiles(files);
+  });
+}
+
+async function refreshAdminProductManagerList(reloadFromServer = false) {
+  const draft = snapshotAdminProductManagerDraft();
+  if (reloadFromServer) {
+    await loadAdminProductManagerData(adminProductManagerState.storeType);
+  }
+  adminProductManagerState.editingProduct = draft;
+  renderAdminProductManager();
+}
+
+function updateAdminProductManagerFilter(key, value) {
+  adminProductManagerState.editingProduct = snapshotAdminProductManagerDraft();
+  adminProductManagerState.filters[key] = value;
+  adminProductManagerState.page = 1;
+  renderAdminProductManager();
+}
+
+function setAdminProductManagerPage(page) {
+  adminProductManagerState.editingProduct = snapshotAdminProductManagerDraft();
+  adminProductManagerState.page = Math.max(1, Number(page) || 1);
+  renderAdminProductManager();
+}
+
+function setAdminProductManagerPageSize(size) {
+  adminProductManagerState.editingProduct = snapshotAdminProductManagerDraft();
+  adminProductManagerState.pageSize = Number(size) || 10;
+  adminProductManagerState.page = 1;
+  renderAdminProductManager();
+}
+
+function toggleAdminProductKeepValues(checked) {
+  adminProductManagerState.keepValues = Boolean(checked);
+}
+
+function toggleAdminProductSelection(id, checked) {
+  adminProductManagerState.editingProduct = snapshotAdminProductManagerDraft();
+  if (checked) adminProductManagerState.selectedIds.add(id);
+  else adminProductManagerState.selectedIds.delete(id);
+  renderAdminProductManager();
+}
+
+function toggleAdminProductSelectionForVisible(checked) {
+  adminProductManagerState.editingProduct = snapshotAdminProductManagerDraft();
+  const filtered = getAdminProductManagerFilteredProducts();
+  const visible = filtered.slice((adminProductManagerState.page - 1) * adminProductManagerState.pageSize, adminProductManagerState.page * adminProductManagerState.pageSize);
+  visible.forEach(product => {
+    if (checked) adminProductManagerState.selectedIds.add(product.id);
+    else adminProductManagerState.selectedIds.delete(product.id);
+  });
+  renderAdminProductManager();
+}
+
+async function adminProducts() {
+  await loadAdminProductManagerData('main');
+  adminProductManagerState.editingProduct = null;
+  renderAdminProductManager();
+}
+
+async function adminWoollen() {
+  await loadAdminProductManagerData('woollen');
+  adminProductManagerState.editingProduct = null;
+  renderAdminProductManager();
+}
+
+async function adminAddProduct(product = null) {
+  const nextStoreType = product?.storeType || adminProductManagerState.storeType || 'main';
+  if (adminProductManagerState.storeType !== nextStoreType || !adminProductManagerState.categories.length) {
+    await loadAdminProductManagerData(nextStoreType);
+  }
+  adminProductManagerState.editingProduct = product ? { ...product } : { storeType: nextStoreType, status: 'published' };
+  renderAdminProductManager();
+}
+
+async function adminAddWoollenProduct() {
+  await loadAdminProductManagerData('woollen');
+  adminProductManagerState.editingProduct = { storeType: 'woollen', status: 'published' };
+  renderAdminProductManager();
+}
+
+async function adminEditProduct(id) {
+  const current = adminProductManagerState.products.find(product => String(product.id) === String(id));
+  const product = current || await api('/api/products/' + id);
+  if (product?.error) return toast(product.error, 'error');
+  adminProductManagerState.editingProduct = { ...product };
+  renderAdminProductManager();
+  setTimeout(() => document.getElementById('p-name')?.focus(), 60);
+}
+
+function resetAdminProductForm() {
+  adminProductManagerState.editingProduct = { storeType: adminProductManagerState.storeType, status: 'published' };
+  renderAdminProductManager();
+}
+
+async function handleAdminProductFiles(files) {
+  const list = Array.from(files || []).filter(file => file && file.type?.startsWith('image/'));
+  if (!list.length || !adminProductFormState) return;
+  const category = document.getElementById('p-cat')?.value || 'general';
+  adminProductManagerState.uploadingCount += list.length;
+  renderAdminProductManager(true);
+  try {
+    for (const file of list) {
+      const tempUrl = URL.createObjectURL(file);
+      adminProductFormState.images.push(tempUrl);
+      renderAdminProductImages();
+      const placeholderIndex = adminProductFormState.images.length - 1;
+      try {
+        const uploadedUrl = await uploadAdminMediaFile(file, `products/${category}`);
+        adminProductFormState.images[placeholderIndex] = uploadedUrl;
+        renderAdminProductImages();
+      } catch (error) {
+        adminProductFormState.images = adminProductFormState.images.filter((_, index) => index !== placeholderIndex);
+        renderAdminProductImages();
+        throw error;
+      } finally {
+        URL.revokeObjectURL(tempUrl);
+      }
+    }
+    toast('Images uploaded successfully', 'success');
+  } catch (error) {
+    toast(error.message || 'Image upload failed', 'error');
+  } finally {
+    adminProductManagerState.uploadingCount = Math.max(0, adminProductManagerState.uploadingCount - list.length);
+    const status = document.getElementById('admin-product-upload-status');
+    if (status) status.textContent = adminProductManagerState.uploadingCount ? `Uploading ${adminProductManagerState.uploadingCount} image(s)...` : 'Upload now, preview instantly, and reorder before saving.';
+    const input = document.getElementById('p-image-upload');
+    if (input) input.value = '';
+  }
+}
+
+async function handleAdminProductImageInput(event) {
+  await handleAdminProductFiles(Array.from(event.target.files || []));
+}
+
+function collectAdminProductPayload() {
+  const hasVariants = document.getElementById('p-has-variants')?.value === 'true';
+  adminProductFormState.hasVariants = hasVariants;
+  adminProductFormState.variantType = document.getElementById('p-variant-type')?.value || adminProductFormState.variantType || 'color';
+  return {
+    name: document.getElementById('p-name').value.trim(),
+    category: document.getElementById('p-cat').value,
+    storeType: document.getElementById('p-store-type').value,
+    status: document.getElementById('p-status').value,
+    hasVariants,
+    variantType: adminProductFormState.variantType,
+    price: document.getElementById('p-price').value,
+    mrp: document.getElementById('p-mrp').value,
+    discount: document.getElementById('p-discount').value,
+    stock: document.getElementById('p-stock').value,
+    sku: document.getElementById('p-sku').value.trim(),
+    gstRate: document.getElementById('p-gst').value,
+    hsn: document.getElementById('p-hsn').value,
+    description: document.getElementById('p-desc').value.trim(),
+    featured: document.getElementById('p-featured').value,
+    popular: document.getElementById('p-popular').value,
+    trending: document.getElementById('p-trending').value,
+    newArrival: document.getElementById('p-new-arrival').value,
+    sale: document.getElementById('p-sale').value,
+    existingImages: adminProductFormState.images.filter(image => !String(image || '').startsWith('blob:')),
+    imageOrder: adminProductFormState.images.filter(image => !String(image || '').startsWith('blob:')),
+    variants: hasVariants ? adminProductFormState.variants.map(variant => ({
+      ...variant,
+      label: String(variant.label || '').trim(),
+      value: String(variant.label || variant.value || '').trim(),
+      price: Number(variant.price) || 0,
+      mrp: Number(variant.mrp) || Number(variant.price) || 0,
+      stock: Number(variant.stock) || 0,
+      sku: String(variant.sku || '').trim(),
+      images: Array.isArray(variant.images) ? variant.images.filter(image => !String(image || '').startsWith('blob:')) : []
+    })) : []
+  };
+}
+
+function createAdminDraftFromPayload(payload) {
+  return {
+    name: '',
+    category: payload.category,
+    storeType: payload.storeType,
+    status: payload.status,
+    hasVariants: payload.hasVariants,
+    variantType: payload.variantType,
+    price: payload.price,
+    mrp: payload.mrp,
+    discount: payload.discount,
+    stock: payload.stock,
+    sku: '',
+    gstRate: payload.gstRate,
+    hsn: payload.hsn,
+    description: payload.description,
+    featured: payload.featured === 'true' || payload.featured === true,
+    popular: payload.popular === 'true' || payload.popular === true,
+    trending: payload.trending === 'true' || payload.trending === true,
+    newArrival: payload.newArrival === 'true' || payload.newArrival === true,
+    sale: payload.sale === 'true' || payload.sale === true,
+    images: [],
+    variants: (payload.variants || []).map(variant => ({ ...variant, images: [] }))
+  };
+}
+
+async function submitAdminProduct(id = '') {
+  if (adminProductManagerState.uploadingCount > 0) {
+    return toast('Please wait for image uploads to finish', 'error');
+  }
+  const payload = collectAdminProductPayload();
+  const validationError = validateAdminProductPayload(payload);
+  if (validationError) return toast(validationError, 'error');
+
+  const button = document.getElementById('admin-product-submit');
+  if (button) {
+    button.disabled = true;
+    button.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${id ? 'Saving...' : 'Adding...'}`;
+  }
+
+  const response = await api(id ? `/api/products/${id}` : '/api/products', {
+    method: id ? 'PUT' : 'POST',
+    body: {
+      ...payload,
+      variants: JSON.stringify(payload.variants),
+      existingImages: JSON.stringify(payload.existingImages),
+      imageOrder: JSON.stringify(payload.imageOrder),
+      removedImages: JSON.stringify([])
+    }
+  });
+
+  if (button) {
+    button.disabled = false;
+    button.innerHTML = id ? 'Save Changes' : 'Add Product ✦';
+  }
+
+  if (response.error || !response.product) {
+    return toast(response.error || 'Product save failed', 'error');
+  }
+
+  const nextProduct = response.product;
+  const idx = adminProductManagerState.products.findIndex(product => String(product.id) === String(nextProduct.id));
+  if (idx >= 0) adminProductManagerState.products[idx] = nextProduct;
+  else adminProductManagerState.products.unshift(nextProduct);
+  adminProductManagerState.page = 1;
+  toast(response.message || (id ? 'Product updated successfully' : 'Product added successfully'), 'success');
+
+  if (id) {
+    adminProductManagerState.editingProduct = { ...nextProduct };
+  } else {
+    adminProductManagerState.editingProduct = adminProductManagerState.keepValues ? createAdminDraftFromPayload(payload) : { storeType: adminProductManagerState.storeType, status: 'published' };
+  }
+  renderAdminProductManager();
+}
+
+async function saveNewProduct() { await submitAdminProduct(); }
+async function saveEditProduct(id) { await submitAdminProduct(id); }
+
+async function adminDeleteProduct(id, name) {
+  if (!confirm(`Delete "${name}"? This action cannot be undone.`)) return;
+  const response = await api('/api/products/' + id, { method: 'DELETE' });
+  if (response.error) return toast(response.error, 'error');
+  adminProductManagerState.products = adminProductManagerState.products.filter(product => String(product.id) !== String(id));
+  adminProductManagerState.selectedIds.delete(id);
+  if (String(adminProductManagerState.editingProduct?.id || '') === String(id)) {
+    adminProductManagerState.editingProduct = { storeType: adminProductManagerState.storeType, status: 'published' };
+  }
+  toast('Product deleted successfully', 'success');
+  renderAdminProductManager();
+}
+
+function buildAdminProductBodyFromRecord(product, overrides = {}) {
+  const merged = { ...product, ...overrides };
+  return {
+    name: merged.name,
+    category: merged.category,
+    storeType: merged.storeType || adminProductManagerState.storeType,
+    status: merged.status || 'published',
+    hasVariants: merged.hasVariants ? 'true' : 'false',
+    variantType: merged.variantType || '',
+    price: merged.price || 0,
+    mrp: merged.mrp || 0,
+    discount: merged.discount || 0,
+    stock: merged.stock || 0,
+    sku: merged.sku || '',
+    gstRate: merged.gstRate || 3,
+    hsn: merged.hsn || '7117',
+    description: merged.description || '',
+    featured: merged.featured ? 'true' : 'false',
+    popular: merged.popular ? 'true' : 'false',
+    trending: merged.trending ? 'true' : 'false',
+    newArrival: merged.newArrival ? 'true' : 'false',
+    sale: merged.sale ? 'true' : 'false',
+    variants: JSON.stringify(Array.isArray(merged.variants) ? merged.variants : []),
+    existingImages: JSON.stringify(Array.isArray(merged.images) ? merged.images : []),
+    imageOrder: JSON.stringify(Array.isArray(merged.images) ? merged.images : []),
+    removedImages: JSON.stringify([])
+  };
+}
+
+async function duplicateAdminProduct(id) {
+  const source = adminProductManagerState.products.find(product => String(product.id) === String(id));
+  if (!source) return toast('Product not found', 'error');
+  const response = await api('/api/products', {
+    method: 'POST',
+    body: buildAdminProductBodyFromRecord(source, {
+      name: `${source.name} Copy`,
+      sku: source.sku ? `${source.sku}-COPY` : ''
+    })
+  });
+  if (response.error || !response.product) return toast(response.error || 'Duplicate failed', 'error');
+  adminProductManagerState.products.unshift(response.product);
+  adminProductManagerState.page = 1;
+  toast('Product duplicated successfully', 'success');
+  renderAdminProductManager(true);
+}
+
+function viewAdminProduct(id) {
+  const product = adminProductManagerState.products.find(item => String(item.id) === String(id));
+  if (!product) return;
+  navigate(productRoutePath(product));
+}
+
+function openAdminProductInventory(id) {
+  adminEditProduct(id);
+  setTimeout(() => document.getElementById('p-stock')?.focus(), 80);
+}
+
+function exportAdminProductsCsv(records) {
+  const list = Array.isArray(records) && records.length ? records : getAdminProductManagerFilteredProducts();
+  const rows = [
+    ['Name', 'SKU', 'Category', 'Store', 'Price', 'MRP', 'Stock', 'Status', 'Created Date']
+  ];
+  list.forEach(product => rows.push([
+    product.name || '',
+    product.sku || '',
+    adminProductManagerSlugLabel(product.category),
+    getAdminStoreLabel(product.storeType || adminProductManagerState.storeType),
+    product.price || 0,
+    product.mrp || 0,
+    product.stock || 0,
+    product.status || 'published',
+    product.createdAt || ''
+  ]));
+  const csv = rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `${adminProductManagerState.storeType}-products.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+async function applyAdminProductBulkAction() {
+  const action = document.getElementById('admin-product-bulk-action')?.value || '';
+  const ids = [...adminProductManagerState.selectedIds];
+  if (!action) return toast('Choose a bulk action', 'error');
+
+  if (action === 'export') {
+    const selected = adminProductManagerState.products.filter(product => ids.includes(product.id));
+    exportAdminProductsCsv(selected.length ? selected : getAdminProductManagerFilteredProducts());
+    return;
+  }
+
+  if (!ids.length) return toast('Select at least one product', 'error');
+
+  let body = { action, ids };
+  if (action === 'change-category') {
+    const hint = adminProductManagerState.categories.map(category => `${category.name} (${category.slug})`).join(', ');
+    const category = prompt(`Enter collection slug.\nAvailable: ${hint}`);
+    if (!category) return;
+    body.category = category;
+  }
+
+  const response = await api('/api/admin/products/bulk', { method: 'POST', body });
+  if (response.error) return toast(response.error, 'error');
+
+  if (action === 'delete') {
+    adminProductManagerState.products = adminProductManagerState.products.filter(product => !ids.includes(product.id));
+  } else if (action === 'publish' || action === 'draft') {
+    adminProductManagerState.products = adminProductManagerState.products.map(product => ids.includes(product.id) ? { ...product, status: action === 'publish' ? 'published' : 'draft' } : product);
+  } else if (action === 'change-category') {
+    adminProductManagerState.products = adminProductManagerState.products.map(product => ids.includes(product.id) ? { ...product, category: body.category } : product);
+  }
+  adminProductManagerState.selectedIds = new Set();
+  toast(response.message || 'Bulk action completed', 'success');
+  renderAdminProductManager(true);
+}
