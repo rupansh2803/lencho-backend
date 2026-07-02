@@ -6,6 +6,17 @@ async function renderProductDetail(id) {
 
   const discountVal = p.mrp ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0;
 
+  let inWishlist = false;
+  if (currentUser) {
+    try {
+      const cachedRaw = localStorage.getItem('wishlist_cache_' + currentUser.id);
+      if (cachedRaw) {
+        const items = JSON.parse(cachedRaw) || [];
+        inWishlist = items.some(item => (item.id || item._id) === p.id);
+      }
+    } catch(e) {}
+  }
+
   app.innerHTML = `
   <div class="product-detail-container container reveal">
     <div class="product-detail-grid">
@@ -61,12 +72,15 @@ async function renderProductDetail(id) {
           </span>
         </div>
 
-        <div class="product-actions">
+        <div class="product-actions" data-product-actions="${p.id}">
           <button class="btn-add-to-cart" onclick="addToCart('${p.id}')" ${p.stock===0?'disabled':''}>
             <i class="fas fa-shopping-bag"></i> Add to Cart
           </button>
-          <button class="btn-wishlist-large" onclick="toggleWishlist('${p.id}',this)">
-            <i class="fas fa-heart"></i> Add to Watchlist
+          <button class="btn-buy-now" onclick="buyNow('${p.id}')" ${p.stock===0?'disabled':''}>
+            <i class="fas fa-bolt"></i> Buy Now
+          </button>
+          <button class="btn-wishlist-large ${inWishlist ? 'active' : ''}" onclick="toggleWishlist('${p.id}',this)">
+            <i class="fas fa-heart"></i> ${inWishlist ? 'Remove from Watchlist' : 'Add to Watchlist'}
           </button>
         </div>
 
@@ -183,6 +197,7 @@ async function renderProductDetail(id) {
   window.scrollTo(0, 0);
   initScrollReveal();
   loadRecommended(p.category, p.id);
+  if (typeof updateCartButtonsUI === 'function') updateCartButtonsUI();
 }
 
 async function loadRecommended(category, currentId) {
@@ -254,43 +269,17 @@ async function submitReview(productId) {
 }
 
 async function buyNow(productId) {
-  if (!currentUser) { openAuthModal(); return; }
-  await addToCart(productId, false);
-  navigate('/checkout');
+  navigate(`/checkout-now/${productId}`);
+  toast('Opening checkout...', 'success');
 }
 
 /* ── CART PAGE ────────────────────────────────────────────── */
-async function getLocalCartItemsWithProducts() {
-  if (typeof readLocalCart !== 'function') return [];
-  const localItems = readLocalCart();
-  if (!localItems.length) return [];
-  const products = await api('/api/products', { timeoutMs: 3000 });
-  if (!Array.isArray(products)) return [];
-  return localItems.map(item => {
-    const product = products.find(p => String(p.id || p._id) === String(item.productId));
-    return product ? { productId: item.productId, quantity: Number(item.quantity) || 1, product } : null;
-  }).filter(Boolean);
-}
-
 async function renderCart() {
   const app = document.getElementById('app');
-  app.innerHTML = '<div class="page-wrap"><div style="text-align:center;padding:3rem;color:var(--gray);">⏳ Loading your cart...</div></div>';
-  
-  try {
-    const r = currentUser
-      ? await Promise.race([
-          api('/api/cart'),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
-        ])
-        .catch(() => ({ items: [], count: 0, error: 'cart-timeout' }))
-      : { items: [], count: 0 };
-    
-    let items = r.error ? [] : (r.items || []);
-    if (!items.length) {
-      const localItems = await getLocalCartItemsWithProducts();
-      if (localItems.length) items = localItems;
-    }
-    const totalQty = Number(r.count) || items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
+  const cachedData = readActiveCartCache();
+
+  // Helper function to render a given list of cart items
+  function displayCartHTML(items) {
     if (!items.length) {
       app.innerHTML = `<div class="page-wrap"><h1 class="page-title">My Cart</h1><div class="empty-state"><div class="empty-icon">🛍️</div><h3>Your cart is empty</h3><p>Add some beautiful jewellery to your cart!</p><button class="btn-primary" onclick="navigate('/products')">Shop Now</button></div></div>`;
       return;
@@ -298,10 +287,22 @@ async function renderCart() {
     
     const subtotal = items.reduce((s, i) => s + (i.product?.price || 0) * (i.quantity || 1), 0);
     const shipping = subtotal >= 999 ? 0 : 49;
+    
+    // Check if there is an active session coupon
+    let coupon = null;
+    try {
+      const saved = sessionStorage.getItem('coupon');
+      if (saved) coupon = JSON.parse(saved);
+    } catch(e) {}
+    
     let discount = 0;
+    if (coupon) {
+      discount = coupon.discountAmt || 0;
+    }
+
     app.innerHTML = `
     <div class="page-wrap">
-      <h1 class="page-title">My Cart <span style="font-size:1.2rem;color:var(--gray);">(${totalQty} items)</span></h1>
+      <h1 class="page-title">My Cart <span style="font-size:1.2rem;color:var(--gray);">(${items.length} items)</span></h1>
       <div class="cart-layout">
         <div>
           <div class="cart-items" id="cart-items-list">
@@ -311,13 +312,13 @@ async function renderCart() {
               const total = price * qty;
               return `
             <div class="cart-item" id="ci-${i.productId}">
-              <img class="cart-item-img" loading="lazy" src="${safeImageUrl(i.product.images[0], i.product.category)}" ${imageFallbackAttr(i.product.category, i.product.images[0])} alt="${i.product.name}" onclick="navigate('/product/${i.productId}')" style="cursor:pointer;"/>
+              <img class="cart-item-img" loading="lazy" src="${safeImageUrl(i.product?.images?.[0] || i.product?.image, i.product?.category)}" ${imageFallbackAttr(i.product?.category, i.product?.images?.[0])} alt="${i.product?.name}" onclick="navigate('/product/${i.productId}')" style="cursor:pointer;"/>
               <div class="cart-item-info">
-                <div class="cart-item-name">${i.product.name || 'Product'}</div>
-                <div class="cart-item-cat">${i.product.category || 'Uncategorized'}</div>
+                <div class="cart-item-name">${i.product?.name || 'Product'}</div>
+                <div class="cart-item-cat">${i.product?.category || 'Uncategorized'}</div>
                 <div class="cart-item-price-unit" style="font-size:0.85rem;color:var(--gold);font-weight:600;margin:.5rem 0;">₹${price}</div>
                 <div class="qty-control" style="margin-top:.5rem;display:flex;align-items:center;gap:0.5rem;">
-                  <button class="qty-btn" onclick="updateQty('${i.productId}',Math.max(1,${qty-1}))"><i class="fas fa-minus" style="font-size:.7rem;"></i></button>
+                  <button class="qty-btn" onclick="updateQty('${i.productId}',${qty-1})"><i class="fas fa-minus" style="font-size:.7rem;"></i></button>
                   <span class="qty-num" style="min-width:2rem;text-align:center;">${qty}</span>
                   <button class="qty-btn" onclick="updateQty('${i.productId}',${qty+1})"><i class="fas fa-plus" style="font-size:.7rem;"></i></button>
                 </div>
@@ -330,15 +331,15 @@ async function renderCart() {
         </div>
         <div class="cart-summary">
           <div class="summary-title">Order Summary</div>
-          <div class="summary-row"><span>Subtotal (${totalQty} items)</span><span>${formatCurrency(subtotal)}</span></div>
+          <div class="summary-row"><span>Subtotal (${items.length} items)</span><span>${formatCurrency(subtotal)}</span></div>
           <div class="summary-row"><span>Shipping</span><span style="color:${shipping===0?'#22c55e':'inherit'}">${shipping===0?'FREE':formatCurrency(shipping)}</span></div>
-          <div class="summary-row" id="discount-row" style="display:none;color:#22c55e;"><span>Discount</span><span id="discount-amt">-₹0</span></div>
+          <div class="summary-row" id="discount-row" style="display:${discount > 0 ? 'flex' : 'none'};color:#22c55e;"><span>Discount</span><span id="discount-amt">-${formatCurrency(discount)}</span></div>
           <div class="coupon-row">
-            <input id="coupon-input" placeholder="Coupon code" style="text-transform:uppercase;"/>
+            <input id="coupon-input" placeholder="Coupon code" value="${coupon ? coupon.code : ''}" style="text-transform:uppercase;"/>
             <button class="btn-primary btn-sm" onclick="applyCoupon(${subtotal})">Apply</button>
           </div>
-          <div id="coupon-msg" style="font-size:.8rem;margin-bottom:.5rem;"></div>
-          <div class="summary-row"><span class="summary-total">Grand Total</span><span class="summary-total" id="grand-total">${formatCurrency(subtotal+shipping)}</span></div>
+          <div id="coupon-msg" style="font-size:.8rem;margin-bottom:.5rem;color:${coupon ? '#22c55e' : ''}">${coupon ? `✓ Coupon applied! Saved ${formatCurrency(discount)}` : ''}</div>
+          <div class="summary-row"><span class="summary-total">Grand Total</span><span class="summary-total" id="grand-total">${formatCurrency(subtotal+shipping-discount)}</span></div>
           ${subtotal < 999 ? `<p style="font-size:.75rem;color:var(--gray);margin:.75rem 0;">Add ${formatCurrency(999-subtotal)} more for FREE shipping!</p>` : ''}
           <button class="btn-primary full-width" style="margin-top:.75rem;" onclick="navigate('/checkout')">Proceed to Checkout <i class="fas fa-arrow-right"></i></button>
           <button class="btn-outline full-width" style="margin-top:.5rem;" onclick="navigate('/products')">Continue Shopping</button>
@@ -346,33 +347,98 @@ async function renderCart() {
         </div>
       </div>
     </div>`;
+  }
+
+  // Show cache immediately if present
+  if (cachedData && Array.isArray(cachedData.items)) {
+    displayCartHTML(cachedData.items);
+  } else {
+    app.innerHTML = '<div class="page-wrap"><div style="text-align:center;padding:3rem;color:var(--gray);">⏳ Loading your cart...</div></div>';
+  }
+
+  if (!currentUser?.id) {
+    updateCartBadgeOptimistic(getCartItemCount(cachedData));
+    return;
+  }
+
+  // Background fetch
+  try {
+    const r = await Promise.race([
+      api('/api/cart'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
+    ]);
+    
+    const items = r.items || [];
+    
+    const oldItemsStr = cachedData && Array.isArray(cachedData.items) ? JSON.stringify(cachedData.items) : '';
+    const newItemsStr = JSON.stringify(items);
+    
+    writeActiveCartCache({ items });
+    
+    // Update badge count
+    const freshCount = getCartItemCount({ items });
+    updateCartBadgeOptimistic(freshCount);
+    
+    if (oldItemsStr !== newItemsStr) {
+      displayCartHTML(items);
+    }
   } catch (e) {
-    console.error('Cart loading error:', e);
-    app.innerHTML = `<div class="page-wrap"><div style="text-align:center;padding:3rem;">
-      <h2 style="color:var(--rose);margin-bottom:1rem;">⚠️ Cart Loading Error</h2>
-      <p style="color:var(--gray);margin-bottom:1.5rem;">We're having trouble loading your cart. Please try again.</p>
-      <button class="btn-primary" onclick="renderCart()">Retry</button>
-      <button class="btn-outline" onclick="navigate('/products')" style="margin-left:0.5rem;">Shop Now</button>
-    </div></div>`;
+    console.error('Background cart loading error:', e);
+    if (!cachedData || !Array.isArray(cachedData.items)) {
+      app.innerHTML = `<div class="page-wrap"><div style="text-align:center;padding:3rem;">
+        <h2 style="color:var(--rose);margin-bottom:1rem;">⚠️ Cart Loading Error</h2>
+        <p style="color:var(--gray);margin-bottom:1.5rem;">We're having trouble loading your cart. Please try again.</p>
+        <button class="btn-primary" onclick="renderCart()">Retry</button>
+        <button class="btn-outline" onclick="navigate('/products')" style="margin-left:0.5rem;">Shop Now</button>
+      </div></div>`;
+    }
   }
 }
 
 async function updateQty(productId, qty) {
   if (qty <= 0) {
-    // Show confirmation for removal
     const confirmed = confirm('Remove this item from cart?');
     if (!confirmed) return;
+    return removeFromCart(productId);
   }
   
-  if (typeof setLocalCartQty === 'function') setLocalCartQty(productId, qty);
-  await updateCartCount();
+  // 1. Optimistic Update
+  try {
+    const cached = readActiveCartCache();
+    const items = cached.items || [];
+    const item = items.find(i => i.productId === productId);
+    if (item) {
+      item.quantity = qty;
+      writeActiveCartCache({ items });
+      const freshCount = getCartItemCount({ items });
+      updateCartBadgeOptimistic(freshCount);
+      renderCart();
+    }
+  } catch (e) {
+    console.error('Optimistic qty update failed:', e);
+  }
+
+  if (!currentUser?.id) return;
+  
+  // 2. Background Sync
   try {
     const r = await api('/api/cart/update', { method: 'PUT', body: { productId, quantity: qty } });
-    if (r.error) console.warn('Cart quantity server sync failed, kept local cart:', r.error);
-    await updateCartCount();
-    renderCart();
+    if (r.error) {
+      toast(r.error, 'error');
+      updateCartCount();
+      renderCart();
+      return;
+    }
+    const fresh = await api('/api/cart');
+    if (fresh && !fresh.error) {
+      writeActiveCartCache(fresh);
+      const freshCount = getCartItemCount(fresh);
+      updateCartBadgeOptimistic(freshCount);
+      renderCart();
+    }
   } catch (e) {
-    console.error('Update quantity error:', e);
+    console.error('Update qty background sync error:', e);
+    updateCartCount();
     renderCart();
   }
 }
@@ -381,18 +447,41 @@ async function removeFromCart(productId) {
   const confirmed = confirm('Remove this item from cart?');
   if (!confirmed) return;
   
-  if (typeof setLocalCartQty === 'function') setLocalCartQty(productId, 0);
-  await updateCartCount();
+  // 1. Optimistic Update
+  try {
+    const cached = readActiveCartCache();
+    cached.items = (cached.items || []).filter(i => i.productId !== productId);
+    writeActiveCartCache(cached);
+    const freshCount = getCartItemCount(cached);
+    updateCartBadgeOptimistic(freshCount);
+    toast('Item removed from cart', 'info');
+    renderCart();
+  } catch (e) {
+    console.error('Optimistic remove failed:', e);
+  }
+
+  if (!currentUser?.id) return;
+  
+  // 2. Background Sync
   try {
     const r = await api(`/api/cart/${productId}`, { method: 'DELETE' });
-    if (r.error) console.warn('Cart remove server sync failed, kept local cart:', r.error);
-    await updateCartCount();
-    renderCart();
-    toast('Item removed from cart', 'info');
+    if (r.error) {
+      toast(r.error, 'error');
+      updateCartCount();
+      renderCart();
+      return;
+    }
+    const fresh = await api('/api/cart');
+    if (fresh && !fresh.error) {
+      writeActiveCartCache(fresh);
+      const freshCount = (fresh.items || []).reduce((sum, i) => sum + i.quantity, 0);
+      updateCartBadgeOptimistic(freshCount);
+      renderCart();
+    }
   } catch (e) {
-    console.error('Remove from cart error:', e);
+    console.error('Remove from cart background sync error:', e);
+    updateCartCount();
     renderCart();
-    toast('Item removed from cart', 'info');
   }
 }
 
@@ -440,7 +529,7 @@ async function renderWishlist() {
           <div style="position:relative;aspect-ratio:1;overflow:hidden;background:#f9f9f9;">
             <img src="${safeImageUrl(p.images?.[0] || p.image, p.category)}" ${imageFallbackAttr(p.category, p.images?.[0])} alt="${p.name}" style="width:100%;height:100%;object-fit:cover;"/>
             ${discountVal ? `<span style="position:absolute;top:12px;left:12px;background:#ff4d6d;color:#fff;padding:6px 12px;border-radius:8px;font-size:.75rem;font-weight:700;">${discountVal}% OFF</span>` : ''}
-            <button class="product-wish active" onclick="event.stopPropagation(); removeFromWatchlist('${p.id||p._id}', this)" title="Remove from Watchlist" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.95);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;transition:transform .2s;font-size:.9rem;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'"><i class="fas fa-heart" style="color:#c9748f;"></i></button>
+            <button class="product-wish active" onclick="event.stopPropagation(); removeFromWatchlist('${p.id||p._id}', this)" title="Remove from Watchlist" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.95);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;transition:transform .2s;font-size:.9rem;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'"><i class="fas fa-heart"></i></button>
           </div>
           <div style="padding:1rem;">
             <div style="font-weight:600;color:var(--dark);margin-bottom:.5rem;line-height:1.4;min-height:2.8em;">${p.name}</div>
@@ -467,15 +556,67 @@ async function renderWishlist() {
 }
 
 async function removeFromWatchlist(productId, btn) {
+  if (!currentUser) return;
+  
+  // 1. Optimistic removal from DOM
+  const card = btn.closest('.product-card');
+  if (card) {
+    card.style.opacity = '0';
+    card.style.transform = 'scale(0.9)';
+    setTimeout(() => {
+      card.remove();
+      const remainingCards = document.querySelectorAll('#app .product-card');
+      if (remainingCards.length === 0) {
+        const app = document.getElementById('app');
+        app.innerHTML = `<div class="page-wrap"><h1 class="page-title">My Watchlist</h1><div class="empty-state"><div class="empty-icon">❤️</div><h3>Your watchlist is empty</h3><p>Add your favorite jewellery to come back to them later!</p><button class="btn-primary" onclick="navigate('/products')">Browse Collections</button></div></div>`;
+      }
+    }, 300);
+  }
+  
+  // 2. Optimistic update of cache and badge
+  const cacheKey = 'wishlist_cache_' + currentUser.id;
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) {
+      let cached = JSON.parse(raw) || [];
+      cached = cached.filter(p => (p.id || p._id) !== productId);
+      localStorage.setItem(cacheKey, JSON.stringify(cached));
+      
+      wishlistCount = cached.length;
+      const badge = document.getElementById('wishlist-count');
+      if (badge) {
+        badge.textContent = wishlistCount;
+        badge.style.display = wishlistCount > 0 ? 'flex' : 'none';
+      }
+      localStorage.setItem('wishlist_count_' + currentUser.id, wishlistCount);
+    }
+  } catch (e) {
+    console.error('Optimistic wishlist remove cache update failed:', e);
+  }
+  
+  toast('Removed from watchlist', 'info');
+  
+  // 3. Sync with server in background
   try {
     const r = await api('/api/wishlist/toggle', { method: 'POST', body: { productId } });
-    if (!r.added) {
-      toast('Removed from watchlist', 'info');
-      renderWishlist(); // Refresh the page
+    if (r.error) {
+      toast(r.error, 'error');
+      renderWishlist();
+      return;
+    }
+    const fresh = await api('/api/wishlist');
+    if (Array.isArray(fresh)) {
+      localStorage.setItem(cacheKey, JSON.stringify(fresh));
+      wishlistCount = fresh.length;
+      const badge = document.getElementById('wishlist-count');
+      if (badge) {
+        badge.textContent = wishlistCount;
+        badge.style.display = wishlistCount > 0 ? 'flex' : 'none';
+      }
     }
   } catch (e) {
     console.error('Remove from watchlist error:', e);
-    toast('Failed to remove from watchlist', 'error');
+    renderWishlist();
   }
 }
 
@@ -503,12 +644,12 @@ function ensureRazorpayLoaded() {
 }
 
 async function renderCheckout() {
-  if (!currentUser) { openAuthModal(); navigate('/'); return; }
-  const r = await api('/api/cart');
-  const items = r.items || [];
+  const items = currentUser?.id
+    ? ((await api('/api/cart')).items || [])
+    : (readActiveCartCache().items || []);
   if (!items.length) { navigate('/cart'); return; }
-  const subtotal = items.reduce((s, i) => s + i.product.price * i.quantity, 0);
-  const gst = items.reduce((s, i) => s + (i.product.price * (i.product.gstRate||3)/100 * i.quantity), 0);
+  const subtotal = items.reduce((s, i) => s + (i.product?.price || 0) * i.quantity, 0);
+  const gst = items.reduce((s, i) => s + ((i.product?.price || 0) * ((i.product?.gstRate||3)/100) * i.quantity), 0);
   const shipping = subtotal >= 999 ? 0 : 49;
   const couponData = JSON.parse(sessionStorage.getItem('coupon') || 'null');
   const discount = couponData?.discountAmt || 0;
@@ -522,8 +663,8 @@ async function renderCheckout() {
         <div class="checkout-section">
           <h3><i class="fas fa-map-marker-alt" style="color:var(--rose);margin-right:.5rem;"></i> Delivery Address</h3>
           <div class="form-row">
-            <div class="form-group"><label>Full Name</label><input id="co-name" value="${currentUser.name||''}" placeholder="Full name"/></div>
-            <div class="form-group"><label>Phone</label><input id="co-phone" type="tel" value="${currentUser.phone||''}" placeholder="+91 9876543210"/></div>
+            <div class="form-group"><label>Full Name</label><input id="co-name" value="${currentUser?.name||''}" placeholder="Full name"/></div>
+            <div class="form-group"><label>Phone</label><input id="co-phone" type="tel" value="${currentUser?.phone||''}" placeholder="+91 9876543210"/></div>
           </div>
           <div class="form-group"><label>Address Line 1</label><input id="co-addr1" placeholder="House no., Building, Street"/></div>
           <div class="form-group"><label>Address Line 2</label><input id="co-addr2" placeholder="Area, Colony, Landmark"/></div>
@@ -584,20 +725,22 @@ async function placeOrder() {
   const pin = document.getElementById('co-pin')?.value;
   if (!name || !phone || !addr1 || !city || !state || !pin) { toast('Please fill all address fields', 'error'); return; }
   
-  const r = await api('/api/cart');
-  const items = r.items || [];
+  const items = currentUser?.id
+    ? ((await api('/api/cart')).items || [])
+    : (readActiveCartCache().items || []);
+  if (!items.length) { toast('Your cart is empty', 'error'); return; }
   const couponData = JSON.parse(sessionStorage.getItem('coupon') || 'null');
   const address = `${name}, ${addr1}, ${document.getElementById('co-addr2')?.value||''}, ${city}, ${state} - ${pin}, India. Ph: ${phone}`;
   const orderItems = items.map(i => ({ productId: i.productId, quantity: i.quantity }));
 
   // 1. Create Order record (status: pending if online)
-  const result = await api('/api/orders', { method: 'POST', body: { address, paymentMethod: selectedPayment, items: orderItems, couponCode: couponData?.code } });
+  const result = await api('/api/orders', { method: 'POST', body: { name, phone, address, paymentMethod: selectedPayment, items: orderItems, couponCode: couponData?.code } });
   if (result.error) { toast(result.error, 'error'); return; }
   
   const order = result.order;
 
   if (selectedPayment === 'cod') {
-    handleOrderSuccess(order);
+    await handleOrderSuccess(order);
   } else {
     // 2. Handle Razorpay
     try {
@@ -621,12 +764,12 @@ async function placeOrder() {
             body: { ...response, orderId: order.id } 
           });
           if (verify.success) {
-            handleOrderSuccess(order);
+            await handleOrderSuccess(order);
           } else {
             toast('Payment verification failed. Contact support.', 'error');
           }
         },
-        prefill: { name: currentUser.name, email: currentUser.email, contact: currentUser.phone },
+        prefill: { name: currentUser?.name || name, email: currentUser?.email || '', contact: currentUser?.phone || phone },
         theme: { color: "#c9748f" }
       };
       const rzp1 = new Razorpay(options);
@@ -638,7 +781,15 @@ async function placeOrder() {
   }
 }
 
-function handleOrderSuccess(order) {
+async function handleOrderSuccess(order) {
+  clearActiveCartCache();
+  if (currentUser?.id) {
+    try {
+      await api('/api/cart', { method: 'DELETE' });
+    } catch (e) {
+      console.error('Cart cleanup after checkout failed:', e);
+    }
+  }
   sessionStorage.removeItem('coupon');
   updateCartCount();
   toast('Order placed successfully! 🎉', 'success', 5000);
@@ -650,7 +801,7 @@ function handleOrderSuccess(order) {
     <p style="color:var(--gray);font-size:1.1rem;margin-bottom:.5rem;">Your order <strong style="color:var(--rose-dark);">${order.id}</strong> is confirmed!</p>
     <p style="color:var(--gray);margin-bottom:2rem;">Expected delivery: ${formatDate(order.estimatedDelivery)}</p>
     <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
-      <button class="btn-primary" onclick="navigate('/dashboard')">My Orders</button>
+      <button class="btn-primary" onclick="navigate('${currentUser?.id ? '/dashboard' : '/track'}')">${currentUser?.id ? 'My Orders' : 'Track Order'}</button>
       <button class="btn-outline" onclick="navigate('/track')">Track Order</button>
       <button class="btn-outline" onclick="navigate('/products')">Shop More</button>
     </div>
@@ -659,7 +810,6 @@ function handleOrderSuccess(order) {
 
 /* ── DIRECT PRODUCT CHECKOUT (BUY NOW) ─────────────────────── */
 async function renderCheckoutNow(productId) {
-  if (!currentUser) { openAuthModal(); navigate('/'); return; }
   const app = document.getElementById('app');
   app.innerHTML = '<div style="text-align:center;padding:3rem;color:var(--gray);">⏳ Loading product...</div>';
   
@@ -680,8 +830,8 @@ async function renderCheckoutNow(productId) {
           <div class="checkout-section">
             <h3><i class="fas fa-map-marker-alt" style="color:var(--rose);margin-right:.5rem;"></i> Delivery Address</h3>
             <div class="form-row">
-              <div class="form-group"><label>Full Name</label><input id="co-name" value="${currentUser.name||''}" placeholder="Full name"/></div>
-              <div class="form-group"><label>Phone</label><input id="co-phone" type="tel" value="${currentUser.phone||''}" placeholder="+91 9876543210"/></div>
+              <div class="form-group"><label>Full Name</label><input id="co-name" value="${currentUser?.name||''}" placeholder="Full name"/></div>
+              <div class="form-group"><label>Phone</label><input id="co-phone" type="tel" value="${currentUser?.phone||''}" placeholder="+91 9876543210"/></div>
             </div>
             <div class="form-group"><label>Address Line 1</label><input id="co-addr1" placeholder="House no., Building, Street"/></div>
             <div class="form-group"><label>Address Line 2</label><input id="co-addr2" placeholder="Area, Colony, Landmark"/></div>
@@ -751,13 +901,13 @@ async function placeOrderNow(productId, quantity) {
   const orderItems = [{ productId, quantity }];
 
   // Create Order
-  const result = await api('/api/orders', { method: 'POST', body: { address, paymentMethod: selectedPayment, items: orderItems, couponCode: null } });
+  const result = await api('/api/orders', { method: 'POST', body: { name, phone, address, paymentMethod: selectedPayment, items: orderItems, couponCode: null } });
   if (result.error) { toast(result.error, 'error'); return; }
   
   const order = result.order;
 
   if (selectedPayment === 'cod') {
-    handleOrderSuccess(order);
+    await handleOrderSuccess(order);
   } else {
     // Handle Razorpay
     try {
@@ -779,12 +929,12 @@ async function placeOrderNow(productId, quantity) {
             body: { ...response, orderId: order.id } 
           });
           if (verify.success) {
-            handleOrderSuccess(order);
+            await handleOrderSuccess(order);
           } else {
             toast('Payment verification failed. Contact support.', 'error');
           }
         },
-        prefill: { name: currentUser.name, email: currentUser.email, contact: currentUser.phone },
+        prefill: { name: currentUser?.name || name, email: currentUser?.email || '', contact: currentUser?.phone || phone },
         theme: { color: "#c9748f" }
       };
       const rzp1 = new Razorpay(options);
@@ -1072,3 +1222,406 @@ function renderDisclaimer() {
   `);
   window.scrollTo(0,0);
 }
+
+// ── WOOLLEN COLLECTION PAGE ────────────────────────────────
+async function renderWoollen() {
+  const app = document.getElementById('app');
+
+  const subCategories = [
+    { emoji: '🎀', name: 'Hair Clips', desc: 'Handcrafted clips for every mood', gradient: 'linear-gradient(135deg,#fce4ec,#f9c6d0)' },
+    { emoji: '🌸', name: 'Hair Bands', desc: 'Soft elastic bands for all hair types', gradient: 'linear-gradient(135deg,#f3e5f5,#f3d7f5)' },
+    { emoji: '🎗️', name: 'Scrunchies', desc: 'Gentle on hair, big on style', gradient: 'linear-gradient(135deg,#e8f5e9,#c8e6c9)' },
+    { emoji: '🦋', name: 'Bows', desc: 'Elegant bows for a princess look', gradient: 'linear-gradient(135deg,#fff3e0,#ffe0b2)' },
+    { emoji: '🍼', name: 'Baby Accessories', desc: 'Soft, safe and adorable for little ones', gradient: 'linear-gradient(135deg,#e1f5fe,#b3e5fc)' },
+    { emoji: '🌺', name: 'Crochet Flowers', desc: 'Delicate blooms of woollen art', gradient: 'linear-gradient(135deg,#fbe9e7,#ffccbc)' },
+    { emoji: '✨', name: 'Woollen Decor', desc: 'Beautiful handmade home decor pieces', gradient: 'linear-gradient(135deg,#f1f8e9,#dcedc8)' },
+    { emoji: '🧶', name: 'All Woollen', desc: 'Explore the complete collection', gradient: 'linear-gradient(135deg,#f9fbe7,#f0f4c3)' },
+  ];
+
+  const testimonials = [
+    { name: 'Priya S.', city: 'Delhi', review: 'The crochet hair clips are absolutely stunning! So soft and beautiful. My daughter loves them.', rating: 5, avatar: '👩‍🦱' },
+    { name: 'Ananya M.', city: 'Mumbai', review: 'Ordered scrunchies for my whole friend group. Every piece is made with such care and love!', rating: 5, avatar: '👩' },
+    { name: 'Ritu K.', city: 'Bangalore', review: 'The bows are perfect for my little one. Soft, gentle and so adorable. Best handmade accessories online.', rating: 5, avatar: '👩‍🦰' },
+    { name: 'Deepa V.', city: 'Chennai', review: 'Woollen flowers look so real! I use them as home decor. Bought 10 pieces and gifted them too!', rating: 5, avatar: '👩‍🦳' },
+  ];
+
+  const whyPoints = [
+    { icon: '🤝', title: 'Made with Love', desc: 'Every piece is handcrafted by skilled artisans. No machines, just heart and hands.' },
+    { icon: '🌿', title: 'Natural Materials', desc: 'We use premium woollen yarn that is soft, gentle and skin-friendly for all ages.' },
+    { icon: '♾️', title: 'One of a Kind', desc: 'Each piece is unique. No two handmade items are exactly alike — you get something truly special.' },
+    { icon: '🎁', title: 'Perfect for Gifting', desc: 'Beautiful packaging makes our woollen accessories the perfect gift for loved ones.' },
+    { icon: '💫', title: 'Premium Quality', desc: 'Durable stitching, vibrant colors, and attention to detail ensure long-lasting beauty.' },
+    { icon: '🏡', title: 'Support Artisans', desc: 'Your purchase directly supports local craftspeople and keeps traditional art alive.' },
+  ];
+
+  app.innerHTML = `
+  <section class="woollen-hero reveal" role="banner">
+    <div class="woollen-hero-bg">
+      <img src="/images/woollen_hero.png" alt="Woollen Collection" loading="eager"/>
+      <div class="woollen-hero-overlay"></div>
+    </div>
+    <div class="woollen-hero-content">
+      <div class="woollen-badge-top">🧶 HANDMADE WITH LOVE</div>
+      <h1 class="woollen-hero-title">Woollen Collection<span class="woollen-hero-italic">Artisan Crafted</span></h1>
+      <p class="woollen-hero-sub">Discover our exclusive range of handmade woollen hair accessories.<br/>Soft textures, vibrant colors, crafted with care — just for you.</p>
+      <div class="woollen-hero-btns">
+        <button class="woollen-btn-primary" onclick="navigate('/woollen/products')"><i class="fas fa-shopping-bag"></i> Shop Now</button>
+        <button class="woollen-btn-ghost" onclick="document.getElementById('woollen-categories').scrollIntoView({behavior:'smooth'})"><i class="fas fa-chevron-down"></i> Explore Categories</button>
+      </div>
+      <div class="woollen-hero-stats">
+        <div class="woollen-stat"><span class="woollen-stat-num">100%</span><span class="woollen-stat-label">Handmade</span></div>
+        <div class="woollen-stat-divider"></div>
+        <div class="woollen-stat"><span class="woollen-stat-num">500+</span><span class="woollen-stat-label">Happy Customers</span></div>
+        <div class="woollen-stat-divider"></div>
+        <div class="woollen-stat"><span class="woollen-stat-num">50+</span><span class="woollen-stat-label">Designs</span></div>
+      </div>
+    </div>
+    <div class="woollen-hero-scroll-hint"><div class="woollen-scroll-dot"></div></div>
+  </section>
+
+  <div class="woollen-trust-bar">
+    <div class="woollen-trust-item"><i class="fas fa-leaf"></i><span>Natural Yarn</span></div>
+    <div class="woollen-trust-item"><i class="fas fa-hands"></i><span>100% Handcrafted</span></div>
+    <div class="woollen-trust-item"><i class="fas fa-truck-fast"></i><span>Free Shipping &#x20B9;999+</span></div>
+    <div class="woollen-trust-item"><i class="fas fa-rotate-left"></i><span>7-Day Returns</span></div>
+    <div class="woollen-trust-item"><i class="fas fa-gift"></i><span>Gift Packaging</span></div>
+  </div>
+
+  <section class="woollen-categories-section" id="woollen-categories">
+    <div class="woollen-section-header reveal">
+      <div class="woollen-eyebrow">🌸 Browse by Type</div>
+      <h2 class="woollen-section-title">Our Collections</h2>
+      <p class="woollen-section-sub">Each piece tells a story of craftsmanship and creativity</p>
+    </div>
+    <div class="woollen-categories-grid">
+      ${subCategories.map((cat, i) => `
+        <div class="woollen-cat-card reveal" style="animation-delay:${i * 0.08}s;"
+             onclick="navigate('${cat.name === 'All Woollen' ? '/woollen/products' : '/woollen/' + cat.name.toLowerCase().replace(/ /g, '-')}')">
+          <div class="woollen-cat-icon-wrap" style="background:${cat.gradient}"><span class="woollen-cat-emoji">${cat.emoji}</span></div>
+          <div class="woollen-cat-info"><h3 class="woollen-cat-name">${cat.name}</h3><p class="woollen-cat-desc">${cat.desc}</p></div>
+          <div class="woollen-cat-arrow"><i class="fas fa-arrow-right"></i></div>
+        </div>
+      `).join('')}
+    </div>
+  </section>
+
+  <section class="woollen-why-section">
+    <div class="woollen-why-bg-pattern"></div>
+    <div class="woollen-section-header reveal" style="position:relative;z-index:2;">
+      <div class="woollen-eyebrow">💚 Our Promise</div>
+      <h2 class="woollen-section-title" style="color:#2d4a2d;">Why Choose Handmade?</h2>
+    </div>
+    <div class="woollen-why-grid">
+      ${whyPoints.map((pt, i) => `
+        <div class="woollen-why-card reveal" style="animation-delay:${i * 0.1}s;">
+          <div class="woollen-why-icon">${pt.icon}</div>
+          <h3 class="woollen-why-title">${pt.title}</h3>
+          <p class="woollen-why-desc">${pt.desc}</p>
+        </div>
+      `).join('')}
+    </div>
+  </section>
+
+  <section class="woollen-products-section">
+    <div class="woollen-section-header reveal">
+      <div class="woollen-eyebrow">✨ New Arrivals</div>
+      <h2 class="woollen-section-title">Featured Woollen Picks</h2>
+      <p class="woollen-section-sub">Handpicked favorites from our artisan workshop</p>
+    </div>
+    <div class="woollen-products-grid" id="woollen-products-grid">
+      <div class="woollen-loading-spinner"><div class="woollen-spinner"></div><p style="color:#a8c5a0;margin-top:1rem;font-size:.95rem;">Loading beautiful pieces...</p></div>
+    </div>
+    <div style="text-align:center;margin-top:3rem;">
+      <button class="woollen-btn-primary" onclick="navigate('/woollen/products')" style="font-size:1rem;padding:16px 42px;"><i class="fas fa-th-large"></i> View All Woollen Products</button>
+    </div>
+  </section>
+
+  <section class="woollen-testimonials-section">
+    <div class="woollen-section-header reveal">
+      <div class="woollen-eyebrow">💬 Customer Love</div>
+      <h2 class="woollen-section-title">What Our Customers Say</h2>
+    </div>
+    <div class="woollen-testimonials-track">
+      <div class="woollen-testimonials-inner" id="woollen-testi-inner">
+        ${[...testimonials, ...testimonials].map(t => `
+          <div class="woollen-testi-card">
+            <div class="woollen-testi-avatar">${t.avatar}</div>
+            <div class="woollen-stars">${'⭐'.repeat(t.rating)}</div>
+            <p class="woollen-testi-text">"${t.review}"</p>
+            <div class="woollen-testi-name">${t.name}</div>
+            <div class="woollen-testi-city">📍 ${t.city}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    <div class="woollen-testi-controls">
+      <button class="woollen-testi-btn" onclick="scrollWoollenTestimonials(-1)" aria-label="Previous"><i class="fas fa-chevron-left"></i></button>
+      <div class="woollen-testi-dots" id="woollen-testi-dots">
+        ${testimonials.map((_, i) => `<span class="woollen-dot ${i===0?'active':''}" onclick="goToWoollenSlide(${i})"></span>`).join('')}
+      </div>
+      <button class="woollen-testi-btn" onclick="scrollWoollenTestimonials(1)" aria-label="Next"><i class="fas fa-chevron-right"></i></button>
+    </div>
+  </section>
+
+  <section class="woollen-cta-section reveal">
+    <div class="woollen-cta-inner">
+      <div class="woollen-cta-icon">🧶</div>
+      <h2 class="woollen-cta-title">Get Notified for New Arrivals</h2>
+      <p class="woollen-cta-sub">Be the first to know when our new handmade woollen collections drop. Plus, get exclusive offers!</p>
+      <div class="woollen-cta-form">
+        <input type="email" id="woollen-email-input" placeholder="Enter your email address" class="woollen-email-input"/>
+        <button class="woollen-btn-primary" onclick="subscribeWoollenNewsletter()" style="border-radius:12px;white-space:nowrap;"><i class="fas fa-bell"></i> Notify Me</button>
+      </div>
+      <p class="woollen-cta-note">*No spam, ever. Unsubscribe anytime.</p>
+    </div>
+  </section>
+  `;
+
+  _loadWoollenProducts();
+  _initWoollenTestimonials();
+  initScrollReveal();
+}
+
+async function _loadWoollenProducts() {
+  const grid = document.getElementById('woollen-products-grid');
+  if (!grid) return;
+  try {
+    const data = await api('/api/products?category=woollen');
+    let products = Array.isArray(data) ? data : (data.products || data.items || []);
+    
+    // Exclude out-of-stock
+    products = products.filter(p => p.stock > 0);
+    
+    // Shuffle and slice to 8
+    const shuffled = typeof shuffleArray === 'function' ? shuffleArray(products) : products.sort(() => 0.5 - Math.random());
+    const finalProducts = shuffled.slice(0, 8);
+
+    if (!finalProducts || finalProducts.length === 0) {
+      const placeholders = [
+        { emoji: '🎀', name: 'Crochet Hair Clip Set', price: '149', badge: 'New', color: '#fce4ec' },
+        { emoji: '🌸', name: 'Floral Scrunchie Bundle', price: '99', badge: 'Popular', color: '#f3e5f5' },
+        { emoji: '🦋', name: 'Handmade Butterfly Bow', price: '79', badge: 'Trending', color: '#e8f5e9' },
+        { emoji: '🌺', name: 'Woollen Flower Pin', price: '119', badge: 'Sale', color: '#fff3e0' },
+      ];
+      grid.innerHTML = placeholders.map(p => `
+        <div class="woollen-product-placeholder reveal">
+          <div class="wpp-image" style="background:${p.color};">
+            <span class="wpp-emoji">${p.emoji}</span>
+            <div class="wpp-badge">${p.badge}</div>
+          </div>
+          <div class="wpp-info">
+            <p class="wpp-name">${p.name}</p>
+            <div class="wpp-price-row">
+              <span class="wpp-price">&#x20B9;${p.price}</span>
+              <button class="wpp-cart-btn" onclick="showToast('Add products from Admin panel to show here!', 'info')"><i class="fas fa-shopping-bag"></i></button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+      return;
+    }
+    grid.innerHTML = finalProducts.map(p => {
+      const img = (p.images && p.images[0]) ? safeImageUrl(p.images[0], p.category) : '';
+      const fallback = typeof imageFallbackAttr === 'function' ? imageFallbackAttr(p.category, p.images?.[0]) : '';
+      const discount = p.mrp ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0;
+      return `
+      <div class="woollen-product-card reveal" onclick="navigate('/product/${p.id || p._id}')">
+        <div class="wpc-image-wrap">
+          <img src="${img}" ${fallback} alt="${p.name}" loading="lazy"/>
+          ${discount ? '<div class="wpc-badge">' + discount + '% OFF</div>' : ''}
+          <div class="wpc-overlay"><button class="wpc-quick-btn" onclick="event.stopPropagation();addToCart('${p.id || p._id}')"><i class="fas fa-shopping-bag"></i> Add to Cart</button></div>
+        </div>
+        <div class="wpc-info">
+          <p class="wpc-name">${p.name}</p>
+          <div class="wpc-price-row">
+            <span class="wpc-price">&#x20B9;${p.price}</span>
+            ${p.mrp ? '<span class="wpc-mrp">&#x20B9;' + p.mrp + '</span>' : ''}
+          </div>
+          <div class="wpc-stars">${typeof renderStars === 'function' ? renderStars(p.rating || 4.5) : '⭐⭐⭐⭐⭐'}</div>
+        </div>
+      </div>`;
+    }).join('');
+    initScrollReveal();
+  } catch(e) {
+    console.warn('Woollen products load error:', e);
+    if (grid) grid.innerHTML = '<p style="text-align:center;color:#a8c5a0;padding:2rem;">Products coming soon! 🧶</p>';
+  }
+}
+
+let _woollenTestiIdx = 0;
+let _woollenTestiTimer = null;
+function _initWoollenTestimonials() {
+  _woollenTestiIdx = 0;
+  _startWoollenAutoPlay();
+}
+function _startWoollenAutoPlay() {
+  if (_woollenTestiTimer) clearInterval(_woollenTestiTimer);
+  _woollenTestiTimer = setInterval(() => { scrollWoollenTestimonials(1); }, 3800);
+}
+function scrollWoollenTestimonials(dir) {
+  const inner = document.getElementById('woollen-testi-inner');
+  if (!inner) { clearInterval(_woollenTestiTimer); return; }
+  const total = 4;
+  _woollenTestiIdx = (_woollenTestiIdx + dir + total) % total;
+  const card = inner.querySelector('.woollen-testi-card');
+  const cardW = card ? card.offsetWidth + 24 : 340;
+  inner.style.transform = 'translateX(-' + (_woollenTestiIdx * cardW) + 'px)';
+  document.querySelectorAll('.woollen-dot').forEach((d, i) => d.classList.toggle('active', i === _woollenTestiIdx));
+  _startWoollenAutoPlay();
+}
+function goToWoollenSlide(idx) {
+  const inner = document.getElementById('woollen-testi-inner');
+  if (!inner) return;
+  _woollenTestiIdx = idx;
+  const card = inner.querySelector('.woollen-testi-card');
+  const cardW = card ? card.offsetWidth + 24 : 340;
+  inner.style.transform = 'translateX(-' + (idx * cardW) + 'px)';
+  document.querySelectorAll('.woollen-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+  _startWoollenAutoPlay();
+}
+function subscribeWoollenNewsletter() {
+  const input = document.getElementById('woollen-email-input');
+  if (!input) return;
+  const email = input.value.trim();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showToast('Please enter a valid email address', 'error');
+    return;
+  }
+  input.value = '';
+  showToast('🧶 You\'re subscribed! We\'ll notify you of new woollen drops.', 'success');
+}
+
+// ── WOOLLEN PRODUCTS LIST PAGE (With premium grid and filters) ──
+async function renderWoollenProducts() {
+  const app = document.getElementById('app');
+  const params = new URLSearchParams(location.search);
+  let selectedSub = params.get('subcategory') || '';
+
+  if (!selectedSub && location.pathname.startsWith('/woollen/') && location.pathname !== '/woollen/products') {
+    const subSlug = location.pathname.split('/woollen/')[1];
+    const mapping = {
+      'hair-clips': 'Hair Clips',
+      'hair-bands': 'Hair Bands',
+      'scrunchies': 'Scrunchies',
+      'bows': 'Bows',
+      'baby-accessories': 'Baby Accessories',
+      'crochet-flowers': 'Crochet Flowers',
+      'woollen-decor': 'Woollen Decor'
+    };
+    if (mapping[subSlug]) selectedSub = mapping[subSlug];
+  }
+
+  app.innerHTML = `
+  <section class="woollen-products-hero" style="background: linear-gradient(135deg, #e8f0e5, #f5f8f3); padding: 5rem 0 3rem; text-align: center;">
+    <div class="container reveal">
+      <div class="woollen-eyebrow" style="color: #4a7c4a; font-weight: 600; text-transform: uppercase; letter-spacing: 2px;">Handcrafted Elegance</div>
+      <h1 style="font-family: 'Playfair Display', serif; font-size: 3rem; color: #2d4a2d; margin: 0.5rem 0 1rem;">The Woollen Collection</h1>
+      <p style="color: #607d60; max-width: 600px; margin: 0 auto 2rem; line-height: 1.6;">Explore our beautiful range of premium, handmade woollen hair bands, clips, scrunchies, and accessories. Soft, delicate, and crafted with love.</p>
+    </div>
+  </section>
+
+  <div class="container" style="padding: 2rem 0 5rem;">
+    <!-- Subcategory Filters -->
+    <div class="woollen-filters" style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-bottom: 3rem;">
+      <button class="filter-chip ${!selectedSub ? 'active' : ''}" onclick="navigate('/woollen/products')" style="padding: 10px 20px; border-radius: 30px; border: 1px solid #c8d8c8; background: ${!selectedSub ? '#4a7c4a' : '#fff'}; color: ${!selectedSub ? '#fff' : '#4a7c4a'}; font-weight: 600; cursor: pointer; transition: all 0.2s;">All Woollen</button>
+      ${[
+        'Hair Clips', 'Hair Bands', 'Scrunchies', 'Bows', 'Baby Accessories', 'Crochet Flowers', 'Woollen Decor'
+      ].map(sub => {
+        const isActive = selectedSub === sub;
+        return `
+          <button class="filter-chip ${isActive ? 'active' : ''}" 
+                  onclick="navigate('/woollen/products?subcategory=${encodeURIComponent(sub)}')" 
+                  style="padding: 10px 20px; border-radius: 30px; border: 1px solid #c8d8c8; background: ${isActive ? '#4a7c4a' : '#fff'}; color: ${isActive ? '#fff' : '#4a7c4a'}; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+            ${sub}
+          </button>
+        `;
+      }).join('')}
+    </div>
+
+    <!-- Woollen Products Grid -->
+    <div class="woollen-products-grid" id="woollen-products-list-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 2rem;">
+      <div style="grid-column: 1/-1; text-align: center; padding: 5rem 0;">
+        <div class="woollen-spinner" style="border: 4px solid rgba(74, 124, 74, 0.1); border-left-color: #4a7c4a; width: 40px; height: 40px; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1rem;"></div>
+        <p style="color: #607d60;">Loading Woollen products...</p>
+      </div>
+    </div>
+  </div>
+  `;
+
+  // Fetch Woollen products and render them
+  try {
+    let url = '/api/products?category=woollen';
+    if (selectedSub) {
+      url += `&subcategory=${encodeURIComponent(selectedSub)}`;
+    }
+    const data = await api(url);
+    const products = Array.isArray(data) ? data : (data.products || data.items || []);
+    const grid = document.getElementById('woollen-products-list-grid');
+
+    if (!grid) return;
+
+    if (!products || products.length === 0) {
+      grid.innerHTML = `
+        <div style="grid-column: 1/-1; text-align: center; padding: 5rem 0;">
+          <span style="font-size: 3rem;">🧶</span>
+          <h3 style="font-family: 'Playfair Display', serif; color: #2d4a2d; margin-top: 1rem;">No Products Found</h3>
+          <p style="color: #607d60; margin-bottom: 2rem;">We couldn't find any products in this section yet.</p>
+          ${selectedSub ? `<button class="btn-primary" onclick="navigate('/woollen/products')">View All Woollen</button>` : ''}
+        </div>
+      `;
+      return;
+    }
+
+    let wishlistCached = [];
+    if (currentUser) {
+      try {
+        const cachedRaw = localStorage.getItem('wishlist_cache_' + currentUser.id);
+        if (cachedRaw) wishlistCached = JSON.parse(cachedRaw) || [];
+      } catch (e) {}
+    }
+
+    grid.innerHTML = products.map(p => {
+      const img = safeImageUrl(p.image || (p.images && p.images[0]), p.category);
+      const fallback = typeof imageFallbackAttr === 'function' ? imageFallbackAttr(p.category, p.image || p.images?.[0]) : '';
+      const discount = p.mrp ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0;
+      const inWishlist = wishlistCached.some(item => (item.id || item._id) === p.id);
+
+      return `
+      <div class="product-card reveal" style="border-radius:16px; overflow:hidden; border: 1px solid #e2ece2; background: #fff;" onclick="navigate('/product/${p.id}')">
+        <div class="product-img-wrap" style="position:relative; aspect-ratio:1/1.15; cursor:pointer;">
+          <img class="product-img" src="${img}" ${fallback} alt="${p.name}" style="width:100%; height:100%; object-fit:cover; transition: transform 0.5s ease;"/>
+          ${discount ? `<div class="product-badge" style="background:#4a7c4a; color:#fff; font-weight:600;">${discount}% OFF</div>` : ''}
+          <button class="wishlist-btn-badge ${inWishlist ? 'active' : ''}" onclick="event.stopPropagation(); toggleWishlist('${p.id}', this)" style="position:absolute; top:15px; right:15px; width:36px; height:36px; border-radius:50%; border:none; background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 3px 10px rgba(0,0,0,0.1); z-index:2; transition: all 0.2s;">
+            <i class="fa${inWishlist ? 's' : 'r'} fa-heart" style="color:${inWishlist ? 'var(--rose)' : 'var(--gray)'};"></i>
+          </button>
+        </div>
+        <div class="product-body" style="padding: 1.25rem;">
+          <div class="product-name" style="font-weight:600; font-size:1rem; color:#2d4a2d; margin-bottom:0.5rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.name}</div>
+          <div class="product-price" style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+            <span class="price-current" style="color:#2d4a2d; font-weight:700;">${formatCurrency(p.price)}</span>
+            ${p.mrp ? `<span class="price-mrp" style="color:var(--gray); text-decoration:line-through; font-size:0.9rem;">${formatCurrency(p.mrp)}</span>` : ''}
+          </div>
+          
+          <div class="product-actions-wrap" data-product-actions="${p.id}" onclick="event.stopPropagation()">
+            <button class="btn-primary full-width" onclick="addToCart('${p.id}')" style="background: linear-gradient(135deg, #4a7c4a, #386038); border:none; font-weight:600; padding:12px; border-radius:8px;">
+              <i class="fas fa-shopping-bag"></i> Add to Cart
+            </button>
+          </div>
+        </div>
+      </div>
+      `;
+    }).join('');
+
+    if (typeof updateCartButtonsUI === 'function') {
+      updateCartButtonsUI();
+    }
+    initScrollReveal();
+
+  } catch(e) {
+    console.error('Error rendering woollen products:', e);
+    const grid = document.getElementById('woollen-products-list-grid');
+    if (grid) grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; color: #a8c5a0; padding:3rem;">Failed to load woollen products. Please try again later.</div>';
+  }
+}
+
+

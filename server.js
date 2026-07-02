@@ -383,7 +383,6 @@ const DATA_DIR = path.join(__dirname, 'data');
 const FILES = {
   users: path.join(DATA_DIR, 'users.json'),
   products: path.join(DATA_DIR, 'products.json'),
-  categories: path.join(DATA_DIR, 'categories.json'),
   orders: path.join(DATA_DIR, 'orders.json'),
   carts: path.join(DATA_DIR, 'carts.json'),
   wishlists: path.join(DATA_DIR, 'wishlists.json'),
@@ -490,23 +489,7 @@ const DEFAULT_FALLBACK_SETTINGS = {
   aiChatWelcome: 'Namaste! Main Lencho assistant hoon. Product, offers, shipping, ya order help ke liye message bhejiye.',
   aiSystemPrompt: 'You are Lencho\'s premium jewelry shopping assistant. Recommend only products that fit the catalog context. Be concise, friendly, and practical.',
   aiHandoffWhatsappNumber: '919999999999',
-  razorpayKeyId: process.env.RAZORPAY_KEY_ID || '',
-  woollenHeaderTitle: 'Lencho Woollen',
-  woollenHeroTitle: 'Handmade Woollen Collection',
-  woollenHeroSubtitle: 'Premium crochet accessories, decor, and soft festive pieces.',
-  woollenHeroButtonText: 'View All Woollen',
-  woollenHeroBanner: '/images/woollen_hero.png',
-  woollenAbout: 'A separate handmade store experience for crochet, woollen accessories, gifts, and decor.',
-  woollenHeaderBg: '#fff7fb',
-  woollenHeaderText: '#3f2434',
-  woollenHoverColor: '#c9748f',
-  woollenButtonColor: '#9b4065',
-  woollenLogoPosition: 'left',
-  woollenFooterColor: '#3f2434',
-  woollenFooterTextColor: '#fff7fb',
-  woollenFooterContent: 'Handmade with care by Lencho.',
-  woollenFooterImage: '',
-  woollenSocialIcons: 'instagram,whatsapp'
+  razorpayKeyId: process.env.RAZORPAY_KEY_ID || ''
 };
 
 const app = express();
@@ -713,11 +696,7 @@ const PUBLIC_SETTINGS_KEYS = [
   'socialInstagramUrl', 'socialFacebookUrl', 'socialYoutubeUrl', 'socialWhatsappUrl',
   'schemaPhone', 'schemaEmail', 'schemaAddress',
   'aiChatEnabled', 'aiChatWelcome', 'aiHandoffWhatsappNumber',
-  'razorpayKeyId',
-  'woollenHeaderTitle', 'woollenHeroTitle', 'woollenHeroSubtitle', 'woollenHeroButtonText', 'woollenHeroBanner',
-  'woollenAbout', 'woollenHeaderBg', 'woollenHeaderText', 'woollenHoverColor', 'woollenButtonColor',
-  'woollenLogoPosition', 'woollenFooterColor', 'woollenFooterTextColor', 'woollenFooterContent',
-  'woollenFooterImage', 'woollenSocialIcons'
+  'razorpayKeyId'
 ];
 
 
@@ -779,19 +758,70 @@ function normalizeProductRecord(product) {
     ...product,
     id: product._id?.toString?.() || product.id,
     category,
+    subcategory: product.subcategory || '',
     price: Number(product.price) || 0,
     mrp: Number(product.mrp) || Number(product.price) || 0,
     discount: Number(product.discount) || 0,
     stock: Number(product.stock) || 0,
     rating: Number(product.rating) || 0,
-    popular: product.popular === true || product.popular === 'true',
-    trending: product.trending === true || product.trending === 'true',
-    newArrival: product.newArrival === true || product.newArrival === 'true',
-    sale: product.sale === true || product.sale === 'true',
-    storeType: product.storeType || 'main',
     images,
     image: normalizeMediaUrl(product.image || images[0], { category })
   };
+}
+
+async function findProductById(id) {
+  if (!id) return null;
+  try {
+    if (useDB) {
+      let p = null;
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        p = await Product.findById(id).lean();
+      }
+      if (!p) {
+        // Fallback: Query raw MongoDB collection directly to bypass Mongoose ObjectId casting
+        p = await Product.collection.findOne({ _id: id });
+        if (!p && mongoose.Types.ObjectId.isValid(id)) {
+          p = await Product.collection.findOne({ _id: new mongoose.Types.ObjectId(id) });
+        }
+      }
+      return p;
+    } else {
+      const products = getJsonCatalogProducts();
+      return products.find(p => p.id === id) || null;
+    }
+  } catch (err) {
+    console.error(`[DB] Error finding product by ID ${id}:`, err.message);
+    return null;
+  }
+}
+
+async function findProductsByIds(ids) {
+  if (!Array.isArray(ids) || !ids.length) return [];
+  try {
+    if (useDB) {
+      const objectIds = [];
+      const stringIds = [];
+      ids.forEach(id => {
+        if (mongoose.Types.ObjectId.isValid(id)) {
+          objectIds.push(new mongoose.Types.ObjectId(id));
+          objectIds.push(id);
+        } else {
+          stringIds.push(id);
+        }
+      });
+      const query = {
+        _id: { $in: [...objectIds, ...stringIds] }
+      };
+      const list = await Product.collection.find(query).toArray();
+      return list;
+    } else {
+      const catalog = getJsonCatalogProducts();
+      return catalog.filter(p => ids.includes(p.id));
+    }
+  } catch (err) {
+    console.error('[DB] Error finding products by IDs:', err.message);
+    return [];
+  }
 }
 
 function normalizeCategoryRecord(category) {
@@ -802,10 +832,8 @@ function normalizeCategoryRecord(category) {
     id: category._id?.toString?.() || category.id,
     slug,
     image: normalizeMediaUrl(category.image, { category: slug }),
-    bannerImage: normalizeMediaUrl(category.bannerImage || category.image, { category: slug }),
-    icon: category.icon || 'star',
-    theme: category.theme || '',
-    storeType: category.storeType || 'main',
+    icon: category.icon || '',
+    status: category.status || 'active',
     description: category.description || ''
   };
 }
@@ -849,47 +877,6 @@ function getJsonCategoriesFromProducts(products) {
     });
   }
   return categories;
-}
-
-function getDefaultWoollenCategories() {
-  const themes = ['pastel-pink', 'lavender', 'mint', 'cream', 'peach', 'baby-blue', 'light-yellow', 'rose-gold', 'soft-purple', 'sage'];
-  const items = [
-    ['Hair Clips', 'scissors', 'Handmade crochet hair clips'],
-    ['Hair Bands', 'circle', 'Soft woollen hair bands'],
-    ['Scrunchies', 'sparkles', 'Crochet scrunchies and soft ties'],
-    ['Bows', 'ribbon', 'Cute bow accessories'],
-    ['Baby Accessories', 'baby', 'Gentle handmade pieces for babies'],
-    ['Crochet Flowers', 'flower', 'Crochet flowers and floral accessories'],
-    ['Woollen Decor', 'home', 'Decor made with wool and crochet'],
-    ['Festival Collection', 'gift', 'Festive handmade woollen picks'],
-    ['Winter Collection', 'snowflake', 'Warm winter accessories'],
-    ['Premium Collection', 'diamond', 'Premium handmade woollen pieces'],
-    ['Limited Edition', 'star', 'Small-batch limited designs']
-  ];
-  return items.map(([name, icon, description], index) => ({
-    id: `woollen-${name.toLowerCase().replace(/\s+/g, '-')}`,
-    name,
-    slug: name.toLowerCase().replace(/\s+/g, '-'),
-    image: '/images/premium_hero.png',
-    bannerImage: '/images/premium_hero.png',
-    icon,
-    theme: themes[index % themes.length],
-    description,
-    displayOrder: index + 1,
-    storeType: 'woollen'
-  }));
-}
-
-function getJsonCategories() {
-  const saved = readJson(FILES.categories);
-  const normalizedSaved = Array.isArray(saved) ? saved.map(normalizeCategoryRecord).filter(Boolean) : [];
-  const productCats = getJsonCategoriesFromProducts(getJsonCatalogProducts()).map(normalizeCategoryRecord).filter(Boolean);
-  const bySlug = new Map();
-  [...normalizedSaved, ...productCats, ...getDefaultWoollenCategories()].forEach(cat => {
-    if (!cat?.slug || bySlug.has(cat.slug)) return;
-    bySlug.set(cat.slug, normalizeCategoryRecord(cat));
-  });
-  return Array.from(bySlug.values()).sort((a, b) => (Number(a.displayOrder) || 0) - (Number(b.displayOrder) || 0));
 }
 
 function getFallbackSettingsObject() {
@@ -1049,13 +1036,6 @@ async function seedCategories() {
         { name: 'Bangles', slug: 'bangles', image: '/images/p4.png', description: 'Traditional bangles' }
       ];
       await Category.insertMany(sampleCats);
-    }
-    for (const cat of getDefaultWoollenCategories()) {
-      await Category.findOneAndUpdate(
-        { slug: cat.slug },
-        { $setOnInsert: cat },
-        { upsert: true, new: true }
-      );
     }
   } catch (e) { console.error('Category Seed Error:', e.message); }
 }
@@ -1311,14 +1291,6 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-function getRequestUserId(req) {
-  return req.auth?.userId || req.session?.userId || null;
-}
-
-function getCartCount(items = []) {
-  return (items || []).reduce((sum, item) => sum + Math.max(0, Number(item.quantity) || 0), 0);
-}
-
 // ─── SECURITY HELPERS ─────────────────────────────────────────
 function generateCaptcha() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -1341,6 +1313,7 @@ async function getMeaningfulSetting(key, fallback) {
   const val = await getSetting(key, fallback);
   if (val === undefined || val === null) return fallback;
   if (typeof val === 'string' && !val.trim()) return fallback;
+  if (isPlaceholderSMTP(val)) return fallback;
   return val;
 }
 
@@ -1483,14 +1456,12 @@ async function sendSMSOTP(phone, otp) {
   const mobile = phone.replace(/\D/g, '').slice(-10);
   const DEV = process.env.NODE_ENV !== 'production';
 
-  // Always log in dev (so you can test without SMS key)
-  if (DEV) {
-    console.log(`\n📱 SMS OTP for ${mobile}: ${otp}  ← (visible in development mode)\n`);
-  }
+  // Always log the OTP to backend console so developers can verify
+  console.log(`\n📱 SMS OTP for ${mobile}: ${otp}\n`);
 
   // If Fast2SMS key is configured, send real SMS
   const key = process.env.FAST2SMS_KEY;
-  if (key && key !== 'your_fast2sms_api_key_here') {
+  if (key && key !== 'your_fast2sms_api_key_here' && key.trim() !== '') {
     try {
       const response = await axios.get('https://www.fast2sms.com/dev/bulkV2', {
         params: {
@@ -1514,7 +1485,7 @@ async function sendSMSOTP(phone, otp) {
   }
 
   // Fallback: return dev OTP so frontend can show it
-  return { sent: true, via: 'dev', devOtp: DEV ? otp : undefined };
+  return { sent: true, via: 'dev', devOtp: otp };
 }
 
 async function getDeliveryManagerConfig() {
@@ -1818,6 +1789,41 @@ app.post('/api/admin/settings', requireAdmin, async (req, res) => {
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// Woollen Settings Routes
+app.get('/api/woollen/settings', async (req, res) => {
+  try {
+    if (useDB) {
+      const doc = await Settings.findOne({ key: 'woollen_collection_settings' });
+      if (doc) return res.json(doc.value);
+    }
+    const fallbackSettings = getFallbackSettingsObject();
+    res.json(fallbackSettings.woollen_collection_settings || {
+      heroTitle: 'Woollen Collection',
+      heroSubtitle: 'Artisan Crafted',
+      heroDescription: 'Discover our exclusive range of handmade woollen hair accessories.',
+      heroImage: '/images/woollen_hero.png'
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/woollen/settings', requireAdmin, async (req, res) => {
+  try {
+    if (useDB) {
+      await Settings.findOneAndUpdate(
+        { key: 'woollen_collection_settings' },
+        { value: req.body },
+        { upsert: true }
+      );
+    } else {
+      const fallbackSettings = getFallbackSettingsObject();
+      fallbackSettings.woollen_collection_settings = req.body;
+      saveFallbackSettingsObject(fallbackSettings);
+    }
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 // ──── TEST SMTP ENDPOINT ──────────────────────────────────────
 app.post('/api/admin/test-smtp', requireAdmin, async (req, res) => {
@@ -2160,7 +2166,7 @@ app.post('/api/admin/forgot-password', async (req, res) => {
 });
 
 // ─── RAZORPAY — SMART PAYMENT HUB ─────────────────────────────
-app.post('/api/razorpay/order', requireAuth, async (req, res) => {
+app.post('/api/razorpay/order', async (req, res) => {
   try {
     const { amount, currency = 'INR', receipt } = req.body;
     const options = {
@@ -2174,9 +2180,10 @@ app.post('/api/razorpay/order', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/razorpay/verify', requireAuth, async (req, res) => {
+app.post('/api/razorpay/verify', async (req, res) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderId } = req.body;
+    const authContext = getAuthContext(req);
     const key_secret = process.env.RAZORPAY_SECRET || 'test_secret';
     const body = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSignature = crypto
@@ -2186,13 +2193,31 @@ app.post('/api/razorpay/verify', requireAuth, async (req, res) => {
 
     if (expectedSignature === razorpay_signature) {
       if (useDB) {
-        await Order.findOneAndUpdate({ id: orderId }, {
+        const order = await Order.findOneAndUpdate({ id: orderId }, {
           status: 'placed',
           razorpayOrderId: razorpay_order_id,
           razorpayPaymentId: razorpay_payment_id,
           razorpaySignature: razorpay_signature,
           $push: { timeline: { status: 'paid', label: 'Payment Verified ✓', date: new Date(), done: true } }
         });
+        if (order && order.clearCart !== false && authContext.userId && !String(authContext.userId).startsWith('guest-')) {
+          await Cart.findOneAndUpdate({ userId: authContext.userId }, { items: [] });
+        }
+      } else {
+        const orders = readJson(FILES.orders);
+        const order = orders.find(o => o.id === orderId);
+        if (order) {
+          order.status = 'placed';
+          if (order.clearCart !== false && authContext.userId && !String(authContext.userId).startsWith('guest-')) {
+            const carts = readJson(FILES.carts);
+            const ci = carts.findIndex(c => c.userId === authContext.userId);
+            if (ci > -1) {
+              carts[ci].items = [];
+              writeJson(FILES.carts, carts);
+            }
+          }
+        }
+        writeJson(FILES.orders, orders);
       }
       res.json({ success: true, message: 'Payment verified successfully' });
     } else {
@@ -2333,18 +2358,21 @@ app.post('/api/otp/verify', async (req, res) => {
 
 app.post('/api/otp/send-email', async (req, res) => {
   try {
-    const { email, captchaAnswer } = req.body;
+    const { email, captchaAnswer, resend } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     if (!email) return res.status(400).json({ error: 'Email required' });
 
     // ── CAPTCHA validation ──
-    if (!captchaAnswer) {
-      return res.status(400).json({ error: 'Security code is required.' });
+    const isResend = resend === true || resend === 'true';
+    if (!isResend) {
+      if (!captchaAnswer) {
+        return res.status(400).json({ error: 'Security code is required.' });
+      }
+      if (String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
+        return res.status(400).json({ error: 'Invalid security code. Please try again.' });
+      }
+      delete req.session.captcha; // one-time use
     }
-    if (String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
-      return res.status(400).json({ error: 'Invalid security code. Please try again.' });
-    }
-    delete req.session.captcha; // one-time use
 
     // ── Email format validation ──
     const cleanEmail = String(email).trim().toLowerCase();
@@ -2826,14 +2854,14 @@ app.put('/api/profile', requireAuth, async (req, res) => {
       if (securityQuestion) updates.securityQuestion = securityQuestion;
       if (securityAnswer) updates.securityAnswer = securityAnswer;
       
-      const user = await User.findByIdAndUpdate(req.session.userId, updates, { new: true }).select('-password');
-      req.session.name = user.name;
+      const user = await User.findByIdAndUpdate(req.auth.userId, updates, { new: true }).select('-password');
+      if (req.session) req.session.name = user.name;
       return res.json({ success: true, user: { id: user._id, ...user.toObject() } });
     }
     
     // JSON fallback
     const users = readJson(FILES.users);
-    const idx = users.findIndex(u => u.id === req.session.userId);
+    const idx = users.findIndex(u => u.id === req.auth.userId);
     if (idx === -1) return res.status(404).json({ error: 'User not found' });
     
     if (name) users[idx].name = name;
@@ -2852,8 +2880,7 @@ app.put('/api/profile', requireAuth, async (req, res) => {
 });
 
 // ─── ADMIN USERS MANAGEMENT API ───────────────────────────────
-app.get('/api/admin/users', async (req, res) => {
-  if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
   try {
     const { search, verified, blocked, page = 1, limit = 50 } = req.query;
     if (useDB) {
@@ -2882,8 +2909,7 @@ app.get('/api/admin/users', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/admin/users/:id/block', async (req, res) => {
-  if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+app.put('/api/admin/users/:id/block', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     if (useDB) {
@@ -2902,8 +2928,7 @@ app.put('/api/admin/users/:id/block', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/admin/users/:id', async (req, res) => {
-  if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     if (useDB) {
@@ -2923,10 +2948,8 @@ app.delete('/api/admin/users/:id', async (req, res) => {
 // ─── CATEGORY (COLLECTION) API ────────────────────────────────
 app.get('/api/categories', async (req, res) => {
   try {
-    const { storeType } = req.query;
     if (useDB) {
-      const query = storeType ? { storeType } : {};
-      const cats = await Category.find(query).sort('displayOrder').lean();
+      const cats = await Category.find().sort('displayOrder').lean();
       if (cats && cats.length > 0) return res.json(cats.map(normalizeCategoryRecord).filter(Boolean));
 
       const products = await Product.find({}).lean();
@@ -2936,48 +2959,23 @@ app.get('/api/categories', async (req, res) => {
         category: p.category,
         images: p.images || []
       })) : getJsonCatalogProducts();
-      let fallbackCats = getJsonCategoriesFromProducts(fallbackProducts).map(normalizeCategoryRecord).filter(Boolean);
-      if (storeType) fallbackCats = getJsonCategories().filter(c => c.storeType === storeType);
-      return res.json(fallbackCats);
+      return res.json(getJsonCategoriesFromProducts(fallbackProducts).map(normalizeCategoryRecord).filter(Boolean));
     }
-    let cats = getJsonCategories();
-    if (storeType) cats = cats.filter(c => c.storeType === storeType);
-    return res.json(cats);
+    return res.json(getJsonCategoriesFromProducts(getJsonCatalogProducts()).map(normalizeCategoryRecord).filter(Boolean));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/admin/categories', requireAdmin, async (req, res) => {
   try {
-    const { name, image, bannerImage, icon, theme, storeType, description, displayOrder } = req.body;
-    if (!name) return res.status(400).json({ error: 'Collection name is required' });
+    const { name, image, description, displayOrder, icon, status } = req.body;
     const slug = name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
-    const payload = { name, slug, image, bannerImage, icon, theme, storeType: storeType === 'woollen' ? 'woollen' : 'main', description, displayOrder };
-    if (!useDB) {
-      const cats = readJson(FILES.categories);
-      if (cats.some(c => c.slug === slug)) return res.status(400).json({ error: 'Collection already exists' });
-      const cat = { id: uuidv4(), ...payload, createdAt: new Date().toISOString() };
-      cats.push(cat);
-      writeJson(FILES.categories, cats);
-      return res.json({ success: true, category: normalizeCategoryRecord(cat) });
-    }
-    const cat = await Category.create(payload);
+    const cat = await Category.create({ name, slug, image, description, displayOrder, icon, status });
     res.json({ success: true, category: cat });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.put('/api/admin/categories/:id', requireAdmin, async (req, res) => {
   try {
-    if (!useDB) {
-      const cats = readJson(FILES.categories);
-      const idx = cats.findIndex(c => c.id === req.params.id || c._id === req.params.id || c.slug === req.params.id);
-      if (idx === -1) return res.status(404).json({ error: 'Collection not found' });
-      const updates = { ...req.body };
-      if (updates.name) updates.slug = updates.name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
-      if (updates.storeType !== 'woollen') updates.storeType = 'main';
-      cats[idx] = { ...cats[idx], ...updates, updatedAt: new Date().toISOString() };
-      writeJson(FILES.categories, cats);
-      return res.json({ success: true, category: normalizeCategoryRecord(cats[idx]) });
-    }
     const cat = await Category.findByIdAndUpdate(req.params.id, req.body, { new: true });
     res.json({ success: true, category: cat });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2985,12 +2983,6 @@ app.put('/api/admin/categories/:id', requireAdmin, async (req, res) => {
 
 app.delete('/api/admin/categories/:id', requireAdmin, async (req, res) => {
   try {
-    if (!useDB) {
-      const cats = readJson(FILES.categories);
-      const next = cats.filter(c => c.id !== req.params.id && c._id !== req.params.id && c.slug !== req.params.id);
-      writeJson(FILES.categories, next);
-      return res.json({ success: true });
-    }
     await Category.findByIdAndDelete(req.params.id);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3011,68 +3003,37 @@ app.get('/api/recommendations', async (req, res) => {
 app.get('/api/products', async (req, res) => {
   try {
     await incrementStoreVisitorCount(req);
-    const { category, featured, popular, trending, newArrival, sale, search, sort, stock, storeType } = req.query;
+    const { category, subcategory, featured, search, sort } = req.query;
     if (useDB) {
       let query = {};
       if (category) query.category = category;
-      if (storeType) query.storeType = storeType;
+      if (subcategory) query.subcategory = subcategory;
       if (featured === 'true') query.featured = true;
-      if (popular === 'true') query.popular = true;
-      if (trending === 'true') query.trending = true;
-      if (newArrival === 'true') query.newArrival = true;
-      if (sale === 'true') query.sale = true;
-      if (stock === 'in') query.stock = { $gt: 0 };
-      if (stock === 'out') query.stock = { $lte: 0 };
       if (search) query.$or = [{ name: { $regex: search, $options: 'i' } }, { description: { $regex: search, $options: 'i' } }];
       let q = Product.find(query);
       if (sort === 'price-asc') q = q.sort({ price: 1 });
       else if (sort === 'price-desc') q = q.sort({ price: -1 });
-      else if (sort === 'oldest') q = q.sort({ createdAt: 1 });
-      else if (sort === 'best-selling') q = q.sort({ popular: -1, rating: -1 });
-      else if (sort === 'featured') q = q.sort({ featured: -1, createdAt: -1 });
-      else if (sort === 'trending') q = q.sort({ trending: -1, rating: -1 });
       else if (sort === 'rating') q = q.sort({ rating: -1 });
-      else q = q.sort({ createdAt: -1 });
       const products = await q.lean();
       if (products.length > 0) return res.json(products.map(normalizeProductRecord).filter(Boolean));
 
       let fallbackProducts = getJsonCatalogProducts();
       if (category) fallbackProducts = fallbackProducts.filter(p => p.category === category);
-      if (storeType) fallbackProducts = fallbackProducts.filter(p => (p.storeType || 'main') === storeType);
+      if (subcategory) fallbackProducts = fallbackProducts.filter(p => p.subcategory === subcategory);
       if (featured === 'true') fallbackProducts = fallbackProducts.filter(p => p.featured);
-      if (popular === 'true') fallbackProducts = fallbackProducts.filter(p => p.popular);
-      if (trending === 'true') fallbackProducts = fallbackProducts.filter(p => p.trending);
-      if (newArrival === 'true') fallbackProducts = fallbackProducts.filter(p => p.newArrival);
-      if (sale === 'true') fallbackProducts = fallbackProducts.filter(p => p.sale);
-      if (stock === 'in') fallbackProducts = fallbackProducts.filter(p => Number(p.stock) > 0);
-      if (stock === 'out') fallbackProducts = fallbackProducts.filter(p => Number(p.stock) <= 0);
       if (search) fallbackProducts = fallbackProducts.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
       if (sort === 'price-asc') fallbackProducts.sort((a, b) => a.price - b.price);
       if (sort === 'price-desc') fallbackProducts.sort((a, b) => b.price - a.price);
       if (sort === 'rating') fallbackProducts.sort((a, b) => (b.rating || 0) - (a.rating || 0));
-      if (sort === 'oldest') fallbackProducts.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
-      if (sort === 'best-selling') fallbackProducts.sort((a, b) => Number(b.popular) - Number(a.popular) || (b.rating || 0) - (a.rating || 0));
-      if (sort === 'featured') fallbackProducts.sort((a, b) => Number(b.featured) - Number(a.featured));
-      if (sort === 'trending') fallbackProducts.sort((a, b) => Number(b.trending) - Number(a.trending) || (b.rating || 0) - (a.rating || 0));
       return res.json(fallbackProducts);
     }
     let products = getJsonCatalogProducts();
     if (category) products = products.filter(p => p.category === category);
-    if (storeType) products = products.filter(p => (p.storeType || 'main') === storeType);
+    if (subcategory) products = products.filter(p => p.subcategory === subcategory);
     if (featured === 'true') products = products.filter(p => p.featured);
-    if (popular === 'true') products = products.filter(p => p.popular);
-    if (trending === 'true') products = products.filter(p => p.trending);
-    if (newArrival === 'true') products = products.filter(p => p.newArrival);
-    if (sale === 'true') products = products.filter(p => p.sale);
-    if (stock === 'in') products = products.filter(p => Number(p.stock) > 0);
-    if (stock === 'out') products = products.filter(p => Number(p.stock) <= 0);
     if (search) products = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
     if (sort === 'price-asc') products.sort((a, b) => a.price - b.price);
     if (sort === 'price-desc') products.sort((a, b) => b.price - a.price);
-    if (sort === 'oldest') products.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
-    if (sort === 'best-selling') products.sort((a, b) => Number(b.popular) - Number(a.popular) || (b.rating || 0) - (a.rating || 0));
-    if (sort === 'featured') products.sort((a, b) => Number(b.featured) - Number(a.featured));
-    if (sort === 'trending') products.sort((a, b) => Number(b.trending) - Number(a.trending) || (b.rating || 0) - (a.rating || 0));
     res.json(products);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3080,7 +3041,7 @@ app.get('/api/products', async (req, res) => {
 app.get('/api/products/:id', async (req, res) => {
   try {
     if (useDB) {
-      const p = await Product.findById(req.params.id).lean();
+      const p = await findProductById(req.params.id);
       if (!p) return res.status(404).json({ error: 'Product not found' });
       return res.json(normalizeProductRecord(p));
     }
@@ -3093,19 +3054,27 @@ app.get('/api/products/:id', async (req, res) => {
 
 app.post('/api/products', requireAdmin, upload.array('images', 5), async (req, res) => {
   try {
-    const { name, category, price, mrp, discount, stock, description, gstRate, hsn, featured, popular, trending, newArrival, sale, storeType } = req.body;
+    const { name, category, subcategory, price, mrp, discount, stock, description, gstRate, hsn, featured } = req.body;
+    let variants = [];
+    if (req.body.variants) {
+      try {
+        variants = JSON.parse(req.body.variants);
+      } catch (e) {
+        console.error('Error parsing variants:', e);
+      }
+    }
     const images = req.files?.length
       ? await uploadMediaFiles(req.files, `products/${category || 'general'}`)
       : [getCategoryFallbackImage(category)];
     if (useDB) {
-      const p = await Product.create({ name, category, price: +price, mrp: +mrp, discount: +(discount || 0), stock: +stock, description, images, gstRate: +(gstRate || 18), hsn: hsn || '7117', featured: featured === 'true', popular: popular === 'true', trending: trending === 'true', newArrival: newArrival === 'true', sale: sale === 'true', storeType: storeType === 'woollen' ? 'woollen' : 'main' });
+      const p = await Product.create({ name, category, subcategory, price: +price, mrp: +mrp, discount: +(discount || 0), stock: +stock, description, images, gstRate: +(gstRate || 18), hsn: hsn || '7117', featured: featured === 'true', variants });
       const products = readJson(FILES.products);
       products.push({ ...p.toObject(), id: p._id.toString() });
       writeJson(FILES.products, products);
       return res.json({ success: true, product: normalizeProductRecord({ ...p.toObject(), id: p._id.toString() }) });
     }
     const products = readJson(FILES.products);
-    const p = { id: uuidv4(), name, category, price: +price, mrp: +mrp, discount: +(discount || 0), stock: +stock, description, images, gstRate: +(gstRate || 18), hsn: hsn || '7117', featured: featured === 'true', popular: popular === 'true', trending: trending === 'true', newArrival: newArrival === 'true', sale: sale === 'true', storeType: storeType === 'woollen' ? 'woollen' : 'main', rating: 0, reviews: [], createdAt: new Date().toISOString() };
+    const p = { id: uuidv4(), name, category, subcategory, price: +price, mrp: +mrp, discount: +(discount || 0), stock: +stock, description, images, gstRate: +(gstRate || 18), hsn: hsn || '7117', featured: featured === 'true', rating: 0, reviews: [], createdAt: new Date().toISOString(), variants };
     products.push(p);
     writeJson(FILES.products, products);
     res.json({ success: true, product: normalizeProductRecord(p) });
@@ -3115,17 +3084,28 @@ app.post('/api/products', requireAdmin, upload.array('images', 5), async (req, r
 app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req, res) => {
   try {
     const updates = { ...req.body };
+    if (req.body.variants) {
+      try {
+        updates.variants = JSON.parse(req.body.variants);
+      } catch (e) {
+        console.error('Error parsing variants in PUT:', e);
+      }
+    }
     if (req.files?.length) updates.images = await uploadMediaFiles(req.files, `products/${updates.category || 'general'}`);
-    ['price', 'mrp', 'discount', 'stock', 'gstRate'].forEach(f => { if (updates[f]) updates[f] = +updates[f]; });
+    ['price', 'mrp', 'discount', 'stock', 'gstRate'].forEach(f => { if (updates[f] !== undefined) updates[f] = +updates[f]; });
     if (updates.featured !== undefined) updates.featured = updates.featured === 'true';
-    ['popular', 'trending', 'newArrival', 'sale'].forEach(f => { if (updates[f] !== undefined) updates[f] = updates[f] === 'true'; });
-    if (updates.storeType !== 'woollen') updates.storeType = 'main';
     // Handle removed images (sent as removedImages[] in form)
     const removed = [];
     if (Array.isArray(req.body.removedImages)) removed.push(...req.body.removedImages.filter(Boolean));
     else if (req.body.removedImages) removed.push(req.body.removedImages);
     if (useDB) {
-      const p = await Product.findByIdAndUpdate(req.params.id, updates, { new: true });
+      let p = null;
+      if (mongoose.Types.ObjectId.isValid(req.params.id)) {
+        p = await Product.findByIdAndUpdate(req.params.id, updates, { new: true });
+      } else {
+        await Product.collection.updateOne({ _id: req.params.id }, { $set: updates });
+        p = await Product.collection.findOne({ _id: req.params.id });
+      }
       if (!p) return res.status(404).json({ error: 'Not found' });
       // If images were removed, delete local files where applicable
       if (removed.length > 0) {
@@ -3143,7 +3123,7 @@ app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req
       }
       const products = readJson(FILES.products);
       const idx = products.findIndex(item => item.id === req.params.id || item._id === req.params.id);
-      const next = { ...p.toObject(), id: p._id.toString() };
+      const next = { ...p, id: (p._id || p.id).toString() };
       if (idx >= 0) products[idx] = { ...products[idx], ...next };
       else products.push(next);
       writeJson(FILES.products, products);
@@ -3175,7 +3155,15 @@ app.delete('/api/products/:id', requireAdmin, async (req, res) => {
   try {
     if (useDB) {
       // Delete product and remove any local media files
-      const p = await Product.findByIdAndDelete(req.params.id);
+      let p = null;
+      if (mongoose.Types.ObjectId.isValid(req.params.id)) {
+        p = await Product.findByIdAndDelete(req.params.id);
+      } else {
+        p = await Product.collection.findOne({ _id: req.params.id });
+        if (p) {
+          await Product.collection.deleteOne({ _id: req.params.id });
+        }
+      }
       const products = readJson(FILES.products).filter(p => p.id !== req.params.id && p._id !== req.params.id);
       // Remove local files referenced by product.images
       if (p && Array.isArray(p.images)) {
@@ -3214,118 +3202,203 @@ app.delete('/api/products/:id', requireAdmin, async (req, res) => {
 // ─── CART ─────────────────────────────────────────────────────
 app.get('/api/cart', requireAuth, async (req, res) => {
   try {
-    const uid = getRequestUserId(req);
+    const uid = req.auth.userId;
+    console.log('[CART] GET /api/cart for userId:', uid);
+    
     if (useDB) {
-      const cart = await Cart.findOne({ userId: uid }) || { items: [] };
+      const cart = await Cart.findOne({ userId: uid });
+      if (!cart) {
+        console.log('[CART] No cart found for user, returning empty');
+        return res.json({ items: [], count: 0 });
+      }
+      
       const enriched = await Promise.all((cart.items || []).map(async item => {
-        const p = await Product.findById(item.productId).lean();
-        return p ? { ...item.toObject?.(), ...item, product: { ...p, id: p._id } } : null;
+        const p = await findProductById(item.productId);
+        if (!p) {
+          console.log('[CART] Product not found:', item.productId);
+          return null;
+        }
+        const cartItem = {
+          productId: item.productId,
+          quantity: item.quantity || 1,
+          product: {
+            ...p,
+            id: (p._id || p.id).toString(),
+            _id: (p._id || p.id).toString()
+          }
+        };
+        return cartItem;
       }));
-      const items = enriched.filter(Boolean);
-      return res.json({ items, count: getCartCount(items), lineCount: items.length });
+      
+      const filtered = enriched.filter(Boolean);
+      const count = filtered.reduce((sum, item) => sum + (item.quantity || 1), 0);
+      console.log('[CART] Returning cart items:', filtered.length, 'total quantity:', count);
+      return res.json({ items: filtered, count });
     }
+    
     const carts = readJson(FILES.carts);
     const cart = carts.find(c => c.userId === uid) || { items: [] };
     const products = readJson(FILES.products);
     const enriched = cart.items.map(item => {
       const p = products.find(p => p.id === item.productId);
-      return p ? { ...item, product: p } : null;
+      if (!p) {
+        console.log('[CART] Product not found in JSON:', item.productId);
+        return null;
+      }
+      return { ...item, product: p };
     }).filter(Boolean);
-    res.json({ items: enriched, count: getCartCount(enriched), lineCount: enriched.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    
+    const count = enriched.reduce((sum, item) => sum + (item.quantity || 1), 0);
+    console.log('[CART] JSON: Returning cart items:', enriched.length, 'total quantity:', count);
+    res.json({ items: enriched, count });
+  } catch (e) { 
+    console.error('[CART] GET Error:', e.message);
+    res.status(500).json({ error: e.message }); 
+  }
 });
 
 app.post('/api/cart/add', requireAuth, async (req, res) => {
   try {
     const { productId, quantity = 1 } = req.body;
-    const uid = getRequestUserId(req);
-    const qty = Math.max(1, Number(quantity) || 1);
-    if (!productId) return res.status(400).json({ error: 'Product is required' });
+    const uid = req.auth.userId;
+    console.log('[CART] POST /api/cart/add:', { productId, quantity, userId: uid });
+    
     if (useDB) {
       let cart = await Cart.findOne({ userId: uid });
-      if (!cart) cart = await Cart.create({ userId: uid, items: [] });
-      const idx = cart.items.findIndex(i => i.productId === productId);
-      if (idx > -1) cart.items[idx].quantity = Math.max(1, Number(cart.items[idx].quantity) || 0) + qty;
-      else cart.items.push({ productId, quantity: qty });
+      if (!cart) {
+        console.log('[CART] Creating new cart for user');
+        cart = await Cart.create({ userId: uid, items: [] });
+      }
+      
+      const idx = cart.items.findIndex(i => i.productId.toString() === productId.toString());
+      if (idx > -1) {
+        cart.items[idx].quantity = (cart.items[idx].quantity || 1) + parseInt(quantity, 10);
+        console.log('[CART] Updated quantity:', cart.items[idx]);
+      } else {
+        cart.items.push({ productId, quantity: parseInt(quantity, 10) });
+        console.log('[CART] Added new item');
+      }
+      
       await cart.save();
-      return res.json({ success: true, count: getCartCount(cart.items), lineCount: cart.items.length, items: cart.items });
+      const totalQty = cart.items.reduce((sum, i) => sum + i.quantity, 0);
+      console.log('[CART] Saved. Total quantity:', totalQty);
+      return res.json({ success: true, count: totalQty, itemCount: cart.items.length });
     }
+    
     const carts = readJson(FILES.carts);
     let ci = carts.findIndex(c => c.userId === uid);
-    if (ci === -1) { carts.push({ userId: uid, items: [] }); ci = carts.length - 1; }
+    if (ci === -1) { 
+      console.log('[CART] Creating new cart for user (JSON)');
+      carts.push({ userId: uid, items: [] }); 
+      ci = carts.length - 1; 
+    }
+    
     const ii = carts[ci].items.findIndex(i => i.productId === productId);
-    if (ii > -1) carts[ci].items[ii].quantity = Math.max(1, Number(carts[ci].items[ii].quantity) || 0) + qty;
-    else carts[ci].items.push({ productId, quantity: qty });
+    if (ii > -1) {
+      carts[ci].items[ii].quantity = (carts[ci].items[ii].quantity || 1) + parseInt(quantity, 10);
+      console.log('[CART] Updated quantity (JSON)');
+    } else {
+      carts[ci].items.push({ productId, quantity: parseInt(quantity, 10) });
+      console.log('[CART] Added new item (JSON)');
+    }
+    
     writeJson(FILES.carts, carts);
-    res.json({ success: true, count: getCartCount(carts[ci].items), lineCount: carts[ci].items.length, items: carts[ci].items });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    const totalQty = carts[ci].items.reduce((sum, i) => sum + i.quantity, 0);
+    res.json({ success: true, count: totalQty, itemCount: carts[ci].items.length });
+  } catch (e) { 
+    console.error('[CART] POST Error:', e.message);
+    res.status(500).json({ error: e.message }); 
+  }
 });
 
 app.put('/api/cart/update', requireAuth, async (req, res) => {
   try {
     const { productId, quantity } = req.body;
-    const uid = getRequestUserId(req);
-    const qty = Number(quantity) || 0;
+    const uid = req.auth.userId;
     if (useDB) {
       const cart = await Cart.findOne({ userId: uid });
       if (!cart) return res.status(404).json({ error: 'Cart not found' });
-      if (qty <= 0) cart.items = cart.items.filter(i => i.productId !== productId);
-      else { const idx = cart.items.findIndex(i => i.productId === productId); if (idx > -1) cart.items[idx].quantity = qty; }
-      await cart.save(); return res.json({ success: true, count: getCartCount(cart.items), lineCount: cart.items.length });
+      if (+quantity <= 0) cart.items = cart.items.filter(i => i.productId !== productId);
+      else { const idx = cart.items.findIndex(i => i.productId === productId); if (idx > -1) cart.items[idx].quantity = +quantity; }
+      await cart.save(); return res.json({ success: true });
     }
     const carts = readJson(FILES.carts);
     const ci = carts.findIndex(c => c.userId === uid);
     if (ci === -1) return res.status(404).json({ error: 'Cart not found' });
-    if (qty <= 0) carts[ci].items = carts[ci].items.filter(i => i.productId !== productId);
-    else { const ii = carts[ci].items.findIndex(i => i.productId === productId); if (ii > -1) carts[ci].items[ii].quantity = qty; }
-    writeJson(FILES.carts, carts); res.json({ success: true, count: getCartCount(carts[ci].items), lineCount: carts[ci].items.length });
+    if (+quantity <= 0) carts[ci].items = carts[ci].items.filter(i => i.productId !== productId);
+    else { const ii = carts[ci].items.findIndex(i => i.productId === productId); if (ii > -1) carts[ci].items[ii].quantity = +quantity; }
+    writeJson(FILES.carts, carts); res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.delete('/api/cart/:productId', requireAuth, async (req, res) => {
   try {
-    const uid = getRequestUserId(req);
+    const uid = req.auth.userId;
     if (useDB) {
-      const cart = await Cart.findOneAndUpdate({ userId: uid }, { $pull: { items: { productId: req.params.productId } } }, { new: true });
-      return res.json({ success: true, count: getCartCount(cart?.items || []), lineCount: cart?.items?.length || 0 });
+      await Cart.findOneAndUpdate({ userId: uid }, { $pull: { items: { productId: req.params.productId } } });
+      return res.json({ success: true });
     }
     const carts = readJson(FILES.carts);
     const ci = carts.findIndex(c => c.userId === uid);
     if (ci > -1) { carts[ci].items = carts[ci].items.filter(i => i.productId !== req.params.productId); writeJson(FILES.carts, carts); }
-    res.json({ success: true, count: getCartCount(carts[ci]?.items || []), lineCount: carts[ci]?.items?.length || 0 });
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.delete('/api/cart', requireAuth, async (req, res) => {
   try {
-    const uid = getRequestUserId(req);
-    if (useDB) { await Cart.findOneAndUpdate({ userId: uid }, { items: [] }, { upsert: true }); return res.json({ success: true, count: 0, lineCount: 0 }); }
+    const uid = req.auth.userId;
+    if (useDB) { await Cart.findOneAndUpdate({ userId: uid }, { items: [] }); return res.json({ success: true }); }
     const carts = readJson(FILES.carts);
     const ci = carts.findIndex(c => c.userId === uid);
     if (ci > -1) { carts[ci].items = []; writeJson(FILES.carts, carts); }
-    res.json({ success: true, count: 0, lineCount: 0 });
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── WISHLIST ─────────────────────────────────────────────────
 app.get('/api/wishlist', requireAuth, async (req, res) => {
   try {
-    const uid = getRequestUserId(req);
+    const uid = req.auth.userId;
+    console.log('[WISHLIST] GET /api/wishlist for userId:', uid);
+    
     if (useDB) {
-      const wl = await Wishlist.findOne({ userId: uid }) || { items: [] };
-      const products = await Product.find({ _id: { $in: wl.items } }).lean();
-      return res.json(products.map(p => ({ ...p, id: p._id })));
+      const wl = await Wishlist.findOne({ userId: uid });
+      if (!wl || !wl.items || wl.items.length === 0) {
+        console.log('[WISHLIST] Empty wishlist for user');
+        return res.json([]);
+      }
+      
+      const products = await findProductsByIds(wl.items);
+      const result = products.map(p => ({
+        ...p,
+        id: (p._id || p.id).toString(),
+        _id: (p._id || p.id).toString()
+      }));
+      console.log('[WISHLIST] Returning', result.length, 'items');
+      return res.json(result);
     }
+    
     const wl = (readJson(FILES.wishlists).find(w => w.userId === uid) || { items: [] });
+    if (!wl.items || wl.items.length === 0) {
+      console.log('[WISHLIST] Empty wishlist for user (JSON)');
+      return res.json([]);
+    }
+    
     const products = readJson(FILES.products);
-    res.json(wl.items.map(id => products.find(p => p.id === id)).filter(Boolean));
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    const result = wl.items.map(id => products.find(p => p.id === id)).filter(Boolean);
+    console.log('[WISHLIST] JSON: Returning', result.length, 'items');
+    res.json(result);
+  } catch (e) { 
+    console.error('[WISHLIST] GET Error:', e.message);
+    res.status(500).json({ error: e.message }); 
+  }
 });
 
 app.post('/api/wishlist/toggle', requireAuth, async (req, res) => {
   try {
     const { productId } = req.body;
-    const uid = getRequestUserId(req);
+    const uid = req.auth.userId;
     if (useDB) {
       let wl = await Wishlist.findOne({ userId: uid });
       if (!wl) wl = await Wishlist.create({ userId: uid, items: [] });
@@ -3343,18 +3416,23 @@ app.post('/api/wishlist/toggle', requireAuth, async (req, res) => {
 });
 
 // ─── ORDERS ───────────────────────────────────────────────────
-app.post('/api/orders', requireAuth, async (req, res) => {
+app.post('/api/orders', async (req, res) => {
   try {
-    const uid = getRequestUserId(req);
-    const { address, paymentMethod, items, couponCode } = req.body;
+    const { address, paymentMethod, items, couponCode, clearCart = true } = req.body;
+    const authContext = getAuthContext(req);
+    const incomingName = String(req.body.name || req.body.userName || req.session?.name || '').trim();
     const globalDiscount = await getSetting('globalDiscount', 0);
     const freeShipMin = await getSetting('freeShippingMin', 999);
     const shipCharge = await getSetting('shippingCharge', 49);
 
+    if (!address || !paymentMethod || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Missing checkout details' });
+    }
+
     let subtotal = 0, totalGst = 0;
     const orderItems = await Promise.all(items.map(async item => {
       let p;
-      if (useDB) { p = await Product.findById(item.productId).lean(); if (p) p.id = p._id; }
+      if (useDB) { p = await findProductById(item.productId); if (p) p.id = (p._id || p.id).toString(); }
       else { p = (readJson(FILES.products)).find(pr => pr.id === item.productId); }
       if (!p) throw new Error('Product not found');
       const gstAmt = (p.price * p.gstRate / 100) * item.quantity;
@@ -3380,35 +3458,38 @@ app.post('/api/orders', requireAuth, async (req, res) => {
       : [{ status: 'pending', label: 'Awaiting Payment', date: new Date(), done: true }];
 
     // Ensure we always have a userName for order records (avoid validation errors when session.name missing)
-    let resolvedUserName = req.session.name || '';
-    if (!resolvedUserName && uid) {
+    let resolvedUserName = incomingName;
+    if (!resolvedUserName && authContext.userId) {
       try {
         if (useDB) {
-          const u = await User.findById(uid).select('name').lean();
+          const u = await User.findById(authContext.userId).select('name').lean();
           if (u && u.name) resolvedUserName = u.name;
         } else {
           const users = readJson(FILES.users);
-          const uu = users.find(x => x.id === uid || x._id === uid);
+          const uu = users.find(x => x.id === authContext.userId || x._id === authContext.userId);
           if (uu && uu.name) resolvedUserName = uu.name;
         }
       } catch (e) { /* ignore and fallback */ }
     }
     if (!resolvedUserName) resolvedUserName = 'Customer';
 
+    const resolvedUserId = authContext.userId || `guest-${orderId.toLowerCase()}`;
+
     const orderData = { 
-      id: orderId, userId: uid, userName: resolvedUserName, items: orderItems, 
+      id: orderId, userId: resolvedUserId, userName: resolvedUserName, items: orderItems, 
       address, paymentMethod, subtotal, gstTotal: totalGst, shipping, discount, grandTotal, 
       couponCode: couponCode || null, status, timeline, 
+      clearCart: clearCart === true || clearCart === 'true',
       estimatedDelivery: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), createdAt: new Date() 
     };
 
     if (useDB) {
       await Order.create(orderData);
-      if (isCOD) await Cart.findOneAndUpdate({ userId: uid }, { items: [] });
+      if (authContext.userId && isCOD && orderData.clearCart) await Cart.findOneAndUpdate({ userId: authContext.userId }, { items: [] });
     } else {
       const orders = readJson(FILES.orders); orders.push(orderData); writeJson(FILES.orders, orders);
-      if (isCOD) {
-        const carts = readJson(FILES.carts); const ci = carts.findIndex(c => c.userId === uid);
+      if (authContext.userId && isCOD && orderData.clearCart) {
+        const carts = readJson(FILES.carts); const ci = carts.findIndex(c => c.userId === authContext.userId);
         if (ci > -1) { carts[ci].items = []; writeJson(FILES.carts, carts); }
       }
     }
@@ -3418,12 +3499,11 @@ app.post('/api/orders', requireAuth, async (req, res) => {
 
 app.get('/api/orders/my', requireAuth, async (req, res) => {
   try {
-    const uid = getRequestUserId(req);
     if (useDB) {
-      const orders = await Order.find({ userId: uid }).sort({ createdAt: -1 }).lean();
+      const orders = await Order.find({ userId: req.auth.userId }).sort({ createdAt: -1 }).lean();
       return res.json(orders.map(o => ({ ...o, id: o.id || o._id })));
     }
-    res.json(readJson(FILES.orders).filter(o => o.userId === uid).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    res.json(readJson(FILES.orders).filter(o => o.userId === req.auth.userId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3444,14 +3524,12 @@ app.get('/api/orders/track/:orderId', async (req, res) => {
 
 app.get('/api/orders/:id', requireAuth, async (req, res) => {
   try {
-    const uid = getRequestUserId(req);
-    const role = req.auth?.role || req.session?.role;
     if (useDB) {
       const o = await Order.findOne({ $or: [{ _id: req.params.id.match(/^[a-f\d]{24}$/i) ? req.params.id : null }, { id: req.params.id }] }).lean();
-      if (!o || (o.userId.toString() !== uid && role !== 'admin')) return res.status(404).json({ error: 'Not found' });
+      if (!o || (o.userId.toString() !== req.auth.userId && req.auth.role !== 'admin')) return res.status(404).json({ error: 'Not found' });
       return res.json({ ...o, id: o.id || o._id });
     }
-    const o = readJson(FILES.orders).find(o => o.id === req.params.id && (o.userId === uid || role === 'admin'));
+    const o = readJson(FILES.orders).find(o => o.id === req.params.id && (o.userId === req.auth.userId || req.auth.role === 'admin'));
     if (!o) return res.status(404).json({ error: 'Not found' });
     res.json(o);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3466,6 +3544,9 @@ app.get('/api/orders/:id/invoice', requireAuth, async (req, res) => {
       order = readJson(FILES.orders).find(o => o.id === req.params.id);
     }
     if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.userId.toString() !== req.auth.userId && req.auth.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
     const gstin = await getSetting('gstin', '27XXXXX1234X1ZX');
     const storeName = await getSetting('storeName', 'Lencho');
     const storeEmail = await getSetting('storeEmail', 'hello@lencho.in');
@@ -3873,7 +3954,7 @@ app.put('/api/admin/change-credentials', requireAdmin, async (req, res) => {
   try {
     const { currentPassword, newEmail, newPassword, name } = req.body;
     if (useDB) {
-      const user = await User.findById(req.session.userId);
+      const user = await User.findById(req.auth.userId);
       if (!user || !await bcrypt.compare(currentPassword, user.password)) return res.status(400).json({ error: 'Current password is incorrect' });
       if (newEmail && newEmail !== user.email) { if (await User.findOne({ email: newEmail })) return res.status(400).json({ error: 'Email in use' }); user.email = newEmail; }
       if (name) user.name = name;
@@ -3882,7 +3963,7 @@ app.put('/api/admin/change-credentials', requireAdmin, async (req, res) => {
       const { password, ...safe } = user.toObject();
       return res.json({ success: true, user: { id: user._id, ...safe } });
     }
-    const users = readJson(FILES.users), idx = users.findIndex(u => u.id === req.session.userId);
+    const users = readJson(FILES.users), idx = users.findIndex(u => u.id === req.auth.userId);
     if (idx === -1 || !await bcrypt.compare(currentPassword, users[idx].password)) return res.status(400).json({ error: 'Current password galat hai' });
     if (newEmail && newEmail !== users[idx].email) {
       const dup = users.find(u => u.email === newEmail);
@@ -3892,7 +3973,7 @@ app.put('/api/admin/change-credentials', requireAdmin, async (req, res) => {
     if (name) users[idx].name = name;
     if (newPassword && newPassword.length >= 6) users[idx].password = await bcrypt.hash(newPassword, 10);
     writeJson(FILES.users, users);
-    req.session.name = users[idx].name;
+    if (req.session) req.session.name = users[idx].name;
     const { password, ...safe } = users[idx];
     res.json({ success: true, user: safe });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -4191,7 +4272,7 @@ app.post('/api/admin/backups', requireAdmin, (req, res) => {
     ];
     
     // Backup data files
-    const dataFiles = ['products.json', 'categories.json', 'orders.json', 'users.json', 'carts.json', 'wishlists.json', 'visitor_stats.json'];
+    const dataFiles = ['products.json', 'orders.json', 'users.json', 'carts.json', 'wishlists.json', 'visitor_stats.json'];
     dataFiles.forEach(file => {
       filesToBackup.push({ src: `data/${file}`, dest: `data_${file}` });
     });
@@ -4260,7 +4341,7 @@ app.post('/api/admin/backups/:id/restore', requireAdmin, (req, res) => {
     ];
     
     // Restore data files
-    const dataFiles = ['products.json', 'categories.json', 'orders.json', 'users.json', 'carts.json', 'wishlists.json', 'visitor_stats.json'];
+    const dataFiles = ['products.json', 'orders.json', 'users.json', 'carts.json', 'wishlists.json', 'visitor_stats.json'];
     dataFiles.forEach(file => {
       filesToRestore.push({ src: `data_${file}`, dest: `data/${file}` });
     });
@@ -4316,7 +4397,7 @@ app.get('/debug', (req, res) => {
   res.send(`<div style="font-family:sans-serif;padding:2rem;text-align:center;"><h1 style="color:#c9748f;">✦ Lencho V3 Live Debug ✦</h1><p><b>Time:</b> ${new Date().toLocaleString('en-IN')}</p><p><b>Status:</b> Live!</p><button onclick="location.href='/'" style="padding:10px 20px;background:#c9748f;color:#fff;border:none;border-radius:5px;cursor:pointer;">Go to Home</button></div>`);
 });
 
-['products', 'product', 'cart', 'checkout', 'orders', 'track', 'dashboard', 'admin', 'login', 'signup', 'wishlist', 'contact', 'terms', 'privacy', 'disclaimer', 'woollen']
+['products', 'product', 'cart', 'checkout', 'orders', 'track', 'dashboard', 'admin', 'login', 'signup', 'wishlist', 'contact', 'terms', 'privacy', 'disclaimer']
   .forEach(page => { app.get(`/${page}`, sendIndex); app.get(`/${page}/:sub`, sendIndex); });
 
 // Catch-all for React Router - serve index.html for any other routes

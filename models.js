@@ -46,11 +46,13 @@ const productSchema = new mongoose.Schema({
   storeType:  { type: String, enum: ['main', 'woollen'], default: 'main' },
   rating:     { type: Number, default: 0 },
   reviews:    [{ userId:String, userName:String, rating:Number, comment:String, date:Date }],
+  variants:   [{ color: String, size: String, stock: Number, sku: String, price: Number, mrp: Number }],
 }, { timestamps: true });
 
 // ── ORDER ─────────────────────────────────────────────────────
 const orderSchema = new mongoose.Schema({
-  userId:     { type: String, required: true },
+  id:         { type: String, unique: true },
+  userId:     { type: String, required: false, default: null },
   userName:   { type: String, required: true },
   items:      [{ productId:String, name:String, image:String, price:Number, mrp:Number, quantity:Number, gstRate:Number, hsn:String, gstAmount:Number, total:Number }],
   address:    { type: String, required: true },
@@ -59,6 +61,7 @@ const orderSchema = new mongoose.Schema({
   couponCode: String,
   status:     { type: String, default: 'placed' },
   timeline:   [{ status:String, label:String, date:Date, done:Boolean }],
+  clearCart:  { type: Boolean, default: true },
   
   // ── PAYMENT & LOGISTICS ──
   razorpayOrderId:   String,
@@ -74,6 +77,8 @@ const orderSchema = new mongoose.Schema({
   trackingNumber:  String,
   estimatedDelivery: Date,
 }, { timestamps: true });
+
+orderSchema.index({ userId: 1 });
 
 // ── CART ──────────────────────────────────────────────────────
 const cartSchema = new mongoose.Schema({

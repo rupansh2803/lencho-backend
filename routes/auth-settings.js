@@ -12,7 +12,7 @@ const initializeSettings = async () => {
       googleLogin: false,
       phoneLogin: false,
       signupEnabled: true,
-      guestCheckout: false,
+      guestCheckout: true,
       passwordReset: true,
       twoFactorAuth: false,
       lastModified: 'System'
