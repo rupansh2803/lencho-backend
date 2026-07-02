@@ -21,7 +21,11 @@ try { window.__appLoaded = true; } catch {}
 function readLocalCart() {
   try {
     const raw = JSON.parse(localStorage.getItem(CART_LOCAL_STORAGE_KEY) || '[]');
-    return Array.isArray(raw) ? raw.filter(item => item && item.productId) : [];
+    return Array.isArray(raw) ? raw.filter(item => item && item.productId).map(item => ({
+      productId: item.productId,
+      variantId: item.variantId || '',
+      quantity: Math.max(1, Number(item.quantity) || 1)
+    })) : [];
   } catch {
     return [];
   }
@@ -36,23 +40,27 @@ function getCartQuantity(items = localCartCache) {
   return (items || []).reduce((sum, item) => sum + Math.max(0, Number(item.quantity) || 0), 0);
 }
 
-function upsertLocalCart(productId, quantityDelta = 1) {
+function getCartItemKey(productId, variantId = '') {
+  return `${productId}::${variantId || ''}`;
+}
+
+function upsertLocalCart(productId, variantId = '', quantityDelta = 1) {
   const items = readLocalCart();
-  const idx = items.findIndex(item => String(item.productId) === String(productId));
+  const idx = items.findIndex(item => getCartItemKey(item.productId, item.variantId) === getCartItemKey(productId, variantId));
   if (idx >= 0) items[idx].quantity = Math.max(1, Number(items[idx].quantity || 0) + quantityDelta);
-  else items.push({ productId, quantity: Math.max(1, Number(quantityDelta) || 1) });
+  else items.push({ productId, variantId: variantId || '', quantity: Math.max(1, Number(quantityDelta) || 1) });
   writeLocalCart(items);
   return items;
 }
 
-function setLocalCartQty(productId, quantity) {
+function setLocalCartQty(productId, variantId = '', quantity) {
   const qty = Number(quantity) || 0;
   let items = readLocalCart();
-  if (qty <= 0) items = items.filter(item => String(item.productId) !== String(productId));
+  if (qty <= 0) items = items.filter(item => getCartItemKey(item.productId, item.variantId) !== getCartItemKey(productId, variantId));
   else {
-    const idx = items.findIndex(item => String(item.productId) === String(productId));
+    const idx = items.findIndex(item => getCartItemKey(item.productId, item.variantId) === getCartItemKey(productId, variantId));
     if (idx >= 0) items[idx].quantity = qty;
-    else items.push({ productId, quantity: qty });
+    else items.push({ productId, variantId: variantId || '', quantity: qty });
   }
   writeLocalCart(items);
   return items;
@@ -401,12 +409,6 @@ async function navigate(path, pushState = true) {
   const params = new URLSearchParams(query || '');
   setPageContext({ route, category: params.get('category') || '' });
 
-  if (route.startsWith('/woollen')) {
-    document.body.classList.add('woollen-theme');
-  } else {
-    document.body.classList.remove('woollen-theme');
-  }
-
   // ── SAFETY GUARD: Always ensure header/footer visible for non-admin routes ──
   const isAdmin = route === '/admin';
   footer.style.display = isAdmin ? 'none' : '';
@@ -429,27 +431,6 @@ async function navigate(path, pushState = true) {
     else if (route === '/terms') { renderTerms(); }
     else if (route === '/privacy') { renderPrivacy(); }
     else if (route === '/disclaimer') { renderDisclaimer(); }
-    else if (route === '/woollen') { renderWoollen(); }
-    else if (route === '/woollen/products') { renderWoollenProducts(); }
-    else if (route === '/woollen-collection') { navigate('/woollen', true); }
-    else if (route.startsWith('/woollen/')) {
-      const subSlug = route.split('/woollen/')[1];
-      const mapping = {
-        'hair-clips': 'Hair Clips',
-        'hair-bands': 'Hair Bands',
-        'scrunchies': 'Scrunchies',
-        'bows': 'Bows',
-        'baby-accessories': 'Baby Accessories',
-        'crochet-flowers': 'Crochet Flowers',
-        'woollen-decor': 'Woollen Decor'
-      };
-      if (mapping[subSlug]) {
-        params.set('subcategory', mapping[subSlug]);
-        renderWoollenProducts();
-      } else {
-        app.innerHTML = `<div class="page-wrap" style="text-align:center;padding-top:120px;"><div class="empty-icon">🔍</div><h2 style="font-family:'Cormorant Garamond',serif;font-size:2rem;">Page Not Found</h2><p style="color:var(--gray);margin:1rem 0 2rem;">The page you're looking for doesn't exist.</p><button class="btn-primary" onclick="navigate('/')">Go Home</button></div>`;
-      }
-    }
     else if (isAdmin) { renderAdmin(); }
     else { app.innerHTML = `<div class="page-wrap" style="text-align:center;padding-top:120px;"><div class="empty-icon">🔍</div><h2 style="font-family:'Cormorant Garamond',serif;font-size:2rem;">Page Not Found</h2><p style="color:var(--gray);margin:1rem 0 2rem;">The page you're looking for doesn't exist.</p><button class="btn-primary" onclick="navigate('/')">Go Home</button></div>`; }
   } catch (e) { console.error(e); }
@@ -1313,73 +1294,37 @@ async function handleLogout() {
   navigate('/');
 }
 
-// ── CART COUNT (INSTANT UPDATES & LOCAL CACHE) ───────────
-const GUEST_CART_CACHE_KEY = 'cart_cache_guest_v1';
-
-function getActiveCartCacheKey() {
-  return currentUser?.id ? 'cart_cache_' + currentUser.id : GUEST_CART_CACHE_KEY;
-}
-
-function readActiveCartCache() {
-  try {
-    const raw = localStorage.getItem(getActiveCartCacheKey());
-    if (!raw) return { items: [] };
-    const parsed = JSON.parse(raw);
-    return parsed && Array.isArray(parsed.items) ? parsed : { items: [] };
-  } catch (e) {
-    console.error('Error reading cart cache:', e);
-    return { items: [] };
-  }
-}
-
-function writeActiveCartCache(cart) {
-  localStorage.setItem(getActiveCartCacheKey(), JSON.stringify({ items: Array.isArray(cart?.items) ? cart.items : [] }));
-}
-
-function clearActiveCartCache() {
-  localStorage.setItem(getActiveCartCacheKey(), JSON.stringify({ items: [] }));
-}
-
-function getCartItemCount(cart) {
-  return (cart?.items || []).reduce((sum, item) => sum + (item.quantity || 0), 0);
-}
-
+// ── CART COUNT (INSTANT UPDATES) ────────────────────────
 async function updateCartCount() {
   const cartBadge = document.getElementById('cart-count');
-  try {
-    const cached = readActiveCartCache();
-    cartCount = getCartItemCount(cached);
+  localCartCache = readLocalCart();
+  if (!currentUser) {
+    cartCount = getCartQuantity(localCartCache);
     if (cartBadge) cartBadge.textContent = cartCount;
-    updateCartButtonsUI();
-
-    if (!currentUser?.id) return;
-
+    return;
+  }
+  try {
     const r = await api('/api/cart');
-    if (r && !r.error) {
-      writeActiveCartCache(r);
-      cartCount = getCartItemCount(r);
+    if (r.error) {
+      cartCount = getCartQuantity(localCartCache);
       if (cartBadge) cartBadge.textContent = cartCount;
-      updateCartButtonsUI();
+      return;
     }
+    const items = Array.isArray(r.items)
+      ? r.items.map(item => ({ productId: item.productId, variantId: item.variantId || '', quantity: Number(item.quantity) || 1 }))
+      : [];
+    if (items.length || localCartCache.length === 0) {
+      writeLocalCart(items);
+    }
+    const sourceItems = items.length ? items : localCartCache;
+    cartCount = items.length || localCartCache.length === 0
+      ? (Number(r.count ?? getCartQuantity(sourceItems)) || 0)
+      : getCartQuantity(sourceItems);
+    if (cartBadge) cartBadge.textContent = cartCount;
   } catch (e) {
     console.error('Cart count update error:', e);
-  }
-}
-
-// ── WISHLIST COUNT (INSTANT UPDATES & LOCAL CACHE) ────────
-let wishlistCount = 0;
-async function updateWishlistCount() {
-  const badge = document.getElementById('wishlist-count');
-  if (!badge) return;
-  try {
-    const r = await api('/api/wishlist');
-    const items = Array.isArray(r) ? r : (Array.isArray(r?.items) ? r.items : []);
-    wishlistCount = items.length;
-    badge.textContent = String(wishlistCount);
-  } catch (e) {
-    console.error('Wishlist count update error:', e);
-    wishlistCount = 0;
-    badge.textContent = '0';
+    cartCount = getCartQuantity(localCartCache);
+    if (cartBadge) cartBadge.textContent = cartCount;
   }
 }
 
@@ -1391,102 +1336,49 @@ function updateCartBadgeOptimistic(newCount) {
 }
 
 // Add to cart with INSTANT UI update (no waiting for server)
-async function addToCart(productId, showToast = true) {
-  let guestProduct = null;
-  if (!currentUser?.id) {
-    try {
-      guestProduct = await api('/api/products/' + productId);
-    } catch (e) {
-      guestProduct = { id: productId, _id: productId, name: 'Product', images: [], price: 0 };
-    }
-  }
-  
-  // ✓ INSTANT OPTIMISTIC UPDATE
-  try {
-    const cached = readActiveCartCache();
-    const existing = (cached.items || []).find(i => i.productId === productId);
-    if (existing) {
-      existing.quantity = (existing.quantity || 1) + 1;
-    } else {
-      (cached.items || []).push({
-        productId,
-        quantity: 1,
-        product: currentUser?.id ? { id: productId, _id: productId } : guestProduct
-      });
-    }
-    writeActiveCartCache(cached);
-    const freshCount = getCartItemCount(cached);
-    updateCartBadgeOptimistic(freshCount);
-    updateCartButtonsUI();
-  } catch (e) {
-    updateCartBadgeOptimistic(cartCount + 1);
-  }
-  
-  if (showToast) toast('Product added to cart successfully', 'success');
-  if (!currentUser?.id) return;
+async function addToCart(productId, showToast = true, variantId = '') {
+  const before = readLocalCart();
+  const optimistic = upsertLocalCart(productId, variantId, 1);
+  updateCartBadgeOptimistic(getCartQuantity(optimistic));
+  if (showToast) toast('Added to cart!', 'cart');
 
+  if (!currentUser) {
+    return;
+  }
+  
   // Background: Sync with server
   try {
-    const r = await api('/api/cart/add', { method: 'POST', body: { productId, quantity: 1 } });
+    const r = await api('/api/cart/add', { method: 'POST', body: { productId, variantId, quantity: 1 } });
     if (r.error) { 
       console.warn('Cart server sync failed, kept local cart:', r.error);
-      updateCartCount();
+      updateCartBadgeOptimistic(getCartQuantity(readLocalCart()));
       return; 
     }
-    // Sync with server in background to get actual cart data
-    const fresh = await api('/api/cart');
-    if (fresh && !fresh.error) {
-      writeActiveCartCache(fresh);
-      const freshCount = getCartItemCount(fresh);
-      updateCartBadgeOptimistic(freshCount);
-      updateCartButtonsUI();
-      // Refresh cart page if open
-      if (location.pathname === '/cart') {
-        renderCart();
-      }
-    }
+    updateCartBadgeOptimistic(Number(r.count) || getCartQuantity(readLocalCart()));
+    await updateCartCount();
   } catch (e) {
     console.error('Add to cart error:', e);
-    updateCartCount();
+    updateCartBadgeOptimistic(getCartQuantity(readLocalCart()));
   }
 }
 
 // Remove from cart with INSTANT feedback
-async function removeFromCart(productId) {
-  // ✓ INSTANT OPTIMISTIC UPDATE
-  try {
-    const cached = readActiveCartCache();
-    cached.items = (cached.items || []).filter(i => i.productId !== productId);
-    writeActiveCartCache(cached);
-    const freshCount = getCartItemCount(cached);
-    updateCartBadgeOptimistic(freshCount);
-    toast('Item removed from cart', 'info');
-    if (location.pathname === '/cart') {
-      renderCart();
-    }
-  } catch (e) {
-    console.error('Optimistic remove failed:', e);
-  }
-
-  if (!currentUser?.id) return;
+async function removeFromCart(productId, variantId = '') {
+  const before = readLocalCart();
+  const optimistic = setLocalCartQty(productId, variantId, 0);
+  updateCartBadgeOptimistic(getCartQuantity(optimistic));
+  toast('Item removed from cart', 'info');
   
   // Background: Sync with server
   try {
-    const r = await api(`/api/cart/${productId}`, { method: 'DELETE' });
+    const r = await api(`/api/cart/${productId}?variantId=${encodeURIComponent(variantId || '')}`, { method: 'DELETE' });
     if (r.error) {
-      toast(r.error, 'error');
-      updateCartCount();
-      return;
-    }
-    const fresh = await api('/api/cart');
-    if (fresh && !fresh.error) {
-      writeActiveCartCache(fresh);
-      renderCart();
+      console.warn('Cart remove server sync failed, kept local cart:', r.error);
     }
     await updateCartCount();
   } catch (e) {
     console.error('Remove from cart error:', e);
-    updateCartCount();
+    updateCartBadgeOptimistic(getCartQuantity(readLocalCart()));
   }
   
   // Refresh cart page if open
@@ -1499,19 +1391,10 @@ async function removeFromCart(productId) {
 async function clearCart() {
   const confirmed = confirm('Are you sure you want to clear your entire cart? This action cannot be undone.');
   if (!confirmed) return;
-  // ✓ INSTANT OPTIMISTIC UPDATE
-  try {
-    clearActiveCartCache();
-    updateCartBadgeOptimistic(0);
-    toast('Cart cleared!', 'success');
-    if (location.pathname === '/cart') {
-      renderCart();
-    }
-  } catch (e) {
-    console.error('Optimistic clear failed:', e);
-  }
-
-  if (!currentUser?.id) return;
+  
+  const before = readLocalCart();
+  writeLocalCart([]);
+  updateCartBadgeOptimistic(0);
   
   // Background: Sync with server
   try {
@@ -1527,64 +1410,6 @@ async function clearCart() {
     updateCartBadgeOptimistic(0);
   }
 }
-
-// Expose updateQty globally so it can be called from any page or dynamically generated elements
-window.updateQty = async function(productId, qty) {
-  if (typeof updateQty === 'function' && updateQty !== window.updateQty) {
-    return updateQty(productId, qty);
-  }
-  
-  // Fallback direct implementation
-  if (qty <= 0) {
-    const confirmed = confirm('Remove this item from cart?');
-    if (!confirmed) return;
-    return removeFromCart(productId);
-  }
-  
-  // 1. Optimistic Update
-  try {
-    const cached = readActiveCartCache();
-    const items = cached.items || [];
-    const item = items.find(i => i.productId === productId);
-    if (item) {
-      item.quantity = qty;
-      writeActiveCartCache({ items });
-      const freshCount = getCartItemCount({ items });
-      updateCartBadgeOptimistic(freshCount);
-      updateCartButtonsUI();
-      if (location.pathname === '/cart') {
-        renderCart();
-      }
-    }
-  } catch (e) {
-    console.error('Optimistic qty update failed:', e);
-  }
-
-  if (!currentUser?.id) return;
-  
-  // 2. Background Sync
-  try {
-    const r = await api('/api/cart/update', { method: 'PUT', body: { productId, quantity: qty } });
-    if (r.error) {
-      toast(r.error, 'error');
-      updateCartCount();
-      return;
-    }
-    const fresh = await api('/api/cart');
-    if (fresh && !fresh.error) {
-      writeActiveCartCache(fresh);
-      const freshCount = getCartItemCount(fresh);
-      updateCartBadgeOptimistic(freshCount);
-      updateCartButtonsUI();
-      if (location.pathname === '/cart') {
-        renderCart();
-      }
-    }
-  } catch (e) {
-    console.error('Update qty background sync error:', e);
-    updateCartCount();
-  }
-};
 
 // Wishlist with INSTANT updates
 async function toggleWishlist(productId, btn) {
@@ -1611,6 +1436,7 @@ async function toggleWishlist(productId, btn) {
 
 // Buy Now - DIRECT to product checkout (not through add-to-cart)
 async function buyNow(productId) {
+  if (!currentUser) { openAuthModal(); return; }
   navigate(`/checkout-now/${productId}`);
   toast('Opening checkout...', 'success');
 }
@@ -1851,6 +1677,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Close search results on outside click
   document.addEventListener('click', (e) => {
     const resultsDiv = document.getElementById('search-results');
     const searchBox = document.getElementById('search-box');
@@ -1859,17 +1686,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
-// ── DYNAMIC CART ACTION BUTTONS UI ────────────────────────
-function updateCartButtonsUI() {
-  const items = readActiveCartCache().items || [];
-  document.querySelectorAll('[data-product-actions]').forEach((el) => {
-    const productId = el.getAttribute('data-product-actions');
-    const item = items.find((entry) => entry.productId === productId);
-    if (item) {
-      el.setAttribute('data-cart-qty', String(item.quantity || 1));
-    }
-  });
-}
 
 // Close mobile dropdown when clicking outside
 document.addEventListener('click', (e) => {
@@ -1907,35 +1723,9 @@ function productCardHTML(p) {
   const product = normalizeClientProduct(p);
   const secondaryImg = product.images[1] || product.images[0];
   const stockStatus = p.stock < 5 && p.stock > 0 ? '⚡ Only ' + p.stock + ' left!' : '';
-  const isFeatured = p.featured ? '⭐ Trending' : '';
-  const badge = isFeatured || stockStatus || (p.discount > 30 ? '🔥 Hot Deal' : '');
-  
-  let inWishlist = false;
-  if (currentUser) {
-    try {
-      const cachedRaw = localStorage.getItem('wishlist_cache_' + currentUser.id);
-      if (cachedRaw) {
-        const items = JSON.parse(cachedRaw) || [];
-        inWishlist = items.some(item => (item.id || item._id || item.productId) === product.id);
-      }
-    } catch(e) {}
-  }
-
-  let colorCirclesHTML = '';
-  if (p.variants && p.variants.length > 0) {
-    const uniqueColors = [...new Set(p.variants.map(v => v.color).filter(Boolean))];
-    if (uniqueColors.length > 0) {
-      colorCirclesHTML = `
-        <div class="product-color-circles" style="display:flex; gap: 6px; margin-bottom: 0.75rem; align-items:center;">
-          <span style="font-size:0.72rem; color:var(--gray); font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Colors:</span>
-          ${uniqueColors.map(c => {
-            const normalizedColor = c.trim().toLowerCase();
-            return `<span class="color-circle" title="${c}" style="width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--border); display: inline-block; background-color: ${normalizedColor}; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.25)'" onmouseout="this.style.transform='scale(1)'"></span>`;
-          }).join('')}
-        </div>
-      `;
-    }
-  }
+  const isBestSeller = p.popular ? '⭐ Best Seller' : '';
+  const isFeatured = p.featured ? '✨ Featured' : '';
+  const badge = isBestSeller || isFeatured || stockStatus || (p.discount > 30 ? '🔥 Hot Deal' : '');
   
   return `
   <div class="product-card reveal" style="border-radius:16px !important;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08) !important;transition:transform .3s ease,box-shadow .3s ease !important;background:#fff;border:1px solid rgba(201,106,138,.08);" onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 12px 32px rgba(201,106,138,.15) !important';" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 16px rgba(0,0,0,.08) !important';">
@@ -1963,8 +1753,6 @@ function productCardHTML(p) {
         ${p.mrp ? `<span class="price-mrp" style="font-size:.85rem;color:var(--gray);text-decoration:line-through;margin-left:.5rem;">₹${Math.round(p.mrp)}</span>` : ''}
         ${p.discount ? `<span class="price-off" style="font-size:.75rem;color:var(--gold);margin-left:.5rem;font-weight:600;">Save ${p.discount}%</span>` : ''}
       </div>
-      
-      ${colorCirclesHTML}
       
       <div style="margin-bottom:0.75rem; padding:0.75rem; background:var(--beige); border-radius:8px; font-size:.8rem; color:var(--gray);">
         <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:4px;">
@@ -2001,16 +1789,6 @@ function shuffleArray(items) {
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
-}
-
-function prioritizeWoollenProducts(items) {
-  const list = Array.isArray(items) ? [...items] : [];
-  return list.sort((a, b) => {
-    const aWoollen = String(a?.category || '').toLowerCase() === 'woollen' ? 0 : 1;
-    const bWoollen = String(b?.category || '').toLowerCase() === 'woollen' ? 0 : 1;
-    if (aWoollen !== bWoollen) return aWoollen - bWoollen;
-    return 0;
-  });
 }
 
 function renderFallbackCollectionCards(container) {
@@ -2515,8 +2293,7 @@ async function loadFeaturedProducts() {
   const renderFallbackProducts = async (message) => {
     const fallback = await withTimeout(api('/api/products?storeType=main'), 2500);
     if (Array.isArray(fallback) && fallback.length > 0) {
-      const available = fallback.filter(p => p.stock > 0);
-      grid.innerHTML = shuffleArray(available).slice(0, 4).map(productCardHTML).join('');
+      grid.innerHTML = shuffleArray(fallback).slice(0, 4).map(productCardHTML).join('');
       initScrollReveal();
       return;
     }
@@ -2526,8 +2303,7 @@ async function loadFeaturedProducts() {
   try {
     const r = await withTimeout(api('/api/products?storeType=main&popular=true&sort=best-selling'), 2500);
     if (r && Array.isArray(r) && r.length > 0) {
-      const available = r.filter(p => p.stock > 0);
-      grid.innerHTML = prioritizeWoollenProducts(available).map(productCardHTML).join('');
+      grid.innerHTML = shuffleArray(r).slice(0, 4).map(productCardHTML).join('');
       initScrollReveal();
     } else if (Array.isArray(r) && r.length === 0) {
       const ranked = await withTimeout(api('/api/products?storeType=main&sort=best-selling'), 2500);
@@ -2847,9 +2623,7 @@ async function renderProducts(params) {
       ? fallback.filter(p => (!category || p.category === category) && (stock !== 'in' || Number(p.stock) > 0) && (stock !== 'out' || Number(p.stock) <= 0))
       : [];
   }
-  if (!category) {
-    products = prioritizeWoollenProducts(products);
-  }
+
   const categories = getProductCategoryOptions(categoriesRaw, products);
   const list = document.querySelector('.category-filter-list');
   if (list) {
@@ -2859,6 +2633,7 @@ async function renderProducts(params) {
       </button>
     `).join('');
   }
+
   const grid = document.getElementById('products-grid');
   if (grid) {
     grid.innerHTML = products.length
@@ -2869,18 +2644,7 @@ async function renderProducts(params) {
 }
 
 async function sortProducts(sort, category) {
-  const url = '/api/products?' + new URLSearchParams({ ...(category && { category }), ...(sort && { sort }) });
-  const products = await api(url, { timeoutMs: 3000 });
-  const grid = document.getElementById('products-grid');
-  if (!grid) return;
-  if (Array.isArray(products)) {
-    const ordered = !category && !sort ? prioritizeWoollenProducts(products) : products;
-    grid.innerHTML = ordered.map(productCardHTML).join('');
-  } else {
-    grid.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Could not load products</h3><p>Please try again in a moment.</p></div>';
-  }
-  initScrollReveal();
-  updateCartButtonsUI();
+  navigate('/products' + buildProductsFilterQuery({ sort, category }));
 }
 
 async function loadPublicSettings() {

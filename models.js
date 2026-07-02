@@ -30,12 +30,26 @@ const userSchema = new mongoose.Schema({
 const productSchema = new mongoose.Schema({
   name:       { type: String, required: true },
   category:   { type: String, required: true },
+  sku:        { type: String, default: '' },
   price:      { type: Number, required: true },
   mrp:        { type: Number, required: true },
   discount:   { type: Number, default: 0 },
   stock:      { type: Number, default: 0 },
   description:{ type: String, default: '' },
   images:     [String],
+  hasVariants:{ type: Boolean, default: false },
+  variantType:{ type: String, default: '' },
+  variants:   [{
+    id:        { type: String, default: '' },
+    label:     { type: String, default: '' },
+    value:     { type: String, default: '' },
+    colorHex:  { type: String, default: '' },
+    price:     { type: Number, default: 0 },
+    mrp:       { type: Number, default: 0 },
+    stock:     { type: Number, default: 0 },
+    sku:       { type: String, default: '' },
+    images:    [String]
+  }],
   gstRate:    { type: Number, default: 18 }, // ✅ FIXED: 18% for jewelry (CGST 9% + SGST 9%)
   hsn:        { type: String, default: '7117' },
   featured:   { type: Boolean, default: false },
@@ -54,7 +68,21 @@ const orderSchema = new mongoose.Schema({
   id:         { type: String, unique: true },
   userId:     { type: String, required: false, default: null },
   userName:   { type: String, required: true },
-  items:      [{ productId:String, name:String, image:String, price:Number, mrp:Number, quantity:Number, gstRate:Number, hsn:String, gstAmount:Number, total:Number }],
+  items:      [{
+    productId:String,
+    variantId: { type: String, default: '' },
+    variantLabel: { type: String, default: '' },
+    sku: { type: String, default: '' },
+    name:String,
+    image:String,
+    price:Number,
+    mrp:Number,
+    quantity:Number,
+    gstRate:Number,
+    hsn:String,
+    gstAmount:Number,
+    total:Number
+  }],
   address:    { type: String, required: true },
   paymentMethod: { type: String, required: true },
   subtotal:   Number, gstTotal:Number, shipping:Number, discount:Number, grandTotal:Number,
@@ -83,7 +111,11 @@ orderSchema.index({ userId: 1 });
 // ── CART ──────────────────────────────────────────────────────
 const cartSchema = new mongoose.Schema({
   userId: { type: String, required: true, unique: true },
-  items:  [{ productId: String, quantity: Number }],
+  items:  [{
+    productId: String,
+    variantId: { type: String, default: '' },
+    quantity: Number
+  }],
 }, { timestamps: true });
 
 // ── WISHLIST ──────────────────────────────────────────────────

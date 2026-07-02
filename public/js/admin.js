@@ -372,11 +372,11 @@ function buildAdminPanel() {
         <div class="admin-menu-item active" id="am-dashboard" onclick="adminTab('dashboard')"><i class="fas fa-chart-line" style="width:20px;"></i> Dashboard</div>
         <div class="admin-menu-item" id="am-orders" onclick="adminTab('orders')"><i class="fas fa-shopping-bag" style="width:20px;"></i> Orders</div>
         <div class="admin-menu-item" id="am-products" onclick="adminTab('products')"><i class="fas fa-gem" style="width:20px;"></i> Products</div>
+        <div class="admin-menu-item" id="am-woollen" onclick="adminTab('woollen')"><i class="fas fa-mitten" style="width:20px;"></i> Woollen Collection</div>
         <div class="admin-menu-item" id="am-collections" onclick="adminTab('collections')"><i class="fas fa-layer-group" style="width:20px;"></i> Collections</div>
         <div class="admin-menu-item" id="am-inquiries" onclick="adminTab('inquiries')"><i class="fas fa-envelope-open-text" style="width:20px;"></i> Inquiries</div>
         <div class="admin-menu-item" id="am-users" onclick="adminTab('users')"><i class="fas fa-users" style="width:20px;"></i> Users</div>
         <div class="admin-menu-item" id="am-gst" onclick="adminTab('gst')"><i class="fas fa-file-invoice" style="width:20px;"></i> GST Hub</div>
-        <div class="admin-menu-item" id="am-woollen" onclick="adminTab('woollen')"><i class="fas fa-hat-cowboy-side" style="width:20px;"></i> 🧶 Woollen</div>
         <div class="admin-menu-item" id="am-testimonials" onclick="adminTab('testimonials')"><i class="fas fa-comment-dots" style="width:20px;"></i> Testimonials</div>
         <div class="admin-menu-item" id="am-login-logs" onclick="adminTab('login-logs')"><i class="fas fa-user-clock" style="width:20px;"></i> Login Logs</div>
         <div class="admin-menu-item" id="am-delivery-manager" onclick="adminTab('delivery-manager')"><i class="fas fa-truck-fast" style="width:20px;"></i> Delivery Manager</div>
@@ -438,11 +438,11 @@ function adminTab(tab) {
   if (tab === 'orders') adminOrders();
   if (tab === 'products') adminProducts();
   if (tab === 'add-product') adminAddProduct();
+  if (tab === 'woollen') adminWoollen();
   if (tab === 'collections') adminCollections();
   if (tab === 'inquiries') adminInquiries();
   if (tab === 'users') adminUsers();
   if (tab === 'gst') adminGST();
-  if (tab === 'woollen') adminWoollen();
   if (tab === 'testimonials') adminTestimonials();
   if (tab === 'login-logs') adminLoginLogs();
   if (tab === 'delivery-manager') adminDeliveryManager();
@@ -733,7 +733,7 @@ async function adminProducts() {
   <div class="admin-header"><h1 class="admin-page-title">Catalog Inventory (${products.length})</h1><button class="btn-primary" onclick="adminTab('add-product')"><i class="fas fa-plus"></i> Add New Product</button></div>
   <div class="admin-table-wrap">
     <table>
-      <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>HSN Code</th><th>GST %</th><th>Featured</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>HSN Code</th><th>GST %</th><th>Tags</th><th>Actions</th></tr></thead>
       <tbody>${products.map(p=>`
       <tr>
         <td><img src="${safeImageUrl(p.images[0], p.category)}" ${imageFallbackAttr(p.category,p.images[0])} style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid #eee;"/></td>
@@ -743,7 +743,13 @@ async function adminProducts() {
         <td><span style="color:${p.stock>10?'#22c55e':p.stock>0?'#f59e0b':'#ef4444'};font-weight:700;background:${p.stock>10?'#f0fdf4':'#fffbeb'};padding:4px 8px;border-radius:6px;">${p.stock}</span></td>
         <td><code>${p.hsn || '7117'}</code></td>
         <td><span style="font-weight:600;color:var(--rose);">${p.gstRate || 18}%</span></td>
-        <td>${p.featured?'<i class="fas fa-star" style="color:var(--gold);"></i>':'<span style="color:#aaa;">—</span>'}</td>
+        <td>${[
+          p.popular ? 'Best Seller' : '',
+          p.featured ? 'Featured' : '',
+          p.trending ? 'Trending' : '',
+          p.newArrival ? 'New Arrival' : '',
+          p.sale ? 'Sale' : ''
+        ].filter(Boolean).map(t => `<span class="product-badge" style="position:static;font-size:.65rem;padding:3px 7px;margin:2px;display:inline-block;">${t}</span>`).join('') || '<span style="color:#aaa;">—</span>'}</td>
         <td>
           <div style="display:flex;gap:4px;">
             <button class="btn-outline btn-sm" onclick="adminEditProduct('${p.id}')" title="Edit"><i class="fas fa-edit"></i></button>
@@ -775,73 +781,27 @@ async function adminDeleteProduct(id, name) {
   }
 }
 
-window.updateCollectionsDropdown = function(selectedCollection = '') {
-  const type = document.getElementById('p-cat-type').value;
-  const colSelect = document.getElementById('p-cat');
-  if (!colSelect) return;
-  
-  if (type === 'woollen') {
-    const woollenCats = [
-      { slug: 'Hair Clips', name: 'Hair Clips' },
-      { slug: 'Hair Bands', name: 'Hair Bands' },
-      { slug: 'Scrunchies', name: 'Scrunchies' },
-      { slug: 'Bows', name: 'Bows' },
-      { slug: 'Baby Accessories', name: 'Baby Accessories' },
-      { slug: 'Crochet Flowers', name: 'Crochet Flowers' },
-      { slug: 'Woollen Decor', name: 'Woollen Decor' }
-    ];
-    colSelect.innerHTML = woollenCats.map(c => `
-      <option value="${c.slug}" ${selectedCollection === c.slug ? 'selected' : ''}>${c.name}</option>
-    `).join('');
-  } else {
-    const jewelleryCats = window.adminCachedCategories || [];
-    const filtered = jewelleryCats.filter(c => c.slug !== 'woollen');
-    colSelect.innerHTML = filtered.map(c => `
-      <option value="${c.slug}" ${selectedCollection === c.slug ? 'selected' : ''}>${c.name}</option>
-    `).join('');
-    if (!colSelect.innerHTML) {
-      colSelect.innerHTML = `<option value="earrings">Earrings</option><option value="necklace">Necklace</option>`;
-    }
-  }
-};
-
-window.addVariantRow = function(variant = null) {
-  const container = document.getElementById('variants-list-container');
-  if (!container) return;
-  const row = document.createElement('div');
-  row.className = 'variant-row';
-  row.style = 'display:grid; grid-template-columns: repeat(6, 1fr) auto; gap: 8px; align-items: center; border: 1px solid var(--border); padding: 10px; border-radius: 8px; background: #fafafa; margin-bottom: 8px;';
-  row.innerHTML = `
-    <div><label style="font-size:0.7rem;font-weight:600;display:block;">Color</label><input type="text" class="v-color" value="${variant?.color || ''}" placeholder="e.g. Red" style="padding:6px;font-size:0.85rem;"/></div>
-    <div><label style="font-size:0.7rem;font-weight:600;display:block;">Size</label><input type="text" class="v-size" value="${variant?.size || ''}" placeholder="e.g. Medium" style="padding:6px;font-size:0.85rem;"/></div>
-    <div><label style="font-size:0.7rem;font-weight:600;display:block;">Stock</label><input type="number" class="v-stock" value="${variant?.stock !== undefined ? variant.stock : ''}" placeholder="10" style="padding:6px;font-size:0.85rem;"/></div>
-    <div><label style="font-size:0.7rem;font-weight:600;display:block;">SKU</label><input type="text" class="v-sku" value="${variant?.sku || ''}" placeholder="SKU" style="padding:6px;font-size:0.85rem;"/></div>
-    <div><label style="font-size:0.7rem;font-weight:600;display:block;">Price</label><input type="number" class="v-price" value="${variant?.price || ''}" placeholder="599" style="padding:6px;font-size:0.85rem;"/></div>
-    <div><label style="font-size:0.7rem;font-weight:600;display:block;">MRP</label><input type="number" class="v-mrp" value="${variant?.mrp || ''}" placeholder="999" style="padding:6px;font-size:0.85rem;"/></div>
-    <button type="button" onclick="this.closest('.variant-row').remove()" style="margin-top:1.2rem; background:#fee2e2; color:#ef4444; border:none; padding:8px 12px; border-radius:6px; cursor:pointer;" title="Delete Variant">✕</button>
-  `;
-  container.appendChild(row);
-};
-
 async function adminAddProduct(product = null) {
   const isEdit = !!product;
   const cats = await api('/api/categories');
-  window.adminCachedCategories = cats;
+  const catOptions = cats.length > 0 
+    ? cats.map(c => `<option value="${c.slug}" ${product?.category===c.slug?'selected':''}>${c.name}</option>`).join('')
+    : `<option value="others">Jewelry</option>`;
 
   document.getElementById('admin-content').innerHTML = `
   <div class="admin-header"><h1 class="admin-page-title">${isEdit?'Edit':'Add'} Product</h1></div>
   <div class="admin-form">
     <div class="form-grid">
       <div class="form-group"><label>Product Name *</label><input id="p-name" value="${product?.name||''}" placeholder="e.g. Rose Gold Hoop Earrings"/></div>
-      <div class="form-group"><label>Category Type *</label>
-        <select id="p-cat-type" onchange="updateCollectionsDropdown()">
-          <option value="jewellery" ${product?.category !== 'woollen' ? 'selected' : ''}>Jewellery</option>
-          <option value="woollen" ${product?.category === 'woollen' ? 'selected' : ''}>Woollen</option>
-        </select>
-      </div>
       <div class="form-group"><label>Category Collection *</label>
         <select id="p-cat">
-          <!-- Populated dynamically -->
+          ${catOptions}
+        </select>
+      </div>
+      <div class="form-group"><label>Store</label>
+        <select id="p-store-type">
+          <option value="main" ${product?.storeType !== 'woollen' ? 'selected' : ''}>Main Jewellery Store</option>
+          <option value="woollen" ${product?.storeType === 'woollen' ? 'selected' : ''}>Woollen Store</option>
         </select>
       </div>
       <div class="form-group"><label>Selling Price (₹) *</label><input id="p-price" type="number" value="${product?.price||''}" placeholder="599"/></div>
@@ -852,21 +812,15 @@ async function adminAddProduct(product = null) {
       <div class="form-group"><label>HSN Code</label><input id="p-hsn" value="${product?.hsn||'7117'}" placeholder="7117"/></div>
     </div>
     <div class="form-group"><label>Description *</label><textarea id="p-desc" rows="4" placeholder="Product description...">${product?.description||''}</textarea></div>
-    
-    <div style="margin-top: 1.5rem; margin-bottom: 1.5rem; border: 1px dashed var(--border); padding: 1.5rem; border-radius: 12px; background: #fff;">
-      <h3 style="margin-top:0; margin-bottom:1rem; font-size:1.1rem; color:var(--dark); display:flex; align-items:center; gap:0.5rem;">
-        <i class="fas fa-tags" style="color:var(--rose);"></i> Product Variants (Optional)
-      </h3>
-      <p style="font-size:0.8rem; color:var(--gray); margin-bottom:1rem;">Add variants for different colors, sizes, stock levels, or custom pricing. Available colors will display color selection circles on product cards.</p>
-      <div id="variants-list-container" style="display:flex; flex-direction:column; gap:10px; margin-bottom:1rem;">
-        <!-- Dynamic variants rows go here -->
-      </div>
-      <button type="button" class="btn-outline btn-sm" onclick="addVariantRow()"><i class="fas fa-plus"></i> Add Variant Row</button>
-    </div>
-
     <div class="form-group">
       <label>Featured Product</label>
-      <select id="p-featured"><option value="false" ${!product?.featured?'selected':''}>No</option><option value="true" ${product?.featured?'selected':''}>Yes – Show on Homepage</option></select>
+      <select id="p-featured"><option value="false" ${!product?.featured?'selected':''}>No</option><option value="true" ${product?.featured?'selected':''}>Yes</option></select>
+    </div>
+    <div class="form-grid">
+      <div class="form-group"><label>Best Seller</label><select id="p-popular"><option value="false" ${!product?.popular?'selected':''}>No</option><option value="true" ${product?.popular?'selected':''}>Yes - Show in Best Sellers</option></select></div>
+      <div class="form-group"><label>Trending</label><select id="p-trending"><option value="false" ${!product?.trending?'selected':''}>No</option><option value="true" ${product?.trending?'selected':''}>Yes</option></select></div>
+      <div class="form-group"><label>New Arrival</label><select id="p-new-arrival"><option value="false" ${!product?.newArrival?'selected':''}>No</option><option value="true" ${product?.newArrival?'selected':''}>Yes</option></select></div>
+      <div class="form-group"><label>Sale</label><select id="p-sale"><option value="false" ${!product?.sale?'selected':''}>No</option><option value="true" ${product?.sale?'selected':''}>Yes</option></select></div>
     </div>
     <div class="form-group">
       <label>Product Images (Image 1 = Main Display Image)</label>
@@ -885,29 +839,11 @@ async function adminAddProduct(product = null) {
         }).join('')}
       </div>
     </div>
-    <div style="display:flex;gap:1rem;margin-top:1.5rem;">
+    <div style="display:flex;gap:1rem;">
       <button class="btn-primary" onclick="${isEdit?`saveEditProduct('${product.id}')`:'saveNewProduct()'}">${isEdit?'Save Changes':'Add Product ✦'}</button>
       <button class="btn-outline" onclick="adminTab('products')">Cancel</button>
     </div>
   </div>`;
-
-  setTimeout(() => {
-    // Populate collection dropdown
-    const subcat = product?.subcategory || '';
-    const categoryVal = product?.category || '';
-    if (categoryVal === 'woollen') {
-      document.getElementById('p-cat-type').value = 'woollen';
-      updateCollectionsDropdown(subcat);
-    } else {
-      document.getElementById('p-cat-type').value = 'jewellery';
-      updateCollectionsDropdown(categoryVal);
-    }
-    
-    // Populate variants
-    if (product && Array.isArray(product.variants)) {
-      product.variants.forEach(v => addVariantRow(v));
-    }
-  }, 100);
 }
 
 function previewSingleImage(input, n) {
@@ -944,16 +880,7 @@ function markImageRemoved(n, url) {
 async function saveNewProduct() {
   const fd = new FormData();
   fd.append('name', document.getElementById('p-name').value);
-  
-  const type = document.getElementById('p-cat-type').value;
-  if (type === 'woollen') {
-    fd.append('category', 'woollen');
-    fd.append('subcategory', document.getElementById('p-cat').value);
-  } else {
-    fd.append('category', document.getElementById('p-cat').value);
-    fd.append('subcategory', '');
-  }
-
+  fd.append('category', document.getElementById('p-cat').value);
   fd.append('price', document.getElementById('p-price').value);
   fd.append('mrp', document.getElementById('p-mrp').value);
   fd.append('discount', document.getElementById('p-discount').value);
@@ -962,21 +889,11 @@ async function saveNewProduct() {
   fd.append('hsn', document.getElementById('p-hsn').value);
   fd.append('description', document.getElementById('p-desc').value);
   fd.append('featured', document.getElementById('p-featured').value);
-
-  // Serialize variants
-  const variantRows = document.querySelectorAll('.variant-row');
-  const variants = [];
-  variantRows.forEach(row => {
-    const color = row.querySelector('.v-color').value.trim();
-    const size = row.querySelector('.v-size').value.trim();
-    const stock = Number(row.querySelector('.v-stock').value) || 0;
-    const sku = row.querySelector('.v-sku').value.trim();
-    const price = Number(row.querySelector('.v-price').value) || 0;
-    const mrp = Number(row.querySelector('.v-mrp').value) || 0;
-    variants.push({ color, size, stock, sku, price, mrp });
-  });
-  fd.append('variants', JSON.stringify(variants));
-
+  fd.append('storeType', document.getElementById('p-store-type').value);
+  fd.append('popular', document.getElementById('p-popular').value);
+  fd.append('trending', document.getElementById('p-trending').value);
+  fd.append('newArrival', document.getElementById('p-new-arrival').value);
+  fd.append('sale', document.getElementById('p-sale').value);
   for (let i = 1; i <= 5; i++) {
     const inp = document.getElementById('p-img-' + i);
     if (inp && inp.files && inp.files[0]) fd.append('images', inp.files[0]);
@@ -1001,16 +918,7 @@ async function adminEditProduct(id) {
 async function saveEditProduct(id) {
   const fd = new FormData();
   fd.append('name', document.getElementById('p-name').value);
-  
-  const type = document.getElementById('p-cat-type').value;
-  if (type === 'woollen') {
-    fd.append('category', 'woollen');
-    fd.append('subcategory', document.getElementById('p-cat').value);
-  } else {
-    fd.append('category', document.getElementById('p-cat').value);
-    fd.append('subcategory', '');
-  }
-
+  fd.append('category', document.getElementById('p-cat').value);
   fd.append('price', document.getElementById('p-price').value);
   fd.append('mrp', document.getElementById('p-mrp').value);
   fd.append('discount', document.getElementById('p-discount').value);
@@ -1019,21 +927,11 @@ async function saveEditProduct(id) {
   fd.append('hsn', document.getElementById('p-hsn').value);
   fd.append('description', document.getElementById('p-desc').value);
   fd.append('featured', document.getElementById('p-featured').value);
-
-  // Serialize variants
-  const variantRows = document.querySelectorAll('.variant-row');
-  const variants = [];
-  variantRows.forEach(row => {
-    const color = row.querySelector('.v-color').value.trim();
-    const size = row.querySelector('.v-size').value.trim();
-    const stock = Number(row.querySelector('.v-stock').value) || 0;
-    const sku = row.querySelector('.v-sku').value.trim();
-    const price = Number(row.querySelector('.v-price').value) || 0;
-    const mrp = Number(row.querySelector('.v-mrp').value) || 0;
-    variants.push({ color, size, stock, sku, price, mrp });
-  });
-  fd.append('variants', JSON.stringify(variants));
-
+  fd.append('storeType', document.getElementById('p-store-type').value);
+  fd.append('popular', document.getElementById('p-popular').value);
+  fd.append('trending', document.getElementById('p-trending').value);
+  fd.append('newArrival', document.getElementById('p-new-arrival').value);
+  fd.append('sale', document.getElementById('p-sale').value);
   for (let i = 1; i <= 5; i++) {
     const inp = document.getElementById('p-img-' + i);
     if (inp && inp.files && inp.files[0]) fd.append('images', inp.files[0]);
@@ -1044,6 +942,76 @@ async function saveEditProduct(id) {
   toast('Product updated! ✦', 'success');
   adminTab('products');
 }
+
+let adminProductFormState = null;
+let adminCategoryFormState = null;
+
+function getAdminAuthHeaders() {
+  const headers = {};
+  try {
+    const token = typeof getJWTToken === 'function' ? getJWTToken() : null;
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch {}
+  return headers;
+}
+
+async function uploadAdminMediaFile(file, folder = 'products/general') {
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('folder', folder);
+  const res = await fetch('/api/admin/upload-media', { method: 'POST', credentials: 'include', headers: getAdminAuthHeaders(), body: fd });
+  const data = await res.json();
+  if (!res.ok || data.error || !data.url) throw new Error(data.error || 'Upload failed');
+  return data.url;
+}
+
+function createEmptyVariantRow(variantType = 'color', variant = {}) {
+  return {
+    id: variant.id || `variant-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    label: variant.label || variant.value || '',
+    value: variant.value || variant.label || '',
+    colorHex: variant.colorHex || (variantType === 'color' ? '#d88ea6' : ''),
+    price: variant.price ?? '',
+    mrp: variant.mrp ?? '',
+    stock: variant.stock ?? '',
+    sku: variant.sku || '',
+    images: Array.isArray(variant.images) ? [...variant.images] : []
+  };
+}
+
+async function adminAddProduct(product = null) {
+  const isEdit = !!product;
+  const cats = await api('/api/categories');
+  const catOptions = cats.length > 0 ? cats.map(c => `<option value="${c.slug}" ${product?.category===c.slug?'selected':''}>${c.name}</option>`).join('') : `<option value="others">Jewelry</option>`;
+  adminProductFormState = {
+    images: Array.isArray(product?.images) ? [...product.images] : [],
+    hasVariants: Boolean(product?.hasVariants),
+    variantType: product?.variantType || 'color',
+    variants: Array.isArray(product?.variants) && product.variants.length ? product.variants.map(variant => createEmptyVariantRow(product?.variantType || 'color', variant)) : []
+  };
+  document.getElementById('admin-content').innerHTML = `<div class="admin-header"><h1 class="admin-page-title">${isEdit?'Edit':'Add'} Product</h1></div><div class="admin-form"><div class="form-grid"><div class="form-group"><label>Product Name *</label><input id="p-name" value="${product?.name||''}" placeholder="e.g. Rose Gold Hoop Earrings"/></div><div class="form-group"><label>Category Collection *</label><select id="p-cat">${catOptions}</select></div><div class="form-group"><label>Store</label><select id="p-store-type"><option value="main" ${product?.storeType !== 'woollen' ? 'selected' : ''}>Main Jewellery Store</option><option value="woollen" ${product?.storeType === 'woollen' ? 'selected' : ''}>Woollen Store</option></select></div><div class="form-group"><label>Has Variants?</label><select id="p-has-variants" onchange="toggleAdminVariantSection()"><option value="false" ${!adminProductFormState.hasVariants ? 'selected' : ''}>No</option><option value="true" ${adminProductFormState.hasVariants ? 'selected' : ''}>Yes</option></select></div><div class="form-group"><label>Selling Price (₹) *</label><input id="p-price" type="number" value="${product?.price||''}" placeholder="599"/></div><div class="form-group"><label>MRP (₹) *</label><input id="p-mrp" type="number" value="${product?.mrp||''}" placeholder="999"/></div><div class="form-group"><label>Discount (%)</label><input id="p-discount" type="number" value="${product?.discount||''}" placeholder="40"/></div><div class="form-group"><label>Stock Quantity *</label><input id="p-stock" type="number" value="${product?.stock||''}" placeholder="50"/></div><div class="form-group"><label>SKU</label><input id="p-sku" value="${product?.sku||''}" placeholder="LEN-001"/></div><div class="form-group"><label>GST Rate (%)</label><input id="p-gst" type="number" value="${product?.gstRate||3}" placeholder="3"/></div><div class="form-group"><label>HSN Code</label><input id="p-hsn" value="${product?.hsn||'7117'}" placeholder="7117"/></div></div><div class="form-group"><label>Description *</label><textarea id="p-desc" rows="4" placeholder="Product description...">${product?.description||''}</textarea></div><div id="admin-variant-section" style="display:${adminProductFormState.hasVariants ? 'block' : 'none'};margin-bottom:1.5rem;border:1px solid var(--border);border-radius:16px;padding:1rem;"><div class="form-grid"><div class="form-group"><label>Variant Type</label><select id="p-variant-type" onchange="renderAdminVariantRows()">${['color','size','weight','material','length','custom'].map(type => `<option value="${type}" ${adminProductFormState.variantType===type?'selected':''}>${type.charAt(0).toUpperCase()+type.slice(1)}</option>`).join('')}</select></div></div><div id="admin-variant-rows"></div><button class="btn-outline" type="button" onclick="addAdminVariantRow()"><i class="fas fa-plus"></i> Add Variant</button></div><div class="form-group"><label>Featured Product</label><select id="p-featured"><option value="false" ${!product?.featured?'selected':''}>No</option><option value="true" ${product?.featured?'selected':''}>Yes</option></select></div><div class="form-grid"><div class="form-group"><label>Best Seller</label><select id="p-popular"><option value="false" ${!product?.popular?'selected':''}>No</option><option value="true" ${product?.popular?'selected':''}>Yes - Show in Best Sellers</option></select></div><div class="form-group"><label>Trending</label><select id="p-trending"><option value="false" ${!product?.trending?'selected':''}>No</option><option value="true" ${product?.trending?'selected':''}>Yes</option></select></div><div class="form-group"><label>New Arrival</label><select id="p-new-arrival"><option value="false" ${!product?.newArrival?'selected':''}>No</option><option value="true" ${product?.newArrival?'selected':''}>Yes</option></select></div><div class="form-group"><label>Sale</label><select id="p-sale"><option value="false" ${!product?.sale?'selected':''}>No</option><option value="true" ${product?.sale?'selected':''}>Yes</option></select></div></div><div class="form-group"><label>Product Images (First image becomes main image)</label><div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin-bottom:.85rem;"><input type="file" id="p-image-upload" accept="image/*" multiple onchange="handleAdminProductImageInput(event)"/><span style="font-size:.82rem;color:var(--gray);">Upload now, preview instantly, and reorder before saving.</span></div><div id="admin-product-image-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;"></div></div><div style="display:flex;gap:1rem;"><button class="btn-primary" onclick="${isEdit?`saveEditProduct('${product.id}')`:'saveNewProduct()'}">${isEdit?'Save Changes':'Add Product ✦'}</button><button class="btn-outline" onclick="adminTab('products')">Cancel</button></div></div>`;
+  toggleAdminVariantSection();
+  renderAdminProductImages();
+  renderAdminVariantRows();
+}
+
+async function saveNewProduct() { await submitAdminProduct(); }
+async function adminEditProduct(id) { const p = await api('/api/products/' + id); if (p.error) { toast(p.error, 'error'); return; } adminAddProduct(p); }
+async function saveEditProduct(id) { await submitAdminProduct(id); }
+
+function toggleAdminVariantSection() { const hasVariants = document.getElementById('p-has-variants')?.value === 'true'; if (adminProductFormState) adminProductFormState.hasVariants = hasVariants; const section = document.getElementById('admin-variant-section'); if (section) section.style.display = hasVariants ? 'block' : 'none'; }
+function renderAdminProductImages() { const grid = document.getElementById('admin-product-image-grid'); if (!grid || !adminProductFormState) return; const category = document.getElementById('p-cat')?.value || ''; grid.innerHTML = adminProductFormState.images.length ? adminProductFormState.images.map((image, index) => `<div style="border:1px solid var(--border);border-radius:14px;padding:.6rem;background:#fff;"><div style="position:relative;aspect-ratio:1;overflow:hidden;border-radius:12px;background:#faf7f9;"><img src="${safeImageUrl(image, category)}" style="width:100%;height:100%;object-fit:cover;" />${index === 0 ? '<span style="position:absolute;left:8px;top:8px;background:rgba(22,163,74,.92);color:#fff;padding:4px 8px;border-radius:999px;font-size:.72rem;font-weight:700;">Main</span>' : ''}</div><div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.55rem;"><button type="button" class="btn-outline btn-sm" onclick="moveAdminProductImage(${index}, -1)" ${index === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn-outline btn-sm" onclick="moveAdminProductImage(${index}, 1)" ${index === adminProductFormState.images.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="btn-outline btn-sm" onclick="removeAdminProductImage(${index})" style="color:#dc2626;border-color:#fecaca;">Remove</button></div></div>`).join('') : `<div style="padding:1rem;border:2px dashed var(--border);border-radius:16px;color:var(--gray);text-align:center;">Upload product images to preview them here.</div>`; }
+async function handleAdminProductImageInput(event) { const files = Array.from(event.target.files || []); if (!files.length || !adminProductFormState) return; const category = document.getElementById('p-cat')?.value || 'general'; try { for (const file of files) adminProductFormState.images.push(await uploadAdminMediaFile(file, `products/${category}`)); renderAdminProductImages(); toast('Images uploaded successfully', 'success'); } catch (error) { toast(error.message || 'Image upload failed', 'error'); } finally { event.target.value = ''; } }
+function removeAdminProductImage(index) { if (!adminProductFormState) return; adminProductFormState.images.splice(index, 1); renderAdminProductImages(); }
+function moveAdminProductImage(index, delta) { if (!adminProductFormState) return; const nextIndex = index + delta; if (nextIndex < 0 || nextIndex >= adminProductFormState.images.length) return; const [image] = adminProductFormState.images.splice(index, 1); adminProductFormState.images.splice(nextIndex, 0, image); renderAdminProductImages(); }
+function renderAdminVariantRows() { if (!adminProductFormState) return; adminProductFormState.variantType = document.getElementById('p-variant-type')?.value || adminProductFormState.variantType || 'color'; const container = document.getElementById('admin-variant-rows'); if (!container) return; if (adminProductFormState.hasVariants && !adminProductFormState.variants.length) adminProductFormState.variants.push(createEmptyVariantRow(adminProductFormState.variantType)); const title = adminProductFormState.variantType.charAt(0).toUpperCase() + adminProductFormState.variantType.slice(1); container.innerHTML = adminProductFormState.variants.map((variant, index) => `<div style="border:1px solid var(--border);border-radius:14px;padding:1rem;margin-bottom:.85rem;background:#fffafc;"><div class="form-grid"><div class="form-group"><label>${title} Name</label><input value="${variant.label || ''}" onchange="handleAdminVariantFieldChange(${index}, 'label', this.value)" placeholder="e.g. Rose Gold"/></div>${adminProductFormState.variantType === 'color' ? `<div class="form-group"><label>Color Hex</label><input type="color" value="${variant.colorHex || '#d88ea6'}" onchange="handleAdminVariantFieldChange(${index}, 'colorHex', this.value)"/></div>` : ''}<div class="form-group"><label>Price</label><input type="number" value="${variant.price ?? ''}" onchange="handleAdminVariantFieldChange(${index}, 'price', this.value)"/></div><div class="form-group"><label>MRP</label><input type="number" value="${variant.mrp ?? ''}" onchange="handleAdminVariantFieldChange(${index}, 'mrp', this.value)"/></div><div class="form-group"><label>Stock</label><input type="number" value="${variant.stock ?? ''}" onchange="handleAdminVariantFieldChange(${index}, 'stock', this.value)"/></div><div class="form-group"><label>SKU</label><input value="${variant.sku || ''}" onchange="handleAdminVariantFieldChange(${index}, 'sku', this.value)"/></div></div><div class="form-group"><label>Variant Images</label><input type="file" accept="image/*" multiple onchange="handleAdminVariantImageInput(event, ${index})"/><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-top:.75rem;">${(variant.images || []).map((image, imageIndex) => `<div style="position:relative;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#fff;"><img src="${safeImageUrl(image, document.getElementById('p-cat')?.value || '')}" style="width:100%;aspect-ratio:1;object-fit:cover;" /><button type="button" onclick="handleAdminVariantFieldChange(${index}, 'removeImage', ${imageIndex})" style="position:absolute;right:6px;top:6px;border:none;background:rgba(255,255,255,.94);border-radius:999px;padding:4px 7px;cursor:pointer;">×</button></div>`).join('')}</div></div><button type="button" class="btn-outline btn-sm" onclick="removeAdminVariantRow(${index})" style="color:#dc2626;border-color:#fecaca;">Remove Variant</button></div>`).join(''); }
+function addAdminVariantRow() { if (!adminProductFormState) return; adminProductFormState.variants.push(createEmptyVariantRow(adminProductFormState.variantType || 'color')); renderAdminVariantRows(); }
+function removeAdminVariantRow(index) { if (!adminProductFormState) return; adminProductFormState.variants.splice(index, 1); renderAdminVariantRows(); }
+function handleAdminVariantFieldChange(index, field, value) { if (!adminProductFormState?.variants?.[index]) return; if (field === 'removeImage') adminProductFormState.variants[index].images.splice(value, 1); else { adminProductFormState.variants[index][field] = value; if (field === 'label') adminProductFormState.variants[index].value = value; } renderAdminVariantRows(); }
+async function handleAdminVariantImageInput(event, index) { const files = Array.from(event.target.files || []); if (!files.length || !adminProductFormState?.variants?.[index]) return; const category = document.getElementById('p-cat')?.value || 'general'; try { for (const file of files) adminProductFormState.variants[index].images.push(await uploadAdminMediaFile(file, `products/${category}/variants`)); renderAdminVariantRows(); toast('Variant images uploaded', 'success'); } catch (error) { toast(error.message || 'Variant image upload failed', 'error'); } finally { event.target.value = ''; } }
+function collectAdminProductPayload() { const hasVariants = document.getElementById('p-has-variants')?.value === 'true'; adminProductFormState.hasVariants = hasVariants; adminProductFormState.variantType = document.getElementById('p-variant-type')?.value || adminProductFormState.variantType || 'color'; return { name: document.getElementById('p-name').value.trim(), category: document.getElementById('p-cat').value, storeType: document.getElementById('p-store-type').value, hasVariants, variantType: adminProductFormState.variantType, price: document.getElementById('p-price').value, mrp: document.getElementById('p-mrp').value, discount: document.getElementById('p-discount').value, stock: document.getElementById('p-stock').value, sku: document.getElementById('p-sku').value.trim(), gstRate: document.getElementById('p-gst').value, hsn: document.getElementById('p-hsn').value, description: document.getElementById('p-desc').value.trim(), featured: document.getElementById('p-featured').value, popular: document.getElementById('p-popular').value, trending: document.getElementById('p-trending').value, newArrival: document.getElementById('p-new-arrival').value, sale: document.getElementById('p-sale').value, existingImages: adminProductFormState.images, imageOrder: adminProductFormState.images, variants: hasVariants ? adminProductFormState.variants.map(variant => ({ ...variant, label: String(variant.label || '').trim(), value: String(variant.label || variant.value || '').trim(), price: Number(variant.price) || 0, mrp: Number(variant.mrp) || Number(variant.price) || 0, stock: Number(variant.stock) || 0, sku: String(variant.sku || '').trim(), images: Array.isArray(variant.images) ? variant.images : [] })) : [] }; }
+function validateAdminProductPayload(payload) { if (!payload.name) return 'Product name is required'; if (!payload.category) return 'Collection is required'; if (!payload.existingImages.length) return 'Upload at least one product image'; if (payload.hasVariants) { if (!payload.variantType) return 'Choose a variant type'; if (!payload.variants.length) return 'Add at least one variant'; const invalid = payload.variants.find(variant => !variant.label || !variant.images.length || !(Number(variant.price) > 0)); if (invalid) return 'Each variant needs a name, image and price'; } else { if (!(Number(payload.price) > 0)) return 'Selling price is required'; if (!(Number(payload.mrp) > 0)) return 'MRP is required'; } return ''; }
+async function submitAdminProduct(id = '') { const payload = collectAdminProductPayload(); const validationError = validateAdminProductPayload(payload); if (validationError) return toast(validationError, 'error'); const response = await api(id ? `/api/products/${id}` : '/api/products', { method: id ? 'PUT' : 'POST', body: { ...payload, variants: JSON.stringify(payload.variants), existingImages: JSON.stringify(payload.existingImages), imageOrder: JSON.stringify(payload.imageOrder), removedImages: JSON.stringify([]) } }); if (response.error) return toast(response.error, 'error'); toast(id ? 'Product updated successfully' : 'Product added successfully', 'success'); adminTab('products'); }
 
 async function adminUsers() {
   const response = await api('/api/admin/users');
@@ -1222,6 +1190,110 @@ function downloadGSTReport() {
   a.download = `GST_Report_Lencho_${document.getElementById('gst-month').value}_${document.getElementById('gst-year').value}.csv`;
   a.click();
   toast('GST Report downloaded! ✦', 'success');
+}
+
+async function adminWoollen() {
+  const [products, collections, settingsRaw] = await Promise.all([
+    api('/api/products?storeType=woollen'),
+    api('/api/categories?storeType=woollen'),
+    api('/api/settings')
+  ]);
+  const settings = normalizeSettings(settingsRaw);
+  const list = Array.isArray(products) ? products : [];
+  const cats = Array.isArray(collections) ? collections : [];
+  const g = (k, fallback = '') => settings[k] ?? fallback;
+  document.getElementById('admin-content').innerHTML = `
+    <div class="admin-header">
+      <h1 class="admin-page-title">Woollen Collection</h1>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
+        <button class="btn-primary" onclick="adminAddWoollenProduct()"><i class="fas fa-plus"></i> Add Woollen Product</button>
+        <button class="btn-outline" onclick="showAddCategory('woollen')"><i class="fas fa-layer-group"></i> New Woollen Collection</button>
+      </div>
+    </div>
+
+    <div class="stats-grid" style="margin-bottom:2rem;">
+      <div class="stat-card"><div class="stat-label">Woollen Products</div><div class="stat-value">${list.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Collections</div><div class="stat-value">${cats.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Best Sellers</div><div class="stat-value">${list.filter(p=>p.popular).length}</div></div>
+    </div>
+
+    <div class="admin-form" style="margin-bottom:2rem;">
+      <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-palette"></i> Woollen Page Editor</h3>
+      <div class="form-grid">
+        <div class="form-group"><label>Header Title</label><input id="wl-woollenHeaderTitle" value="${g('woollenHeaderTitle','Lencho Woollen')}"/></div>
+        <div class="form-group"><label>Hero Title</label><input id="wl-woollenHeroTitle" value="${g('woollenHeroTitle','Handmade Woollen Collection')}"/></div>
+        <div class="form-group"><label>Hero Subtitle</label><input id="wl-woollenHeroSubtitle" value="${g('woollenHeroSubtitle','')}"/></div>
+        <div class="form-group"><label>Button Text</label><input id="wl-woollenHeroButtonText" value="${g('woollenHeroButtonText','View All Woollen')}"/></div>
+        <div class="form-group"><label>Hero Banner URL</label><input id="wl-woollenHeroBanner" value="${g('woollenHeroBanner','')}"/></div>
+        <div class="form-group"><label>Header Background</label><input type="color" id="wl-woollenHeaderBg" value="${g('woollenHeaderBg','#fff7fb')}"/></div>
+        <div class="form-group"><label>Text Color</label><input type="color" id="wl-woollenHeaderText" value="${g('woollenHeaderText','#3f2434')}"/></div>
+        <div class="form-group"><label>Hover Color</label><input type="color" id="wl-woollenHoverColor" value="${g('woollenHoverColor','#c9748f')}"/></div>
+        <div class="form-group"><label>Button Color</label><input type="color" id="wl-woollenButtonColor" value="${g('woollenButtonColor','#9b4065')}"/></div>
+        <div class="form-group"><label>Logo Position</label><select id="wl-woollenLogoPosition"><option value="left" ${g('woollenLogoPosition')==='left'?'selected':''}>Left</option><option value="center" ${g('woollenLogoPosition')==='center'?'selected':''}>Center</option><option value="right" ${g('woollenLogoPosition')==='right'?'selected':''}>Right</option></select></div>
+        <div class="form-group"><label>Footer Color</label><input type="color" id="wl-woollenFooterColor" value="${g('woollenFooterColor','#3f2434')}"/></div>
+        <div class="form-group"><label>Footer Text Color</label><input type="color" id="wl-woollenFooterTextColor" value="${g('woollenFooterTextColor','#fff7fb')}"/></div>
+        <div class="form-group"><label>Footer Image URL</label><input id="wl-woollenFooterImage" value="${g('woollenFooterImage','')}"/></div>
+        <div class="form-group"><label>Social Icons</label><input id="wl-woollenSocialIcons" value="${g('woollenSocialIcons','instagram,whatsapp')}"/></div>
+      </div>
+      <div class="form-group"><label>About Section</label><textarea id="wl-woollenAbout" rows="3">${g('woollenAbout','')}</textarea></div>
+      <div class="form-group"><label>Footer Content</label><textarea id="wl-woollenFooterContent" rows="2">${g('woollenFooterContent','')}</textarea></div>
+      <button class="btn-primary" onclick="saveWoollenSettings()"><i class="fas fa-save"></i> Save Woollen Page</button>
+    </div>
+
+    <div class="admin-form" style="margin-bottom:2rem;">
+      <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-layer-group"></i> Woollen Collections</h3>
+      <div class="admin-table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Icon</th><th>Theme</th><th>Products</th><th>Actions</th></tr></thead>
+          <tbody>${cats.map(c => `<tr>
+            <td><b>${c.name}</b><div style="font-size:.75rem;color:var(--gray);">${c.slug}</div></td>
+            <td>${c.icon || 'star'}</td>
+            <td>${c.theme || 'auto'}</td>
+            <td>${list.filter(p=>p.category===c.slug).length}</td>
+            <td><button class="btn-outline btn-sm" onclick="viewCategoryProducts('${c.slug}')">Inventory</button> <button class="btn-sm" onclick="deleteCategory('${c.id || c._id || c.slug}')" style="background:#fee2e2;color:#ef4444;border:none;padding:5px 12px;border-radius:6px;">Delete</button></td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="admin-table-wrap">
+      <table>
+        <thead><tr><th>Product</th><th>Collection</th><th>Price</th><th>Stock</th><th>Tags</th><th>Actions</th></tr></thead>
+        <tbody>${list.map(p => `<tr>
+          <td><b>${p.name}</b></td>
+          <td>${p.category}</td>
+          <td>${formatCurrency(p.price)}</td>
+          <td>${p.stock}</td>
+          <td>${[
+            p.popular ? 'Best Seller' : '',
+            p.featured ? 'Featured' : '',
+            p.trending ? 'Trending' : '',
+            p.newArrival ? 'New Arrival' : '',
+            p.sale ? 'Sale' : ''
+          ].filter(Boolean).join(', ') || '-'}</td>
+          <td><button class="btn-outline btn-sm" onclick="adminEditProduct('${p.id}')"><i class="fas fa-edit"></i></button></td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+async function adminAddWoollenProduct() {
+  await adminAddProduct();
+  const store = document.getElementById('p-store-type');
+  if (store) store.value = 'woollen';
+}
+
+async function saveWoollenSettings() {
+  const keys = [
+    'woollenHeaderTitle','woollenHeroTitle','woollenHeroSubtitle','woollenHeroButtonText','woollenHeroBanner',
+    'woollenAbout','woollenHeaderBg','woollenHeaderText','woollenHoverColor','woollenButtonColor','woollenLogoPosition',
+    'woollenFooterColor','woollenFooterTextColor','woollenFooterContent','woollenFooterImage','woollenSocialIcons'
+  ];
+  for (const key of keys) {
+    const el = document.getElementById('wl-' + key);
+    if (el) await api('/api/admin/settings', { method: 'POST', body: { key, value: el.value } });
+  }
+  toast('Woollen page settings saved', 'success');
 }
 
 async function adminSettings() {
@@ -1550,11 +1622,9 @@ async function deleteTestimonial(id) {
 }
 
 // ── COLLECTIONS (A-Z) ────────────────────────────────────────
-// ── COLLECTIONS (A-Z) ────────────────────────────────────────
 async function adminCollections() {
   const cats = await api('/api/categories');
   const products = await api('/api/products');
-  window.adminCachedCategories = cats;
   
   // Calculate counts
   const counts = products.reduce((acc, p) => { 
@@ -1575,20 +1645,16 @@ async function adminCollections() {
 
     <div class="admin-table-wrap">
       <table>
-        <thead><tr><th>Image</th><th>Name</th><th>Slug</th><th>Icon</th><th>Order</th><th>Status</th><th>Product Count</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Image</th><th>Name</th><th>Slug</th><th>Product Count</th><th>Actions</th></tr></thead>
         <tbody>${cats.map(c => `
           <tr>
             <td><img src="${c.image || ''}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;background:#f0f0f0;"/></td>
             <td>${c.name}</td>
             <td><code>${c.slug}</code></td>
-            <td>${c.icon || ''}</td>
-            <td>${c.displayOrder || 0}</td>
-            <td><span class="stock-badge ${c.status === 'active' || !c.status ? 'status-instock' : 'status-outofstock'}">${c.status?.toUpperCase() || 'ACTIVE'}</span></td>
             <td><span style="background:var(--rose-light);color:var(--rose-dark);padding:4px 8px;border-radius:6px;font-weight:600;">${counts[c.slug] || 0}</span></td>
             <td>
               <button class="btn-sm btn-outline" onclick="viewCategoryProducts('${c.slug}')"><i class="fas fa-boxes"></i> Inventory</button>
-              <button class="btn-sm" onclick="showEditCategory('${c._id || c.id}')"><i class="fas fa-edit"></i> Edit</button>
-              <button class="btn-sm" onclick="deleteCategory('${c._id || c.id}')" style="background:#fee2e2;color:#ef4444;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button>
+              <button class="btn-sm" onclick="deleteCategory('${c._id}')" style="background:#fee2e2;color:#ef4444;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button>
             </td>
           </tr>
         `).join('')}</tbody>
@@ -1642,25 +1708,24 @@ async function viewCategoryProducts(slug) {
   container.scrollIntoView({ behavior: 'smooth' });
 }
 
-async function showAddCategory() {
+async function showAddCategory(storeType = 'main') {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.innerHTML = `
     <div class="modal-card">
-      <h3>Add New Collection</h3>
+      <h3>Add New ${storeType === 'woollen' ? 'Woollen ' : ''}Collection</h3>
       <div class="form-group"><label>Name (e.g. Earrings)</label><input id="nc-name" placeholder="Name"/></div>
-      <div class="form-group"><label>Icon (e.g. 👂)</label><input id="nc-icon" placeholder="Icon"/></div>
       <div class="form-group"><label>Image URL</label><input id="nc-image" placeholder="Image URL"/></div>
-      <div class="form-group"><label>Description</label><textarea id="nc-desc" rows="2"></textarea></div>
-      <div class="form-group"><label>Display Order</label><input id="nc-order" type="number" value="0"/></div>
-      <div class="form-group">
-        <label>Status</label>
-        <select id="nc-status">
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-        </select>
+      <div class="form-group"><label>Banner Image URL</label><input id="nc-banner" placeholder="Banner image URL"/></div>
+      <div class="form-group"><label>Upload Collection Image</label><input type="file" id="nc-file" accept="image/*"/></div>
+      <button class="btn-outline" type="button" onclick="uploadCmsMedia('nc-file','nc-image')"><i class="fas fa-upload"></i> Upload Image</button>
+      <div class="form-grid" style="margin-top:1rem;">
+        <div class="form-group"><label>Icon</label><select id="nc-icon">${['ribbon','flower','butterfly','yarn','star','baby','diamond','heart','gift','sparkles','home','snowflake'].map(v=>`<option value="${v}">${v}</option>`).join('')}</select></div>
+        <div class="form-group"><label>Theme</label><select id="nc-theme">${['pastel-pink','lavender','mint','cream','peach','baby-blue','light-yellow','rose-gold','soft-purple','sage'].map(v=>`<option value="${v}">${v}</option>`).join('')}</select></div>
       </div>
-      <div style="display:flex;gap:1rem;margin-top:1.5rem;">
+      <input type="hidden" id="nc-store-type" value="${storeType}"/>
+      <div class="form-group"><label>Description</label><textarea id="nc-desc" rows="2"></textarea></div>
+      <div style="display:flex;gap:1rem;">
         <button class="btn-primary" onclick="saveCategory()">Create Collection</button>
         <button class="btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
       </div>
@@ -1672,62 +1737,19 @@ async function showAddCategory() {
 async function saveCategory() {
   const body = {
     name: document.getElementById('nc-name').value,
-    icon: document.getElementById('nc-icon').value,
     image: document.getElementById('nc-image').value,
-    description: document.getElementById('nc-desc').value,
-    displayOrder: parseInt(document.getElementById('nc-order').value || 0, 10),
-    status: document.getElementById('nc-status').value
+    bannerImage: document.getElementById('nc-banner').value,
+    icon: document.getElementById('nc-icon')?.value || 'star',
+    theme: document.getElementById('nc-theme')?.value || '',
+    storeType: document.getElementById('nc-store-type')?.value || 'main',
+    description: document.getElementById('nc-desc').value
   };
   const r = await api('/api/admin/categories', { method: 'POST', body });
   if (r.error) { toast(r.error, 'error'); return; }
   toast('Collection Added! ✦', 'success');
   document.querySelector('.modal-overlay').remove();
-  adminCollections();
-}
-
-async function showEditCategory(id) {
-  const cat = window.adminCachedCategories.find(c => (c._id || c.id) === id);
-  if (!cat) return;
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.innerHTML = `
-    <div class="modal-card">
-      <h3>Edit Collection</h3>
-      <div class="form-group"><label>Name (e.g. Earrings)</label><input id="ec-name" value="${cat.name || ''}" placeholder="Name"/></div>
-      <div class="form-group"><label>Icon (e.g. 👂)</label><input id="ec-icon" value="${cat.icon || ''}" placeholder="Icon"/></div>
-      <div class="form-group"><label>Image URL</label><input id="ec-image" value="${cat.image || ''}" placeholder="Image URL"/></div>
-      <div class="form-group"><label>Description</label><textarea id="ec-desc" rows="2">${cat.description || ''}</textarea></div>
-      <div class="form-group"><label>Display Order</label><input id="ec-order" type="number" value="${cat.displayOrder || 0}"/></div>
-      <div class="form-group">
-        <label>Status</label>
-        <select id="ec-status">
-          <option value="active" ${cat.status === 'active' ? 'selected' : ''}>Active</option>
-          <option value="inactive" ${cat.status === 'inactive' ? 'selected' : ''}>Inactive</option>
-        </select>
-      </div>
-      <div style="display:flex;gap:1rem;margin-top:1.5rem;">
-        <button class="btn-primary" onclick="updateCategory('${id}')">Save Changes</button>
-        <button class="btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-}
-
-async function updateCategory(id) {
-  const body = {
-    name: document.getElementById('ec-name').value,
-    icon: document.getElementById('ec-icon').value,
-    image: document.getElementById('ec-image').value,
-    description: document.getElementById('ec-desc').value,
-    displayOrder: parseInt(document.getElementById('ec-order').value || 0, 10),
-    status: document.getElementById('ec-status').value
-  };
-  const r = await api('/api/admin/categories/' + id, { method: 'PUT', body });
-  if (r.error) { toast(r.error, 'error'); return; }
-  toast('Collection Updated! ✦', 'success');
-  document.querySelector('.modal-overlay').remove();
-  adminCollections();
+  if (body.storeType === 'woollen') adminWoollen();
+  else adminCollections();
 }
 
 async function deleteCategory(id) {
@@ -1832,7 +1854,7 @@ async function adminSiteManager() {
   <div class="admin-form" style="margin-bottom:2rem;">
     <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-toggle-on"></i> Section Visibility</h3>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
-      ${['showOfferBanner:Offer Banner', 'showTrustHub:Trust Hub Strip', 'showCollections:Collections Grid', 'showFeaturedProducts:Trending Products', 'showPromo:Promo/Timer Section', 'showTestimonials:Testimonials'].map(item => {
+      ${['showOfferBanner:Offer Banner', 'showTrustHub:Trust Hub Strip', 'showFeaturedProducts:Best Seller Section', 'showCollections:Collections Grid', 'showPromo:Promo Section', 'showTestimonials:Testimonials'].map(item => {
         const [key, label] = item.split(':');
         return `<label style="display:flex;align-items:center;gap:10px;padding:12px;background:#f9f9f9;border-radius:10px;cursor:pointer;border:1px solid var(--border);">
           <input type="checkbox" id="cms-${key}" ${isOn(key) ? 'checked' : ''} style="width:18px;height:18px;accent-color:var(--rose);"/>
@@ -2301,333 +2323,69 @@ function loadBackupRecovery() {
   adminTab('backup');
 }
 
-// ── ADMIN WOOLLEN MODULE ───────────────────────────────────
-async function adminWoollen() {
-  const content = document.getElementById('admin-content');
-  if (!content) return;
+// Overrides appended late so they win over older admin helpers.
+async function adminCollections() {
+  const cats = await api('/api/categories');
+  const products = await api('/api/products');
+  const counts = products.reduce((acc, p) => { acc[p.category] = (acc[p.category] || 0) + 1; return acc; }, {});
+  document.getElementById('admin-content').innerHTML = `<div class="admin-header"><h1 class="admin-page-title">Product Collections (${cats.length})</h1><button class="btn-primary" onclick="showAddCategory()"><i class="fas fa-plus"></i> New Collection</button></div><div class="stats-grid" style="margin-bottom:2rem;"><div class="stat-card"><div class="stat-label">Total Categories</div><div class="stat-value">${cats.length}</div></div><div class="stat-card"><div class="stat-label">Active Slugs</div><div class="stat-value">${cats.filter(c=>c.slug).length}</div></div></div><div class="admin-table-wrap"><table><thead><tr><th>Image</th><th>Name</th><th>Slug</th><th>Product Count</th><th>Actions</th></tr></thead><tbody>${cats.map(c => `<tr><td><img src="${safeImageUrl(c.image, c.slug)}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;background:#f0f0f0;"/></td><td>${c.name}</td><td><code>${c.slug}</code></td><td><span style="background:var(--rose-light);color:var(--rose-dark);padding:4px 8px;border-radius:6px;font-weight:600;">${counts[c.slug] || 0}</span></td><td><button class="btn-sm btn-outline" onclick="viewCategoryProducts('${c.slug}')"><i class="fas fa-boxes"></i> Inventory</button> <button class="btn-sm btn-outline" onclick='showAddCategory("${c.storeType || 'main'}", ${JSON.stringify(JSON.stringify(c))})'><i class="fas fa-pen"></i> Edit</button> <button class="btn-sm" onclick="deleteCategory('${c.id || c._id}')" style="background:#fee2e2;color:#ef4444;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button></td></tr>`).join('')}</tbody></table></div><div id="category-inventory" style="margin-top:3rem;display:none;"><div class="admin-header"><h2 id="inv-title" class="admin-page-title">Inventory: <span>All Products</span></h2><button class="btn-outline" onclick="document.getElementById('category-inventory').style.display='none'">Close</button></div><div class="admin-table-wrap"><table id="inv-table"><thead><tr><th>Product</th><th>Original Price</th><th>Stock Status</th><th>Action</th></tr></thead><tbody id="inv-body"></tbody></table></div></div>`;
+}
 
-  // Store active tab
-  let activeTab = localStorage.getItem('admin-woollen-subtab') || 'products';
-
-  content.innerHTML = `
-    <div class="admin-header">
-      <h1 class="admin-page-title">🧶 Woollen Collection Management</h1>
-    </div>
-    
-    <div class="woollen-admin-tabs" style="display:flex; gap:1rem; border-bottom: 2px solid var(--border); padding-bottom: 1rem; margin-bottom: 1.5rem;">
-      <button class="btn-${activeTab === 'products' ? 'primary' : 'outline'}" onclick="setWoollenSubtab('products')">
-        <i class="fas fa-box-open"></i> Products
-      </button>
-      <button class="btn-${activeTab === 'collections' ? 'primary' : 'outline'}" onclick="setWoollenSubtab('collections')">
-        <i class="fas fa-folder-open"></i> Collections (Categories)
-      </button>
-      <button class="btn-${activeTab === 'settings' ? 'primary' : 'outline'}" onclick="setWoollenSubtab('settings')">
-        <i class="fas fa-sliders-h"></i> Page Editor & Settings
-      </button>
-    </div>
-
-    <div id="woollen-admin-subcontent"></div>
-  `;
-
-  // Define setWoollenSubtab globally so it can be called
-  window.setWoollenSubtab = function(tab) {
-    localStorage.setItem('admin-woollen-subtab', tab);
-    adminWoollen();
-  };
-
-  if (activeTab === 'products') {
-    renderWoollenAdminProducts();
-  } else if (activeTab === 'collections') {
-    renderWoollenAdminCollections();
-  } else {
-    renderWoollenAdminSettings();
+async function handleCategoryImageUpload(event, field) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    adminCategoryFormState[field] = await uploadAdminMediaFile(file, `categories/${adminCategoryFormState?.storeType || 'main'}`);
+    const img = document.getElementById(`nc-preview-${field}`);
+    if (img) { img.src = safeImageUrl(adminCategoryFormState[field], ''); img.style.display = 'block'; }
+    toast('Collection image uploaded', 'success');
+  } catch (error) {
+    toast(error.message || 'Image upload failed', 'error');
+  } finally {
+    event.target.value = '';
   }
 }
 
-async function renderWoollenAdminProducts() {
-  const container = document.getElementById('woollen-admin-subcontent');
-  if (!container) return;
-
-  container.innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
-      <h3>Woollen Products List</h3>
-      <button class="btn-primary" onclick="adminTab('add-product')"><i class="fas fa-plus"></i> Add New Product</button>
-    </div>
-    <div class="admin-table-wrap">
-      <table id="woollen-prod-table">
-        <thead>
-          <tr>
-            <th>Image</th>
-            <th>Name</th>
-            <th>Sub-Category</th>
-            <th>Price</th>
-            <th>MRP</th>
-            <th>Stock</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="woollen-prod-tbody">
-          <tr><td colspan="7" style="text-align:center; color:var(--gray); padding:3rem;">Loading woollen products...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  `;
-
-  try {
-    const products = await api('/api/products?category=woollen');
-    const list = Array.isArray(products) ? products : (products.products || products.items || []);
-    const tbody = document.getElementById('woollen-prod-tbody');
-    if (!tbody) return;
-
-    if (list.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--gray); padding:3rem;">No woollen products found. Click 'Add New Product' and choose category 'Woollen' to get started!</td></tr>`;
-      return;
-    }
-
-    tbody.innerHTML = list.map(p => `
-      <tr>
-        <td><img src="${safeImageUrl(p.image || p.images?.[0], 'woollen')}" style="width:50px; height:50px; object-fit:cover; border-radius:8px;" onerror="this.src='/images/showcase.png'"/></td>
-        <td><strong>${p.name}</strong></td>
-        <td><span style="background:#e8f0e5; color:#4a7c4a; padding:4px 10px; border-radius:20px; font-size:0.75rem; font-weight:700;">${p.subcategory || 'Default'}</span></td>
-        <td>₹${p.price}</td>
-        <td>${p.mrp ? `₹${p.mrp}` : '-'}</td>
-        <td><span style="color:${p.stock > 0 ? '#15803d' : '#ef4444'}; font-weight:700;">${p.stock}</span></td>
-        <td>
-          <button class="btn-outline btn-sm" onclick="editProduct('${p.id || p._id}')" title="Edit"><i class="fas fa-edit"></i></button>
-          <button class="btn-danger btn-sm" onclick="deleteWoollenProduct('${p.id || p._id}')" title="Delete"><i class="fas fa-trash"></i></button>
-        </td>
-      </tr>
-    `).join('');
-
-    // Define deleteWoollenProduct
-    window.deleteWoollenProduct = async function(id) {
-      if (!confirm('Are you sure you want to delete this woollen product?')) return;
-      const r = await api(`/api/admin/products/${id}`, { method: 'DELETE' });
-      if (r.error) {
-        toast(r.error, 'error');
-      } else {
-        toast('Product deleted successfully', 'success');
-        renderWoollenAdminProducts();
-      }
-    };
-
-  } catch (e) {
-    console.error('Error loading admin woollen products:', e);
-  }
+async function showAddCategory(storeType = 'main', categoryJson = null) {
+  const existing = categoryJson ? JSON.parse(categoryJson) : null;
+  adminCategoryFormState = { id: existing?.id || existing?._id || '', name: existing?.name || '', image: existing?.image || '', bannerImage: existing?.bannerImage || '', icon: existing?.icon || 'star', theme: existing?.theme || '', storeType: existing?.storeType || storeType || 'main', description: existing?.description || '' };
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `<div class="modal-card"><h3>${existing ? 'Edit' : 'Add New'} ${adminCategoryFormState.storeType === 'woollen' ? 'Woollen ' : ''}Collection</h3><div class="form-group"><label>Name</label><input id="nc-name" value="${adminCategoryFormState.name}" placeholder="Collection name"/></div><div class="form-grid"><div class="form-group"><label>Collection Image</label><input type="file" accept="image/*" onchange="handleCategoryImageUpload(event, 'image')"/><img id="nc-preview-image" src="${safeImageUrl(adminCategoryFormState.image, '')}" style="width:100%;max-width:160px;margin-top:.75rem;border-radius:12px;object-fit:cover;${adminCategoryFormState.image ? '' : 'display:none;'}"/></div><div class="form-group"><label>Banner Image</label><input type="file" accept="image/*" onchange="handleCategoryImageUpload(event, 'bannerImage')"/><img id="nc-preview-bannerImage" src="${safeImageUrl(adminCategoryFormState.bannerImage, '')}" style="width:100%;max-width:160px;margin-top:.75rem;border-radius:12px;object-fit:cover;${adminCategoryFormState.bannerImage ? '' : 'display:none;'}"/></div></div><div class="form-grid" style="margin-top:1rem;"><div class="form-group"><label>Icon</label><select id="nc-icon">${['ribbon','flower','butterfly','yarn','star','baby','diamond','heart','gift','sparkles','home','snowflake'].map(v=>`<option value="${v}" ${adminCategoryFormState.icon===v?'selected':''}>${v}</option>`).join('')}</select></div><div class="form-group"><label>Theme</label><select id="nc-theme">${['pastel-pink','lavender','mint','cream','peach','baby-blue','light-yellow','rose-gold','soft-purple','sage'].map(v=>`<option value="${v}" ${adminCategoryFormState.theme===v?'selected':''}>${v}</option>`).join('')}</select></div></div><div class="form-group"><label>Description</label><textarea id="nc-desc" rows="2">${adminCategoryFormState.description}</textarea></div><div style="display:flex;gap:1rem;"><button class="btn-primary" onclick="saveCategory()">${existing ? 'Save Collection' : 'Create Collection'}</button><button class="btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancel</button></div></div>`;
+  document.body.appendChild(modal);
 }
 
-async function renderWoollenAdminSettings() {
-  const container = document.getElementById('woollen-admin-subcontent');
-  if (!container) return;
-
-  // Load existing woollen settings
-  let settings = { heroTitle: 'Woollen Collection', heroSubtitle: 'Artisan Crafted', heroDescription: 'Discover our exclusive range of handmade woollen hair accessories.' };
-  try {
-    const r = await api('/api/woollen/settings');
-    if (r && !r.error) settings = r;
-  } catch (e) {}
-
-  container.innerHTML = `
-    <div class="admin-form" style="max-width: 700px;">
-      <h3 style="margin-bottom:1.5rem; border-bottom:1px solid var(--border); padding-bottom:0.5rem;">Hero Section Content</h3>
-      <div class="form-group">
-        <label>Hero Title</label>
-        <input type="text" id="ws-title" value="${settings.heroTitle || ''}" placeholder="Woollen Collection"/>
-      </div>
-      <div class="form-group">
-        <label>Hero Subtitle (Italic Part)</label>
-        <input type="text" id="ws-subtitle" value="${settings.heroSubtitle || ''}" placeholder="Artisan Crafted"/>
-      </div>
-      <div class="form-group">
-        <label>Hero Description</label>
-        <textarea id="ws-desc" rows="3" placeholder="Discover our exclusive range...">${settings.heroDescription || ''}</textarea>
-      </div>
-      <div class="form-group">
-        <label>Hero Banner Image URL (Optional)</label>
-        <input type="text" id="ws-image" value="${settings.heroImage || ''}" placeholder="/images/woollen_hero.png"/>
-      </div>
-      
-      <button class="btn-primary" onclick="saveWoollenSettings()"><i class="fas fa-save"></i> Save Settings</button>
-    </div>
-  `;
-
-  window.saveWoollenSettings = async function() {
-    const btn = event.target.closest('button');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner" style="animation:spin 1s linear infinite;"></i> Saving...';
-
-    const payload = {
-      heroTitle: document.getElementById('ws-title').value,
-      heroSubtitle: document.getElementById('ws-subtitle').value,
-      heroDescription: document.getElementById('ws-desc').value,
-      heroImage: document.getElementById('ws-image').value
-    };
-
-    try {
-      const r = await api('/api/woollen/settings', { method: 'POST', body: payload });
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-save"></i> Save Settings';
-      
-      if (r.error) {
-        toast(r.error, 'error');
-      } else {
-        toast('Woollen settings saved successfully! 🧶', 'success');
-      }
-    } catch (e) {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-save"></i> Save Settings';
-      toast('Failed to save settings', 'error');
-    }
-  };
+async function saveCategory() {
+  const body = { name: document.getElementById('nc-name').value.trim(), image: adminCategoryFormState?.image || '', bannerImage: adminCategoryFormState?.bannerImage || '', icon: document.getElementById('nc-icon')?.value || 'star', theme: document.getElementById('nc-theme')?.value || '', storeType: adminCategoryFormState?.storeType || 'main', description: document.getElementById('nc-desc').value.trim() };
+  if (!body.name) return toast('Collection name is required', 'error');
+  const endpoint = adminCategoryFormState?.id ? `/api/admin/categories/${adminCategoryFormState.id}` : '/api/admin/categories';
+  const method = adminCategoryFormState?.id ? 'PUT' : 'POST';
+  const r = await api(endpoint, { method, body });
+  if (r.error) return toast(r.error, 'error');
+  toast(adminCategoryFormState?.id ? 'Collection updated' : 'Collection added', 'success');
+  document.querySelector('.modal-overlay')?.remove();
+  if (body.storeType === 'woollen') adminWoollen();
+  else adminCollections();
 }
 
-async function renderWoollenAdminCollections() {
-  const container = document.getElementById('woollen-admin-subcontent');
-  if (!container) return;
-
-  container.innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
-      <h3>Collections (Categories)</h3>
-      <button class="btn-primary btn-sm" onclick="showCategoryForm()"><i class="fas fa-plus"></i> Add New Collection</button>
-    </div>
-    <div id="category-form-container" style="display:none; margin-bottom: 2rem; border: 1px solid var(--border); padding: 1.5rem; border-radius: 12px; background: #fff;">
-      <!-- Form populated dynamically -->
-    </div>
-    <div class="table-responsive">
-      <table class="admin-table">
-        <thead>
-          <tr>
-            <th>Image</th>
-            <th>Name</th>
-            <th>Slug</th>
-            <th>Description</th>
-            <th>Order</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="woollen-cats-tbody">
-          <tr><td colspan="7" style="text-align:center; color:var(--gray); padding:3rem;">Loading collections...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  `;
-
-  const loadCats = async () => {
-    try {
-      const cats = await api('/api/categories');
-      const tbody = document.getElementById('woollen-cats-tbody');
-      if (!tbody) return;
-
-      if (!cats || cats.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:2rem; color:var(--gray);">No collections found.</td></tr>`;
-        return;
-      }
-
-      tbody.innerHTML = cats.map(c => `
-        <tr>
-          <td><img src="${c.image || '/images/placeholder.png'}" style="width:40px; height:40px; object-fit:cover; border-radius:6px;" onerror="this.src='/images/placeholder.png'"/></td>
-          <td style="font-weight:600;">${c.name}</td>
-          <td><code>${c.slug}</code></td>
-          <td style="font-size:0.85rem; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${c.description || '-'}</td>
-          <td>${c.displayOrder || 0}</td>
-          <td><span class="badge" style="background:${c.status === 'active' || !c.status ? '#e8f5e9;color:#2e7d32;' : '#ffe0b2;color:#e65100;'}">${c.status || 'active'}</span></td>
-          <td>
-            <div style="display:flex; gap:0.5rem;">
-              <button class="btn-outline btn-sm" onclick="editCategoryInline('${c.id || c._id}')" title="Edit"><i class="fas fa-edit"></i></button>
-              <button class="btn-danger btn-sm" onclick="deleteCategoryInline('${c.id || c._id}')" title="Delete"><i class="fas fa-trash"></i></button>
-            </div>
-          </td>
-        </tr>
-      `).join('');
-    } catch (e) {
-      console.error(e);
-      document.getElementById('woollen-cats-tbody').innerHTML = `<tr><td colspan="7" style="text-align:center; padding:2rem; color:red;">Failed to load collections.</td></tr>`;
-    }
-  };
-
-  await loadCats();
-
-  window.showCategoryForm = function(cat = null) {
-    const formContainer = document.getElementById('category-form-container');
-    if (!formContainer) return;
-    formContainer.style.display = 'block';
-    
-    const isEdit = !!cat;
-    formContainer.innerHTML = `
-      <h4 style="margin-top:0; margin-bottom:1rem;">${isEdit ? 'Edit Collection' : 'Create New Collection'}</h4>
-      <div class="form-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
-        <div class="form-group"><label>Collection Name *</label><input type="text" id="cat-name" value="${cat?.name || ''}" placeholder="e.g. Earrings"/></div>
-        <div class="form-group"><label>Image URL</label><input type="text" id="cat-image" value="${cat?.image || ''}" placeholder="e.g. /images/cats/earrings.jpg"/></div>
-        <div class="form-group"><label>Display Order</label><input type="number" id="cat-order" value="${cat?.displayOrder || 0}"/></div>
-        <div class="form-group"><label>Status</label>
-          <select id="cat-status">
-            <option value="active" ${cat?.status !== 'inactive' ? 'selected' : ''}>Active</option>
-            <option value="inactive" ${cat?.status === 'inactive' ? 'selected' : ''}>Inactive</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-group" style="margin-bottom:1rem;"><label>Description</label><textarea id="cat-desc" rows="2" placeholder="Collection description...">${cat?.description || ''}</textarea></div>
-      <div style="display:flex; gap:0.5rem;">
-        <button class="btn-primary btn-sm" onclick="saveCategoryInline('${cat?.id || cat?._id || ''}')">${isEdit ? 'Save Changes' : 'Create Collection'}</button>
-        <button class="btn-outline btn-sm" onclick="document.getElementById('category-form-container').style.display='none'">Cancel</button>
-      </div>
-    `;
-    formContainer.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  window.saveCategoryInline = async function(id) {
-    const name = document.getElementById('cat-name').value.trim();
-    if (!name) { toast('Collection name is required', 'error'); return; }
-    
-    const payload = {
-      name,
-      image: document.getElementById('cat-image').value.trim(),
-      description: document.getElementById('cat-desc').value.trim(),
-      displayOrder: Number(document.getElementById('cat-order').value) || 0,
-      status: document.getElementById('cat-status').value
-    };
-
-    try {
-      const url = id ? `/api/admin/categories/${id}` : '/api/admin/categories';
-      const method = id ? 'PUT' : 'POST';
-      const r = await api(url, { method, body: payload });
-      if (r.error) {
-        toast(r.error, 'error');
-      } else {
-        toast(id ? 'Collection updated successfully!' : 'Collection created successfully!', 'success');
-        document.getElementById('category-form-container').style.display = 'none';
-        await loadCats();
-      }
-    } catch(e) {
-      toast('Error saving collection: ' + e.message, 'error');
-    }
-  };
-
-  window.editCategoryInline = async function(id) {
-    try {
-      const cats = await api('/api/categories');
-      const cat = cats.find(c => (c.id || c._id) === id);
-      if (cat) showCategoryForm(cat);
-    } catch(e) {
-      toast('Error fetching collection details', 'error');
-    }
-  };
-
-  window.deleteCategoryInline = async function(id) {
-    if (!confirm('Are you sure you want to delete this collection?')) return;
-    try {
-      const r = await api(`/api/admin/categories/${id}`, { method: 'DELETE' });
-      if (r.error) {
-        toast(r.error, 'error');
-      } else {
-        toast('Collection deleted successfully', 'success');
-        await loadCats();
-      }
-    } catch (e) {
-      toast('Error deleting collection', 'error');
-    }
-  };
+async function deleteCategory(id) {
+  if (!confirm('Delete this collection?')) return;
+  const r = await api('/api/admin/categories/' + id, { method: 'DELETE' });
+  if (r.error) return toast(r.error, 'error');
+  toast('Collection deleted', 'info');
+  adminCollections();
 }
 
+async function editCategoryById(categoryId) {
+  const cats = await api('/api/categories');
+  const category = (cats || []).find(item => String(item.id || item._id) === String(categoryId));
+  if (!category) return toast('Collection not found', 'error');
+  showAddCategory(category.storeType || 'main', JSON.stringify(category));
+}
 
+async function adminCollections() {
+  const cats = await api('/api/categories');
+  const products = await api('/api/products');
+  const counts = products.reduce((acc, p) => { acc[p.category] = (acc[p.category] || 0) + 1; return acc; }, {});
+  document.getElementById('admin-content').innerHTML = `<div class="admin-header"><h1 class="admin-page-title">Product Collections (${cats.length})</h1><button class="btn-primary" onclick="showAddCategory()"><i class="fas fa-plus"></i> New Collection</button></div><div class="stats-grid" style="margin-bottom:2rem;"><div class="stat-card"><div class="stat-label">Total Categories</div><div class="stat-value">${cats.length}</div></div><div class="stat-card"><div class="stat-label">Active Slugs</div><div class="stat-value">${cats.filter(c=>c.slug).length}</div></div></div><div class="admin-table-wrap"><table><thead><tr><th>Image</th><th>Name</th><th>Slug</th><th>Product Count</th><th>Actions</th></tr></thead><tbody>${cats.map(c => `<tr><td><img src="${safeImageUrl(c.image, c.slug)}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;background:#f0f0f0;"/></td><td>${c.name}</td><td><code>${c.slug}</code></td><td><span style="background:var(--rose-light);color:var(--rose-dark);padding:4px 8px;border-radius:6px;font-weight:600;">${counts[c.slug] || 0}</span></td><td><button class="btn-sm btn-outline" onclick="viewCategoryProducts('${c.slug}')"><i class="fas fa-boxes"></i> Inventory</button> <button class="btn-sm btn-outline" onclick="editCategoryById('${c.id || c._id}')"><i class="fas fa-pen"></i> Edit</button> <button class="btn-sm" onclick="deleteCategory('${c.id || c._id}')" style="background:#fee2e2;color:#ef4444;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button></td></tr>`).join('')}</tbody></table></div><div id="category-inventory" style="margin-top:3rem;display:none;"><div class="admin-header"><h2 id="inv-title" class="admin-page-title">Inventory: <span>All Products</span></h2><button class="btn-outline" onclick="document.getElementById('category-inventory').style.display='none'">Close</button></div><div class="admin-table-wrap"><table id="inv-table"><thead><tr><th>Product</th><th>Original Price</th><th>Stock Status</th><th>Action</th></tr></thead><tbody id="inv-body"></tbody></table></div></div>`;
+}
