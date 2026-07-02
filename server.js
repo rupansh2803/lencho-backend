@@ -2031,11 +2031,12 @@ app.post('/api/admin/test-smtp', requireAdmin, async (req, res) => {
 const authSettingsRoutes = require('./routes/auth-settings');
 app.use('/api/auth-settings', authSettingsRoutes);
 
-app.post('/api/admin/upload-media', requireAdmin, upload.single('media'), async (req, res) => {
+app.post('/api/admin/upload-media', requireAdmin, upload.any(), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'Media file required' });
-    const mediaUrl = await uploadSingleMedia(req.file, req.body?.folder || 'cms');
-    res.json({ success: true, url: mediaUrl });
+    const incomingFile = req.file || (Array.isArray(req.files) ? req.files[0] : null);
+    if (!incomingFile) return res.status(400).json({ success: false, message: 'Media file required', error: 'Media file required' });
+    const mediaUrl = await uploadSingleMedia(incomingFile, req.body?.folder || 'cms');
+    res.json({ success: true, message: 'Success', data: { url: mediaUrl }, url: mediaUrl });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -4519,6 +4520,15 @@ app.get('/debug', (req, res) => {
 
 ['products', 'product', 'cart', 'checkout', 'orders', 'track', 'dashboard', 'admin', 'login', 'signup', 'wishlist', 'contact', 'terms', 'privacy', 'disclaimer', 'woollen']
   .forEach(page => { app.get(`/${page}`, sendIndex); app.get(`/${page}/:sub`, sendIndex); });
+
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'API route not found',
+    error: 'API route not found',
+    path: req.originalUrl
+  });
+});
 
 // Catch-all for React Router - serve index.html for any other routes
 app.get('*', (req, res) => {

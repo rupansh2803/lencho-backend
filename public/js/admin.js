@@ -371,9 +371,9 @@ function buildAdminPanel() {
       <nav class="admin-menu">
         <div class="admin-menu-item active" id="am-dashboard" onclick="adminTab('dashboard')"><i class="fas fa-chart-line" style="width:20px;"></i> Dashboard</div>
         <div class="admin-menu-item" id="am-orders" onclick="adminTab('orders')"><i class="fas fa-shopping-bag" style="width:20px;"></i> Orders</div>
-        <div class="admin-menu-item" id="am-products" onclick="adminTab('products')"><i class="fas fa-gem" style="width:20px;"></i> Products</div>
-        <div class="admin-menu-item" id="am-woollen" onclick="adminTab('woollen')"><i class="fas fa-mitten" style="width:20px;"></i> Woollen Collection</div>
-        <div class="admin-menu-item" id="am-collections" onclick="adminTab('collections')"><i class="fas fa-layer-group" style="width:20px;"></i> Collections</div>
+        <div class="admin-menu-item" id="am-products" onclick="adminTab('products')"><i class="fas fa-gem" style="width:20px;"></i> Jewellery Products</div>
+        <div class="admin-menu-item" id="am-woollen" onclick="adminTab('woollen')"><i class="fas fa-mitten" style="width:20px;"></i> Woollen Store</div>
+        <div class="admin-menu-item" id="am-collections" onclick="adminTab('collections')"><i class="fas fa-layer-group" style="width:20px;"></i> Jewellery Collections</div>
         <div class="admin-menu-item" id="am-inquiries" onclick="adminTab('inquiries')"><i class="fas fa-envelope-open-text" style="width:20px;"></i> Inquiries</div>
         <div class="admin-menu-item" id="am-users" onclick="adminTab('users')"><i class="fas fa-users" style="width:20px;"></i> Users</div>
         <div class="admin-menu-item" id="am-gst" onclick="adminTab('gst')"><i class="fas fa-file-invoice" style="width:20px;"></i> GST Hub</div>
@@ -957,10 +957,16 @@ function getAdminAuthHeaders() {
 
 async function uploadAdminMediaFile(file, folder = 'products/general') {
   const fd = new FormData();
-  fd.append('file', file);
+  fd.append('media', file);
   fd.append('folder', folder);
   const res = await fetch('/api/admin/upload-media', { method: 'POST', credentials: 'include', headers: getAdminAuthHeaders(), body: fd });
-  const data = await res.json();
+  const raw = await res.text();
+  let data = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    throw new Error('Upload API returned non-JSON response');
+  }
   if (!res.ok || data.error || !data.url) throw new Error(data.error || 'Upload failed');
   return data.url;
 }
@@ -984,6 +990,7 @@ async function adminAddProduct(product = null) {
   const cats = await api('/api/categories');
   const catOptions = cats.length > 0 ? cats.map(c => `<option value="${c.slug}" ${product?.category===c.slug?'selected':''}>${c.name}</option>`).join('') : `<option value="others">Jewelry</option>`;
   adminProductFormState = {
+    allCategories: Array.isArray(cats) ? [...cats] : [],
     images: Array.isArray(product?.images) ? [...product.images] : [],
     hasVariants: Boolean(product?.hasVariants),
     variantType: product?.variantType || 'color',
@@ -991,6 +998,14 @@ async function adminAddProduct(product = null) {
   };
   document.getElementById('admin-content').innerHTML = `<div class="admin-header"><h1 class="admin-page-title">${isEdit?'Edit':'Add'} Product</h1></div><div class="admin-form"><div class="form-grid"><div class="form-group"><label>Product Name *</label><input id="p-name" value="${product?.name||''}" placeholder="e.g. Rose Gold Hoop Earrings"/></div><div class="form-group"><label>Category Collection *</label><select id="p-cat">${catOptions}</select></div><div class="form-group"><label>Store</label><select id="p-store-type"><option value="main" ${product?.storeType !== 'woollen' ? 'selected' : ''}>Main Jewellery Store</option><option value="woollen" ${product?.storeType === 'woollen' ? 'selected' : ''}>Woollen Store</option></select></div><div class="form-group"><label>Has Variants?</label><select id="p-has-variants" onchange="toggleAdminVariantSection()"><option value="false" ${!adminProductFormState.hasVariants ? 'selected' : ''}>No</option><option value="true" ${adminProductFormState.hasVariants ? 'selected' : ''}>Yes</option></select></div><div class="form-group"><label>Selling Price (₹) *</label><input id="p-price" type="number" value="${product?.price||''}" placeholder="599"/></div><div class="form-group"><label>MRP (₹) *</label><input id="p-mrp" type="number" value="${product?.mrp||''}" placeholder="999"/></div><div class="form-group"><label>Discount (%)</label><input id="p-discount" type="number" value="${product?.discount||''}" placeholder="40"/></div><div class="form-group"><label>Stock Quantity *</label><input id="p-stock" type="number" value="${product?.stock||''}" placeholder="50"/></div><div class="form-group"><label>SKU</label><input id="p-sku" value="${product?.sku||''}" placeholder="LEN-001"/></div><div class="form-group"><label>GST Rate (%)</label><input id="p-gst" type="number" value="${product?.gstRate||3}" placeholder="3"/></div><div class="form-group"><label>HSN Code</label><input id="p-hsn" value="${product?.hsn||'7117'}" placeholder="7117"/></div></div><div class="form-group"><label>Description *</label><textarea id="p-desc" rows="4" placeholder="Product description...">${product?.description||''}</textarea></div><div id="admin-variant-section" style="display:${adminProductFormState.hasVariants ? 'block' : 'none'};margin-bottom:1.5rem;border:1px solid var(--border);border-radius:16px;padding:1rem;"><div class="form-grid"><div class="form-group"><label>Variant Type</label><select id="p-variant-type" onchange="renderAdminVariantRows()">${['color','size','weight','material','length','custom'].map(type => `<option value="${type}" ${adminProductFormState.variantType===type?'selected':''}>${type.charAt(0).toUpperCase()+type.slice(1)}</option>`).join('')}</select></div></div><div id="admin-variant-rows"></div><button class="btn-outline" type="button" onclick="addAdminVariantRow()"><i class="fas fa-plus"></i> Add Variant</button></div><div class="form-group"><label>Featured Product</label><select id="p-featured"><option value="false" ${!product?.featured?'selected':''}>No</option><option value="true" ${product?.featured?'selected':''}>Yes</option></select></div><div class="form-grid"><div class="form-group"><label>Best Seller</label><select id="p-popular"><option value="false" ${!product?.popular?'selected':''}>No</option><option value="true" ${product?.popular?'selected':''}>Yes - Show in Best Sellers</option></select></div><div class="form-group"><label>Trending</label><select id="p-trending"><option value="false" ${!product?.trending?'selected':''}>No</option><option value="true" ${product?.trending?'selected':''}>Yes</option></select></div><div class="form-group"><label>New Arrival</label><select id="p-new-arrival"><option value="false" ${!product?.newArrival?'selected':''}>No</option><option value="true" ${product?.newArrival?'selected':''}>Yes</option></select></div><div class="form-group"><label>Sale</label><select id="p-sale"><option value="false" ${!product?.sale?'selected':''}>No</option><option value="true" ${product?.sale?'selected':''}>Yes</option></select></div></div><div class="form-group"><label>Product Images (First image becomes main image)</label><div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin-bottom:.85rem;"><input type="file" id="p-image-upload" accept="image/*" multiple onchange="handleAdminProductImageInput(event)"/><span style="font-size:.82rem;color:var(--gray);">Upload now, preview instantly, and reorder before saving.</span></div><div id="admin-product-image-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;"></div></div><div style="display:flex;gap:1rem;"><button class="btn-primary" onclick="${isEdit?`saveEditProduct('${product.id}')`:'saveNewProduct()'}">${isEdit?'Save Changes':'Add Product ✦'}</button><button class="btn-outline" onclick="adminTab('products')">Cancel</button></div></div>`;
   toggleAdminVariantSection();
+  const storeSelect = document.getElementById('p-store-type');
+  const categorySelect = document.getElementById('p-cat');
+  if (storeSelect) storeSelect.addEventListener('change', refreshAdminProductCategoryOptions);
+  if (categorySelect) categorySelect.addEventListener('change', () => {
+    renderAdminProductImages();
+    renderAdminVariantRows();
+  });
+  refreshAdminProductCategoryOptions(product?.category || '');
   renderAdminProductImages();
   renderAdminVariantRows();
 }
@@ -1000,6 +1015,20 @@ async function adminEditProduct(id) { const p = await api('/api/products/' + id)
 async function saveEditProduct(id) { await submitAdminProduct(id); }
 
 function toggleAdminVariantSection() { const hasVariants = document.getElementById('p-has-variants')?.value === 'true'; if (adminProductFormState) adminProductFormState.hasVariants = hasVariants; const section = document.getElementById('admin-variant-section'); if (section) section.style.display = hasVariants ? 'block' : 'none'; }
+function refreshAdminProductCategoryOptions(preferredCategory = '') {
+  if (!adminProductFormState?.allCategories?.length) return;
+  const select = document.getElementById('p-cat');
+  const store = document.getElementById('p-store-type')?.value || 'main';
+  if (!select) return;
+  const previous = preferredCategory || select.value || '';
+  const filtered = adminProductFormState.allCategories.filter(category => (category?.storeType || 'main') === store);
+  select.innerHTML = filtered.length
+    ? filtered.map(category => `<option value="${category.slug}" ${category.slug === previous ? 'selected' : ''}>${category.name}</option>`).join('')
+    : `<option value="others">General</option>`;
+  if (![...select.options].some(option => option.value === previous) && select.options.length) {
+    select.selectedIndex = 0;
+  }
+}
 function renderAdminProductImages() { const grid = document.getElementById('admin-product-image-grid'); if (!grid || !adminProductFormState) return; const category = document.getElementById('p-cat')?.value || ''; grid.innerHTML = adminProductFormState.images.length ? adminProductFormState.images.map((image, index) => `<div style="border:1px solid var(--border);border-radius:14px;padding:.6rem;background:#fff;"><div style="position:relative;aspect-ratio:1;overflow:hidden;border-radius:12px;background:#faf7f9;"><img src="${safeImageUrl(image, category)}" style="width:100%;height:100%;object-fit:cover;" />${index === 0 ? '<span style="position:absolute;left:8px;top:8px;background:rgba(22,163,74,.92);color:#fff;padding:4px 8px;border-radius:999px;font-size:.72rem;font-weight:700;">Main</span>' : ''}</div><div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.55rem;"><button type="button" class="btn-outline btn-sm" onclick="moveAdminProductImage(${index}, -1)" ${index === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn-outline btn-sm" onclick="moveAdminProductImage(${index}, 1)" ${index === adminProductFormState.images.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="btn-outline btn-sm" onclick="removeAdminProductImage(${index})" style="color:#dc2626;border-color:#fecaca;">Remove</button></div></div>`).join('') : `<div style="padding:1rem;border:2px dashed var(--border);border-radius:16px;color:var(--gray);text-align:center;">Upload product images to preview them here.</div>`; }
 async function handleAdminProductImageInput(event) { const files = Array.from(event.target.files || []); if (!files.length || !adminProductFormState) return; const category = document.getElementById('p-cat')?.value || 'general'; try { for (const file of files) adminProductFormState.images.push(await uploadAdminMediaFile(file, `products/${category}`)); renderAdminProductImages(); toast('Images uploaded successfully', 'success'); } catch (error) { toast(error.message || 'Image upload failed', 'error'); } finally { event.target.value = ''; } }
 function removeAdminProductImage(index) { if (!adminProductFormState) return; adminProductFormState.images.splice(index, 1); renderAdminProductImages(); }
@@ -1281,6 +1310,7 @@ async function adminAddWoollenProduct() {
   await adminAddProduct();
   const store = document.getElementById('p-store-type');
   if (store) store.value = 'woollen';
+  refreshAdminProductCategoryOptions();
 }
 
 async function saveWoollenSettings() {
@@ -2036,9 +2066,22 @@ async function uploadCmsMedia(fileInputId, targetInputId) {
 
   const fd = new FormData();
   fd.append('media', fileInput.files[0]);
+  fd.append('folder', 'cms');
 
-  const resp = await fetch('/api/admin/upload-media', { method: 'POST', body: fd });
-  const data = await resp.json();
+  const resp = await fetch('/api/admin/upload-media', {
+    method: 'POST',
+    credentials: 'include',
+    headers: getAdminAuthHeaders(),
+    body: fd
+  });
+  const raw = await resp.text();
+  let data = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    toast('Upload API returned invalid response', 'error');
+    return;
+  }
   if (!resp.ok || data.error) {
     toast(data.error || 'Upload failed', 'error');
     return;

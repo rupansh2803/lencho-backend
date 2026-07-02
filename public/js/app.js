@@ -417,9 +417,15 @@ async function navigate(path, pushState = true) {
 
   try {
     if (route === '/' || route === '') { app.style.paddingTop = '0'; renderHome(); }
+    else if (route === '/jewellery') { app.style.paddingTop = '0'; renderJewelleryLanding(); }
+    else if (route === '/jewellery/products') { renderProducts(params, { basePath: '/jewellery/products' }); }
+    else if (route.startsWith('/jewellery/category/')) { const next = new URLSearchParams(query || ''); next.set('category', route.split('/jewellery/category/')[1]); renderProducts(next, { basePath: '/jewellery/products' }); }
+    else if (route.startsWith('/jewellery/product/')) { renderProductDetail(route.split('/jewellery/product/')[1]); }
     else if (route === '/products') { renderProducts(params); }
     else if (route === '/woollen') { renderWoollen(); }
+    else if (route.startsWith('/woollen/category/')) { const next = new URLSearchParams(query || ''); next.set('category', route.split('/woollen/category/')[1]); renderWoollenProducts(next); }
     else if (route === '/woollen/products') { renderWoollenProducts(params); }
+    else if (route.startsWith('/woollen/product/')) { renderProductDetail(route.split('/woollen/product/')[1]); }
     else if (route.startsWith('/product/')) { renderProductDetail(route.split('/product/')[1]); }
     else if (route === '/cart') { renderCart(); }
     else if (route === '/checkout') { renderCheckout(); }
@@ -1718,9 +1724,16 @@ function renderStars(rating) {
 function formatCurrency(n) { return '₹' + Number(n).toLocaleString('en-IN'); }
 function formatDate(d) { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); }
 
+function productRoutePath(product = {}) {
+  return product?.storeType === 'woollen'
+    ? `/woollen/product/${product.id}`
+    : `/jewellery/product/${product.id}`;
+}
+
 // ── PRODUCT CARD ─────────────────────────────────────────
 function productCardHTML(p) {
   const product = normalizeClientProduct(p);
+  const detailPath = productRoutePath(product);
   const secondaryImg = product.images[1] || product.images[0];
   const stockStatus = p.stock < 5 && p.stock > 0 ? '⚡ Only ' + p.stock + ' left!' : '';
   const isBestSeller = p.popular ? '⭐ Best Seller' : '';
@@ -1729,7 +1742,7 @@ function productCardHTML(p) {
   
   return `
   <div class="product-card reveal" style="border-radius:16px !important;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08) !important;transition:transform .3s ease,box-shadow .3s ease !important;background:#fff;border:1px solid rgba(201,106,138,.08);" onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 12px 32px rgba(201,106,138,.15) !important';" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 16px rgba(0,0,0,.08) !important';">
-    <div class="product-img-wrap" onclick="navigate('/product/${product.id}')" style="position:relative;overflow:hidden;aspect-ratio:1/1.15;cursor:pointer;">
+    <div class="product-img-wrap" onclick="navigate('${detailPath}')" style="position:relative;overflow:hidden;aspect-ratio:1/1.15;cursor:pointer;">
       <img class="product-img" src="${safeImageUrl(product.images[0], product.category)}" alt="${product.name}" loading="lazy" decoding="async" ${imageFallbackAttr(product.category)} style="width:100%;height:100%;object-fit:contain;object-position:center;background:#fff;transition:opacity .4s ease !important;display:block;"/>
       <img class="product-img img-hover" src="${safeImageUrl(secondaryImg, product.category)}" alt="${product.name}" loading="lazy" decoding="async" ${imageFallbackAttr(product.category)} style="width:100%;height:100%;object-fit:contain;object-position:center;background:#fff;position:absolute;top:0;left:0;opacity:0;transition:opacity .4s ease !important;display:block;"/>
       
@@ -1741,7 +1754,7 @@ function productCardHTML(p) {
     </div>
     
     <div class="product-body" style="padding:1rem 1rem 1.2rem;">
-      <div class="product-name" onclick="navigate('/product/${p.id}')" style="font-weight:600;font-size:.95rem;color:var(--dark);cursor:pointer;line-height:1.3;margin-bottom:.5rem;transition:color .2s;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='var(--dark)'">${p.name}</div>
+      <div class="product-name" onclick="navigate('${detailPath}')" style="font-weight:600;font-size:.95rem;color:var(--dark);cursor:pointer;line-height:1.3;margin-bottom:.5rem;transition:color .2s;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='var(--dark)'">${p.name}</div>
       
       <div class="product-rating" style="margin-bottom:.6rem;">
         <span class="stars" style="font-size:.85rem;">${renderStars(p.rating || 0)}</span>
@@ -1770,7 +1783,7 @@ function productCardHTML(p) {
           <i class="fas fa-shopping-bag"></i> Add to Cart
         </button>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;">
-          <button class="btn-outline btn-sm" onclick="navigate('/product/${p.id}')" style="padding:10px;border-radius:8px;border:2px solid var(--rose);background:#fff;color:var(--rose);font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.background='var(--rose-light)'" onmouseout="this.style.background='#fff'">
+          <button class="btn-outline btn-sm" onclick="navigate('${detailPath}')" style="padding:10px;border-radius:8px;border:2px solid var(--rose);background:#fff;color:var(--rose);font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.background='var(--rose-light)'" onmouseout="this.style.background='#fff'">
             <i class="fas fa-eye"></i> View
           </button>
           <button class="btn-gold btn-sm" onclick="event.stopPropagation(); buyNow('${p.id}')" style="padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9954c,#a67a38);color:#fff;font-weight:600;cursor:pointer;transition:transform .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
@@ -2376,34 +2389,42 @@ async function renderWoollen() {
   const heroBanner = safeImageUrl(configuredWoollenBanner, '', '/images/woollen_hero.png');
 
   app.innerHTML = `
-  <div class="woollen-store" style="--woollen-button:${settings.woollenButtonColor || '#9b4065'};--woollen-hover:${settings.woollenHoverColor || '#c9748f'};">
-    <div class="woollen-nav" style="background:${settings.woollenHeaderBg || '#fff7fb'};color:${settings.woollenHeaderText || '#3f2434'};justify-content:${settings.woollenLogoPosition === 'center' ? 'center' : settings.woollenLogoPosition === 'right' ? 'flex-end' : 'flex-start'};">
+  <div class="woollen-store" style="--woollen-button:${settings.woollenButtonColor || '#6b7b59'};--woollen-hover:${settings.woollenHoverColor || '#8d9c74'};">
+    <div class="woollen-nav" style="background:${settings.woollenHeaderBg || '#f8f3ea'};color:${settings.woollenHeaderText || '#2f3729'};justify-content:${settings.woollenLogoPosition === 'center' ? 'center' : settings.woollenLogoPosition === 'right' ? 'flex-end' : 'flex-start'};">
       <strong>${settings.woollenHeaderTitle || 'Lencho Woollen'}</strong>
-      <button style="background:${settings.woollenButtonColor || '#9b4065'};" onclick="navigate('/woollen/products')">${settings.woollenHeroButtonText || 'View All Woollen'}</button>
+      <button style="background:${settings.woollenButtonColor || '#6b7b59'};" onclick="navigate('/woollen/products')">${settings.woollenHeroButtonText || 'Explore Collections'}</button>
     </div>
-    <section class="woollen-hero" style="background-image:linear-gradient(90deg,rgba(63,36,52,.74),rgba(63,36,52,.22)),url('${heroBanner}')">
-      <div class="woollen-hero-inner">
-        <div class="woollen-kicker">${settings.woollenHeaderTitle || 'Lencho Woollen'}</div>
-        <h1>${settings.woollenHeroTitle || 'Handmade Woollen Collection'}</h1>
-        <p>${settings.woollenHeroSubtitle || ''}</p>
-        <button class="btn-primary" style="background:${settings.woollenButtonColor || '#9b4065'}" onclick="navigate('/woollen/products')">${settings.woollenHeroButtonText || 'View All Woollen'}</button>
+    <section class="woollen-hero">
+      <div class="woollen-hero-bg"><img src="${heroBanner}" alt="${settings.woollenHeroTitle || 'Handmade Woollen Collection'}" loading="eager"/></div>
+      <div class="woollen-hero-overlay"></div>
+      <div class="woollen-hero-content">
+        <div class="woollen-badge-top">${settings.woollenHeaderTitle || 'Lencho Woollen'}</div>
+        <h1 class="woollen-hero-title">${settings.woollenHeroTitle || 'Handmade Woollen Collection'}<span class="woollen-hero-italic">crafted for every season</span></h1>
+        <p class="woollen-hero-sub">${settings.woollenHeroSubtitle || 'Crafted with love for every season.'}</p>
+        <div class="woollen-hero-btns">
+          <button class="woollen-btn-primary" onclick="navigate('/woollen/products')">${settings.woollenHeroButtonText || 'Shop Now'}</button>
+          <button class="btn-outline" onclick="navigate('/woollen/category/${collections[0]?.slug || ''}')">Explore Collections</button>
+        </div>
       </div>
     </section>
 
     <section class="woollen-band">
       <div class="woollen-section-head">
         <div>
-          <h2>Woollen Collections</h2>
-          <p>${settings.woollenAbout || ''}</p>
+          <h2>Featured Categories</h2>
+          <p>${settings.woollenAbout || 'A premium handmade store for crochet accessories, baby pieces, soft decor, and thoughtful gifts.'}</p>
         </div>
         <button class="btn-outline" onclick="navigate('/woollen/products')">View All</button>
       </div>
       <div class="woollen-collections-grid">
         ${collections.map((c, i) => `
-          <button class="woollen-collection-card" style="${woollenThemeStyle(c, i)}" onclick="navigate('/woollen/products?category=${c.slug}')">
-            <span class="woollen-icon"><i class="${woollenIcon(c.icon)}"></i></span>
-            <span class="woollen-card-name">${c.name}</span>
-            <span class="woollen-card-desc">${c.description || 'Shop collection'}</span>
+          <button class="woollen-collection-card" style="${woollenThemeStyle(c, i)};padding:0;overflow:hidden;text-align:left;" onclick="navigate('/woollen/category/${c.slug}')">
+            <div style="aspect-ratio:1/1.15;overflow:hidden;"><img src="${safeImageUrl(c.bannerImage || c.image, c.slug, heroBanner)}" alt="${c.name}" style="width:100%;height:100%;object-fit:cover;display:block;"/></div>
+            <div style="padding:1.1rem 1rem 1.15rem;display:flex;flex-direction:column;gap:.35rem;">
+              <span class="woollen-icon" style="margin-bottom:.2rem;"><i class="${woollenIcon(c.icon)}"></i></span>
+              <span class="woollen-card-name">${c.name}</span>
+              <span class="woollen-card-desc">${c.description || 'Shop collection'}</span>
+            </div>
           </button>
         `).join('')}
       </div>
@@ -2412,13 +2433,13 @@ async function renderWoollen() {
     <section class="woollen-band woollen-featured-band">
       <div class="woollen-section-head">
         <div>
-          <h2>Woollen Best Sellers</h2>
-          <p>Best seller, featured, trending, new arrival, and sale tags are controlled from admin.</p>
+          <h2>Best Sellers</h2>
+          <p>Popular handcrafted pieces from the separate woollen catalog.</p>
         </div>
       </div>
       <div class="products-grid">${featured.length ? featured.map(productCardHTML).join('') : '<div class="empty-state"><h3>No woollen products yet</h3><p>Add woollen products from admin.</p></div>'}</div>
     </section>
-    <footer class="woollen-footer" style="background:${settings.woollenFooterColor || '#3f2434'};color:${settings.woollenFooterTextColor || '#fff7fb'};">
+    <footer class="woollen-footer" style="background:${settings.woollenFooterColor || '#2f3729'};color:${settings.woollenFooterTextColor || '#f8f3ea'};">
       ${settings.woollenFooterImage ? `<img src="${safeImageUrl(settings.woollenFooterImage)}" alt="Woollen footer" loading="lazy"/>` : ''}
       <div>
         <strong>${settings.woollenHeaderTitle || 'Lencho Woollen'}</strong>
@@ -2426,6 +2447,40 @@ async function renderWoollen() {
         <span>${settings.woollenSocialIcons || 'instagram,whatsapp'}</span>
       </div>
     </footer>
+  </div>`;
+  initScrollReveal();
+}
+
+async function renderJewelleryLanding() {
+  const app = document.getElementById('app');
+  const [collectionsRaw, featuredRaw, newestRaw] = await Promise.all([
+    api('/api/categories?storeType=main', { timeoutMs: 3000 }),
+    api('/api/products?storeType=main&featured=true&sort=featured', { timeoutMs: 3000 }),
+    api('/api/products?storeType=main&sort=best-selling', { timeoutMs: 3000 })
+  ]);
+  const collections = Array.isArray(collectionsRaw) ? collectionsRaw.slice(0, 6) : [];
+  const featured = Array.isArray(featuredRaw) && featuredRaw.length ? featuredRaw.slice(0, 8) : (Array.isArray(newestRaw) ? newestRaw.slice(0, 8) : []);
+  app.innerHTML = `
+  <div class="page-wrap" style="padding-top:0;">
+    <section class="hero" style="min-height:78vh;background:linear-gradient(120deg,rgba(37,24,42,.64),rgba(37,24,42,.26)),url('/images/premium_hero.png') center/cover;display:flex;align-items:center;">
+      <div class="container" style="color:#fff;padding:7rem 0 5rem;">
+        <div class="section-eyebrow" style="color:#f5d3dd;">Lencho Jewellery</div>
+        <h1 class="hero-title" style="max-width:680px;">Premium artificial jewellery with its own curated store.</h1>
+        <p class="hero-sub" style="max-width:620px;color:rgba(255,255,255,.86);">Explore earrings, necklaces, bangles, and festive sets in a dedicated jewellery experience separate from woollen.</p>
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:1.5rem;">
+          <button class="btn-primary" onclick="navigate('/jewellery/products')">Shop Jewellery</button>
+          <button class="btn-outline" style="background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.3);" onclick="navigate('/woollen')">Visit Woollen Store</button>
+        </div>
+      </div>
+    </section>
+    <section class="container" style="padding:4rem 0 2.5rem;">
+      <div class="section-header reveal"><h2 class="section-title">Jewellery Collections</h2><div class="divider"></div><p class="section-desc">Only jewellery categories live here.</p></div>
+      <div class="category-grid">${collections.map(c => `<div class="cat-card reveal" onclick="navigate('/jewellery/category/${c.slug}')"><img class="cat-img" src="${safeImageUrl(c.image, c.slug)}" alt="${c.name}" ${imageFallbackAttr(c.slug)}/><div class="cat-name">${c.name}</div></div>`).join('')}</div>
+    </section>
+    <section class="container" style="padding:1rem 0 4rem;">
+      <div class="section-header reveal"><h2 class="section-title">Featured Jewellery</h2><div class="divider"></div></div>
+      <div class="products-grid">${featured.length ? featured.map(productCardHTML).join('') : '<div class="empty-state"><h3>No jewellery products yet</h3><p>Add products from the jewellery admin.</p></div>'}</div>
+    </section>
   </div>`;
   initScrollReveal();
 }
@@ -2561,10 +2616,11 @@ function getProductCategoryOptions(categoriesRaw = [], products = []) {
   return Array.from(bySlug.values());
 }
 
-async function renderProducts(params) {
+async function renderProducts(params, options = {}) {
   const category = params.get('category') || '';
   const sort = params.get('sort') || '';
   const stock = params.get('stock') || '';
+  const basePath = options.basePath || '/products';
   const app = document.getElementById('app');
   const query = new URLSearchParams();
   query.set('storeType', 'main');
@@ -2589,7 +2645,7 @@ async function renderProducts(params) {
             <h1 class="page-title">${productCategoryLabel(category)}</h1>
           </div>
           <div class="products-filter-controls">
-            <select onchange="navigate('/products' + buildProductsFilterQuery({sort:this.value}))">
+            <select onchange="navigate('${basePath}' + buildProductsFilterQuery({sort:this.value}))">
               <option value="" ${!sort ? 'selected' : ''}>Newest</option>
               <option value="price-asc" ${sort === 'price-asc' ? 'selected' : ''}>Price Low to High</option>
               <option value="price-desc" ${sort === 'price-desc' ? 'selected' : ''}>Price High to Low</option>
@@ -2599,7 +2655,7 @@ async function renderProducts(params) {
               <option value="trending" ${sort === 'trending' ? 'selected' : ''}>Trending</option>
               <option value="rating" ${sort === 'rating' ? 'selected' : ''}>Top Rated</option>
             </select>
-            <select onchange="navigate('/products' + buildProductsFilterQuery({stock:this.value}))">
+            <select onchange="navigate('${basePath}' + buildProductsFilterQuery({stock:this.value}))">
               <option value="" ${!stock ? 'selected' : ''}>All Stock</option>
               <option value="in" ${stock === 'in' ? 'selected' : ''}>In Stock</option>
               <option value="out" ${stock === 'out' ? 'selected' : ''}>Out Of Stock</option>
@@ -2628,7 +2684,7 @@ async function renderProducts(params) {
   const list = document.querySelector('.category-filter-list');
   if (list) {
     list.innerHTML = categories.map(c => `
-      <button class="category-filter ${c.val === category ? 'active' : ''}" onclick="navigate('/products' + buildProductsFilterQuery({category:'${escapeInlineJsString(c.val)}'}))">
+      <button class="category-filter ${c.val === category ? 'active' : ''}" onclick="navigate('${basePath}' + buildProductsFilterQuery({category:'${escapeInlineJsString(c.val)}'}))">
         <span>${escapeHtml(c.label)}</span>
       </button>
     `).join('');
