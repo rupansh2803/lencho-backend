@@ -18,7 +18,22 @@ const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { generateToken } = require('./middleware/auth');
-const { User, Product, Order, Cart, Wishlist, Settings, OTPLog, Testimonial, Category, Inquiry, LoginEvent } = require('./models');
+const {
+  User,
+  Product,
+  Order,
+  Cart,
+  Wishlist,
+  Settings,
+  OTPLog,
+  Testimonial,
+  Category,
+  Inquiry,
+  LoginEvent,
+  MarketingSubscriber,
+  MarketingCampaign,
+  MarketingEmailLog
+} = require('./models');
 
 function cleanEnvValue(value) {
   if (value === undefined || value === null) return '';
@@ -391,8 +406,24 @@ const FILES = {
   settings: path.join(DATA_DIR, 'settings.json'),
   discounts: path.join(DATA_DIR, 'discounts.json'),
   loginLogs: path.join(DATA_DIR, 'login_logs.json'),
+  subscribers: path.join(DATA_DIR, 'marketing_subscribers.json'),
+  campaigns: path.join(DATA_DIR, 'marketing_campaigns.json'),
+  campaignLogs: path.join(DATA_DIR, 'marketing_email_logs.json'),
 };
 const VISITOR_STATS_FILE = path.join(DATA_DIR, 'visitor_stats.json');
+
+const LEGAL_PAGE_DEFINITIONS = Object.freeze([
+  { slug: 'terms', title: 'Terms and Conditions', footerLabel: 'Terms' },
+  { slug: 'privacy', title: 'Privacy Policy', footerLabel: 'Privacy' },
+  { slug: 'shipping', title: 'Shipping Policy', footerLabel: 'Shipping' },
+  { slug: 'returns', title: 'Return and Refund Policy', footerLabel: 'Returns' },
+  { slug: 'cancellation', title: 'Cancellation Policy', footerLabel: 'Cancellation' },
+  { slug: 'contact-details', title: 'Contact Us', footerLabel: 'Contact Details' },
+  { slug: 'grievance', title: 'Grievance Officer', footerLabel: 'Grievance' },
+  { slug: 'payment-policy', title: 'Payment, COD and Refund Timeline', footerLabel: 'Payment Policy' },
+  { slug: 'disclaimer', title: 'Disclaimer', footerLabel: 'Disclaimer' }
+]);
+const LEGAL_PAGE_SLUGS = new Set(LEGAL_PAGE_DEFINITIONS.map(page => page.slug));
 
 // ─── JSON UTILITY FUNCTIONS (used by initFallback) ────────────
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; } };
@@ -441,6 +472,13 @@ const DEFAULT_FALLBACK_SETTINGS = {
   storeEmail: 'lencho.official01@gmail.com',
   storePhone: '+91 7404217625',
   storeAddress: '197 Sarakpur, Barara, Ambala, Haryana',
+  legalBusinessName: 'Lencho',
+  legalBusinessAddress: '197 Sarakpur, Barara, Ambala, Haryana',
+  legalSupportEmail: 'lencho.official01@gmail.com',
+  legalSupportPhone: '+91 7404217625',
+  grievanceOfficerName: '',
+  grievanceOfficerEmail: 'lencho.official01@gmail.com',
+  refundTimeline: '',
   heroTitle: 'Luxury Redefined',
   heroSubtitle: 'For The Modern Woman',
   heroDescription: 'Premium artificial jewellery for every occasion. Look expensive, spend smart.',
@@ -702,6 +740,7 @@ const CATEGORY_FALLBACK_IMAGE_MAP = {
 const PUBLIC_SETTINGS_KEYS = [
   'globalDiscount', 'freeShippingMin', 'shippingCharge', 'deliveryDays', 'shippingNote',
   'whatsappNumber', 'gstRate', 'gstin', 'hsn', 'storeName', 'storeEmail', 'storePhone', 'storeAddress',
+  'legalBusinessName', 'legalBusinessAddress', 'legalSupportEmail', 'legalSupportPhone', 'grievanceOfficerName', 'grievanceOfficerEmail', 'refundTimeline',
   'heroTitle', 'heroSubtitle', 'heroDescription', 'heroImage', 'heroMediaType', 'heroVideoUrl',
   'heroBadge', 'heroButton1Text', 'heroButton2Text',
   'promoTitle', 'promoSubtitle', 'promoDescription', 'promoImage', 'promoMediaType', 'promoVideoUrl', 'promoButtonText',
@@ -957,6 +996,9 @@ function normalizeCategoryRecord(category) {
 
 function getPublicSettingsPayload(rawSettings = {}) {
   const source = { ...DEFAULT_FALLBACK_SETTINGS, ...settingsToObject(rawSettings) };
+  if (/50k|trusted by/i.test(String(source.heroDescription || ''))) {
+    source.heroDescription = DEFAULT_FALLBACK_SETTINGS.heroDescription;
+  }
   const payload = {};
 
   for (const key of PUBLIC_SETTINGS_KEYS) {
@@ -1250,7 +1292,7 @@ async function seedSettings() {
       // ── CMS SETTINGS ──
       { key: 'heroTitle', value: 'Luxury Redefined', label: 'Hero Title' },
       { key: 'heroSubtitle', value: 'For The Modern Woman', label: 'Hero Subtitle' },
-      { key: 'heroDescription', value: 'Premium artificial jewellery for every occasion. Look expensive, spend smart. 4.8⭐ trusted by 50K+ customers.', label: 'Hero Description' },
+      { key: 'heroDescription', value: 'Premium artificial jewellery for every occasion. Look expensive, spend smart with clear pricing and fast support.', label: 'Hero Description' },
       { key: 'heroImage', value: '/images/hero_model.png', label: 'Hero Background Image URL' },
       { key: 'heroBadge', value: '✦ PREMIUM COLLECTION 2026 ✦', label: 'Hero Badge Text' },
       { key: 'heroButton1Text', value: '🛍️ Shop Now & Save', label: 'Hero Button 1' },
@@ -1296,7 +1338,7 @@ async function seedSettings() {
     const cmsDefaults = [
       { key: 'heroTitle', value: 'Luxury Redefined', label: 'Hero Title' },
       { key: 'heroSubtitle', value: 'For The Modern Woman', label: 'Hero Subtitle' },
-      { key: 'heroDescription', value: 'Premium artificial jewellery for every occasion. Look expensive, spend smart. 4.8⭐ trusted by 50K+ customers.', label: 'Hero Description' },
+      { key: 'heroDescription', value: 'Premium artificial jewellery for every occasion. Look expensive, spend smart with clear pricing and fast support.', label: 'Hero Description' },
       { key: 'heroImage', value: '/images/hero_model.png', label: 'Hero Background Image URL' },
       { key: 'heroBadge', value: '✦ PREMIUM COLLECTION 2026 ✦', label: 'Hero Badge Text' },
       { key: 'heroButton1Text', value: '🛍️ Shop Now & Save', label: 'Hero Button 1' },
@@ -2140,27 +2182,628 @@ app.post('/api/admin/delivery-manager/test', requireAdmin, async (req, res) => {
   }
 });
 
+function normalizeMarketingEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function marketingUnsubscribeToken(email) {
+  return crypto
+    .createHmac('sha256', JWT_SECRET_RESOLVED)
+    .update(normalizeMarketingEmail(email))
+    .digest('hex');
+}
+
+function verifyMarketingToken(email, token) {
+  const expected = marketingUnsubscribeToken(email);
+  const given = String(token || '').trim();
+  if (!given || given.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected));
+}
+
+function marketingUnsubscribeUrl(email) {
+  const cleanEmail = normalizeMarketingEmail(email);
+  const token = marketingUnsubscribeToken(cleanEmail);
+  return `${SITE_URL}/api/marketing/unsubscribe?email=${encodeURIComponent(cleanEmail)}&token=${encodeURIComponent(token)}`;
+}
+
+function serverEscapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function normalizeMarketingSubscriberRecord(subscriber = {}) {
+  return {
+    id: subscriber._id?.toString?.() || subscriber.id || normalizeMarketingEmail(subscriber.email),
+    email: normalizeMarketingEmail(subscriber.email),
+    name: subscriber.name || '',
+    source: subscriber.source || 'popup',
+    consent: subscriber.consent !== false,
+    consentText: subscriber.consentText || '',
+    consentAt: subscriber.consentAt || subscriber.createdAt || new Date().toISOString(),
+    status: subscriber.status === 'unsubscribed' ? 'unsubscribed' : 'subscribed',
+    unsubscribeToken: subscriber.unsubscribeToken || marketingUnsubscribeToken(subscriber.email),
+    offerCode: subscriber.offerCode || '',
+    lastSentAt: subscriber.lastSentAt || null,
+    tags: Array.isArray(subscriber.tags) ? subscriber.tags : [],
+    metadata: subscriber.metadata || {},
+    createdAt: subscriber.createdAt || new Date().toISOString(),
+    updatedAt: subscriber.updatedAt || subscriber.createdAt || new Date().toISOString()
+  };
+}
+
+async function upsertMarketingSubscriber(input = {}) {
+  const email = normalizeMarketingEmail(input.email);
+  if (!isValidEmailFormat(email)) throw new Error('Valid email required');
+  if (isDisposableEmail(email)) throw new Error('Please use a real email address');
+
+  const now = new Date();
+  const payload = {
+    email,
+    name: String(input.name || '').trim(),
+    source: String(input.source || 'popup').trim() || 'popup',
+    consent: input.consent !== false,
+    consentText: String(input.consentText || '').trim(),
+    consentAt: input.consentAt ? new Date(input.consentAt) : now,
+    status: input.status === 'unsubscribed' ? 'unsubscribed' : 'subscribed',
+    unsubscribeToken: marketingUnsubscribeToken(email),
+    offerCode: String(input.offerCode || '').trim(),
+    tags: Array.isArray(input.tags) ? input.tags : [],
+    metadata: input.metadata && typeof input.metadata === 'object' ? input.metadata : {}
+  };
+
+  if (useDB && MarketingSubscriber) {
+    const doc = await MarketingSubscriber.findOneAndUpdate(
+      { email },
+      { $set: payload, $setOnInsert: { createdAt: now } },
+      { upsert: true, new: true }
+    ).lean();
+    return normalizeMarketingSubscriberRecord(doc);
+  }
+
+  const rows = Array.isArray(readJson(FILES.subscribers)) ? readJson(FILES.subscribers) : [];
+  const index = rows.findIndex(item => normalizeMarketingEmail(item.email) === email);
+  const next = normalizeMarketingSubscriberRecord({
+    ...(index >= 0 ? rows[index] : {}),
+    ...payload,
+    id: index >= 0 ? rows[index].id || uuidv4() : uuidv4(),
+    createdAt: index >= 0 ? rows[index].createdAt || now.toISOString() : now.toISOString(),
+    updatedAt: now.toISOString()
+  });
+  if (index >= 0) rows[index] = next;
+  else rows.unshift(next);
+  writeJson(FILES.subscribers, rows);
+  return next;
+}
+
+async function listMarketingSubscribers(filter = {}) {
+  const status = String(filter.status || '').trim();
+  const source = String(filter.source || '').trim();
+
+  if (useDB && MarketingSubscriber) {
+    const query = {};
+    if (['subscribed', 'unsubscribed'].includes(status)) query.status = status;
+    if (source) query.source = source;
+    const rows = await MarketingSubscriber.find(query).sort({ createdAt: -1 }).limit(5000).lean();
+    return rows.map(normalizeMarketingSubscriberRecord);
+  }
+
+  const rows = readJson(FILES.subscribers);
+  return (Array.isArray(rows) ? rows : [])
+    .map(normalizeMarketingSubscriberRecord)
+    .filter(item => !status || item.status === status)
+    .filter(item => !source || item.source === source)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+async function updateMarketingSubscriberStatus(email, status) {
+  const cleanEmail = normalizeMarketingEmail(email);
+  const nextStatus = status === 'unsubscribed' ? 'unsubscribed' : 'subscribed';
+  const update = {
+    status: nextStatus,
+    unsubscribeToken: marketingUnsubscribeToken(cleanEmail),
+    ...(nextStatus === 'subscribed' ? { consent: true, consentAt: new Date() } : {})
+  };
+
+  if (useDB && MarketingSubscriber) {
+    const doc = await MarketingSubscriber.findOneAndUpdate({ email: cleanEmail }, { $set: update }, { new: true }).lean();
+    return doc ? normalizeMarketingSubscriberRecord(doc) : null;
+  }
+
+  const rows = Array.isArray(readJson(FILES.subscribers)) ? readJson(FILES.subscribers) : [];
+  const index = rows.findIndex(item => normalizeMarketingEmail(item.email) === cleanEmail);
+  if (index < 0) return null;
+  rows[index] = normalizeMarketingSubscriberRecord({ ...rows[index], ...update, updatedAt: new Date().toISOString() });
+  writeJson(FILES.subscribers, rows);
+  return rows[index];
+}
+
+function normalizeMarketingCampaignPayload(requestBody = {}) {
+  const subject = String(requestBody.subject || '').trim();
+  const message = String(requestBody.body || requestBody.message || '').trim();
+  const segment = ['subscribed', 'all', 'popup', 'discount_popup'].includes(String(requestBody.segment || ''))
+    ? String(requestBody.segment)
+    : 'subscribed';
+
+  return {
+    subject,
+    previewText: String(requestBody.previewText || '').trim(),
+    body: message,
+    offerCode: String(requestBody.offerCode || '').trim(),
+    imageUrl: String(requestBody.imageUrl || '').trim(),
+    ctaText: String(requestBody.ctaText || '').trim(),
+    ctaUrl: String(requestBody.ctaUrl || '').trim(),
+    segment,
+    scheduledAt: requestBody.scheduledAt ? new Date(requestBody.scheduledAt) : null
+  };
+}
+
+function normalizeMarketingCampaignRecord(campaign = {}) {
+  return {
+    id: campaign._id?.toString?.() || campaign.id || uuidv4(),
+    subject: campaign.subject || '',
+    previewText: campaign.previewText || '',
+    body: campaign.body || '',
+    offerCode: campaign.offerCode || '',
+    imageUrl: campaign.imageUrl || '',
+    ctaText: campaign.ctaText || '',
+    ctaUrl: campaign.ctaUrl || '',
+    segment: campaign.segment || 'subscribed',
+    status: campaign.status || 'draft',
+    scheduledAt: campaign.scheduledAt || null,
+    sentAt: campaign.sentAt || null,
+    sentCount: Number(campaign.sentCount) || 0,
+    failedCount: Number(campaign.failedCount) || 0,
+    testEmail: campaign.testEmail || '',
+    createdBy: campaign.createdBy || '',
+    createdAt: campaign.createdAt || new Date().toISOString(),
+    updatedAt: campaign.updatedAt || campaign.createdAt || new Date().toISOString()
+  };
+}
+
+async function createMarketingCampaign(campaign) {
+  if (useDB && MarketingCampaign) {
+    const doc = await MarketingCampaign.create(campaign);
+    return normalizeMarketingCampaignRecord(doc.toObject());
+  }
+
+  const rows = Array.isArray(readJson(FILES.campaigns)) ? readJson(FILES.campaigns) : [];
+  const now = new Date().toISOString();
+  const next = normalizeMarketingCampaignRecord({
+    ...campaign,
+    id: uuidv4(),
+    createdAt: now,
+    updatedAt: now
+  });
+  rows.unshift(next);
+  writeJson(FILES.campaigns, rows);
+  return next;
+}
+
+async function listMarketingCampaigns() {
+  if (useDB && MarketingCampaign) {
+    const rows = await MarketingCampaign.find({}).sort({ createdAt: -1 }).limit(300).lean();
+    return rows.map(normalizeMarketingCampaignRecord);
+  }
+  const rows = readJson(FILES.campaigns);
+  return (Array.isArray(rows) ? rows : []).map(normalizeMarketingCampaignRecord);
+}
+
+async function getMarketingCampaignById(id) {
+  if (useDB && MarketingCampaign) {
+    const doc = await MarketingCampaign.findById(id).lean();
+    return doc ? normalizeMarketingCampaignRecord(doc) : null;
+  }
+  const rows = Array.isArray(readJson(FILES.campaigns)) ? readJson(FILES.campaigns) : [];
+  const match = rows.find(item => String(item.id) === String(id));
+  return match ? normalizeMarketingCampaignRecord(match) : null;
+}
+
+async function updateMarketingCampaign(id, updates = {}) {
+  if (useDB && MarketingCampaign) {
+    const doc = await MarketingCampaign.findByIdAndUpdate(id, { $set: updates }, { new: true }).lean();
+    return doc ? normalizeMarketingCampaignRecord(doc) : null;
+  }
+
+  const rows = Array.isArray(readJson(FILES.campaigns)) ? readJson(FILES.campaigns) : [];
+  const index = rows.findIndex(item => String(item.id) === String(id));
+  if (index < 0) return null;
+  rows[index] = normalizeMarketingCampaignRecord({ ...rows[index], ...updates, updatedAt: new Date().toISOString() });
+  writeJson(FILES.campaigns, rows);
+  return rows[index];
+}
+
+async function recordMarketingLog(log = {}) {
+  const payload = {
+    campaignId: String(log.campaignId || ''),
+    email: normalizeMarketingEmail(log.email),
+    status: ['sent', 'failed', 'skipped'].includes(log.status) ? log.status : 'sent',
+    error: String(log.error || '').slice(0, 500),
+    messageId: String(log.messageId || ''),
+    sentAt: log.sentAt || new Date()
+  };
+
+  if (useDB && MarketingEmailLog) {
+    await MarketingEmailLog.create(payload);
+    return;
+  }
+
+  const rows = Array.isArray(readJson(FILES.campaignLogs)) ? readJson(FILES.campaignLogs) : [];
+  rows.unshift({
+    ...payload,
+    id: uuidv4(),
+    sentAt: payload.sentAt instanceof Date ? payload.sentAt.toISOString() : payload.sentAt,
+    createdAt: new Date().toISOString()
+  });
+  writeJson(FILES.campaignLogs, rows.slice(0, 10000));
+}
+
+async function listMarketingLogs(campaignId) {
+  if (useDB && MarketingEmailLog) {
+    return MarketingEmailLog.find({ campaignId: String(campaignId) }).sort({ createdAt: -1 }).limit(500).lean();
+  }
+  const rows = Array.isArray(readJson(FILES.campaignLogs)) ? readJson(FILES.campaignLogs) : [];
+  return rows.filter(item => String(item.campaignId) === String(campaignId)).slice(0, 500);
+}
+
+async function setSubscriberLastSent(email) {
+  const cleanEmail = normalizeMarketingEmail(email);
+  if (useDB && MarketingSubscriber) {
+    await MarketingSubscriber.findOneAndUpdate({ email: cleanEmail }, { $set: { lastSentAt: new Date() } });
+    return;
+  }
+  const rows = Array.isArray(readJson(FILES.subscribers)) ? readJson(FILES.subscribers) : [];
+  const index = rows.findIndex(item => normalizeMarketingEmail(item.email) === cleanEmail);
+  if (index >= 0) {
+    rows[index].lastSentAt = new Date().toISOString();
+    rows[index].updatedAt = new Date().toISOString();
+    writeJson(FILES.subscribers, rows);
+  }
+}
+
+function getMarketingRecipientsFromSubscribers(subscribers = [], segment = 'subscribed') {
+  return subscribers.filter(subscriber => {
+    if (subscriber.status !== 'subscribed') return false;
+    if (segment === 'all' || segment === 'subscribed') return true;
+    if (segment === 'popup') return String(subscriber.source || '').includes('popup');
+    if (segment === 'discount_popup') return subscriber.source === 'discount_popup';
+    return true;
+  });
+}
+
+function buildMarketingEmailHtml(campaign, subscriber, settings = {}) {
+  const storeName = serverEscapeHtml(settings.storeName || DEFAULT_EMAIL_FROM_NAME);
+  const bodyHtml = serverEscapeHtml(campaign.body || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+  const imageHtml = campaign.imageUrl
+    ? `<img src="${serverEscapeHtml(campaign.imageUrl)}" alt="" style="width:100%;max-width:560px;border-radius:12px;margin:0 0 18px;display:block;">`
+    : '';
+  const offerHtml = campaign.offerCode
+    ? `<div style="margin:18px 0;padding:14px;border:1px dashed #c9748f;border-radius:10px;background:#fff7fb;text-align:center;"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:#a85070;">Offer Code</div><div style="font-size:24px;font-weight:800;color:#1f1f38;">${serverEscapeHtml(campaign.offerCode)}</div></div>`
+    : '';
+  const ctaUrl = String(campaign.ctaUrl || '').trim();
+  const ctaHtml = campaign.ctaText && ctaUrl
+    ? `<div style="text-align:center;margin:24px 0;"><a href="${serverEscapeHtml(ctaUrl)}" style="display:inline-block;background:#c9748f;color:#fff;text-decoration:none;padding:13px 22px;border-radius:999px;font-weight:700;">${serverEscapeHtml(campaign.ctaText)}</a></div>`
+    : '';
+  const unsubscribeUrl = marketingUnsubscribeUrl(subscriber.email);
+  const address = serverEscapeHtml(settings.storeAddress || settings.footerAddress || '');
+
+  return `<!doctype html><html><body style="margin:0;background:#f6f3ef;font-family:Arial,sans-serif;color:#1f1f38;">
+    <div style="max-width:640px;margin:0 auto;padding:24px;">
+      <div style="background:#fff;border-radius:16px;padding:28px;border:1px solid #eee;">
+        <div style="text-align:center;font-size:22px;font-weight:800;margin-bottom:18px;">${storeName}</div>
+        ${campaign.previewText ? `<p style="margin:0 0 18px;color:#6b7280;text-align:center;">${serverEscapeHtml(campaign.previewText)}</p>` : ''}
+        ${imageHtml}
+        <h1 style="font-size:26px;line-height:1.25;margin:0 0 18px;">${serverEscapeHtml(campaign.subject)}</h1>
+        <p style="font-size:15px;line-height:1.7;margin:0;">${bodyHtml}</p>
+        ${offerHtml}
+        ${ctaHtml}
+      </div>
+      <div style="padding:18px;text-align:center;font-size:12px;line-height:1.6;color:#777;">
+        <div>${storeName}${address ? `, ${address}` : ''}</div>
+        <a href="${serverEscapeHtml(unsubscribeUrl)}" style="color:#a85070;">Unsubscribe from offers</a>
+      </div>
+    </div>
+  </body></html>`;
+}
+
+function buildMarketingEmailText(campaign, subscriber, settings = {}) {
+  return [
+    settings.storeName || DEFAULT_EMAIL_FROM_NAME,
+    campaign.subject,
+    campaign.previewText,
+    campaign.body,
+    campaign.offerCode ? `Offer code: ${campaign.offerCode}` : '',
+    campaign.ctaText && campaign.ctaUrl ? `${campaign.ctaText}: ${campaign.ctaUrl}` : '',
+    `Unsubscribe: ${marketingUnsubscribeUrl(subscriber.email)}`
+  ].filter(Boolean).join('\n\n');
+}
+
+async function sendMarketingEmailWithTransporter(transporter, smtpConfig, campaign, subscriber, settings) {
+  return sendEmailWithRetry(transporter, {
+    from: `"${smtpConfig.storeName}" <${smtpConfig.user}>`,
+    to: subscriber.email,
+    subject: campaign.subject,
+    text: buildMarketingEmailText(campaign, subscriber, settings),
+    html: buildMarketingEmailHtml(campaign, subscriber, settings),
+    headers: {
+      'List-Unsubscribe': `<${marketingUnsubscribeUrl(subscriber.email)}>`
+    }
+  }, 2);
+}
+
+const activeMarketingCampaignSends = new Set();
+
+async function processMarketingCampaignSend(campaignId) {
+  if (activeMarketingCampaignSends.has(String(campaignId))) return;
+  activeMarketingCampaignSends.add(String(campaignId));
+
+  let recipients = [];
+  let sent = 0;
+  let failed = 0;
+
+  try {
+    const campaign = await getMarketingCampaignById(campaignId);
+    if (!campaign) return;
+
+    await updateMarketingCampaign(campaign.id, { status: 'sending' });
+    recipients = getMarketingRecipientsFromSubscribers(await listMarketingSubscribers({}), campaign.segment);
+
+    if (!recipients.length) {
+      await updateMarketingCampaign(campaign.id, { status: 'sent', sentAt: new Date(), sentCount: 0, failedCount: 0 });
+      return;
+    }
+
+    const settings = await getAllSettingsObject();
+    const smtpConfig = getSmtpConfigFromSettings({
+      smtpHost: settings.smtpHost,
+      smtpPort: settings.smtpPort,
+      smtpUser: settings.smtpUser,
+      smtpPass: settings.smtpPass,
+      storeName: settings.storeName || DEFAULT_EMAIL_FROM_NAME
+    });
+
+    if (isPlaceholderSMTP(smtpConfig.user) || isPlaceholderSMTP(smtpConfig.pass)) {
+      throw new Error('SMTP is not configured. Add SMTP email and app password in Admin > Business Settings.');
+    }
+
+    const transporter = await getVerifiedSmtpTransporter(smtpConfig);
+
+    for (const subscriber of recipients) {
+      try {
+        const result = await sendMarketingEmailWithTransporter(transporter, smtpConfig, campaign, subscriber, settings);
+        sent += 1;
+        await setSubscriberLastSent(subscriber.email);
+        await recordMarketingLog({
+          campaignId: campaign.id,
+          email: subscriber.email,
+          status: 'sent',
+          messageId: result?.messageId || ''
+        });
+      } catch (error) {
+        failed += 1;
+        await recordMarketingLog({
+          campaignId: campaign.id,
+          email: subscriber.email,
+          status: 'failed',
+          error: error.message
+        });
+      }
+
+      if ((sent + failed) % 10 === 0) {
+        await updateMarketingCampaign(campaign.id, { sentCount: sent, failedCount: failed });
+      }
+    }
+
+    await updateMarketingCampaign(campaign.id, {
+      status: sent > 0 || failed === 0 ? 'sent' : 'failed',
+      sentAt: new Date(),
+      sentCount: sent,
+      failedCount: failed
+    });
+  } catch (error) {
+    failed = failed || recipients.length;
+    for (const subscriber of recipients.slice(0, 5000)) {
+      await recordMarketingLog({
+        campaignId,
+        email: subscriber.email,
+        status: 'failed',
+        error: error.message
+      });
+    }
+    await updateMarketingCampaign(campaignId, { status: 'failed', sentCount: sent, failedCount: failed });
+    console.error('[marketing] campaign send failed:', error.message);
+  } finally {
+    activeMarketingCampaignSends.delete(String(campaignId));
+  }
+}
+
+let marketingScheduleRunning = false;
+async function processDueMarketingCampaigns() {
+  if (marketingScheduleRunning) return;
+  marketingScheduleRunning = true;
+  try {
+    const now = Date.now();
+    const campaigns = await listMarketingCampaigns();
+    for (const campaign of campaigns) {
+      if (campaign.status !== 'scheduled' || !campaign.scheduledAt) continue;
+      if (new Date(campaign.scheduledAt).getTime() <= now) {
+        processMarketingCampaignSend(campaign.id).catch(error => {
+          console.error('[marketing] scheduled send failed:', error.message);
+        });
+      }
+    }
+  } finally {
+    marketingScheduleRunning = false;
+  }
+}
+
+setInterval(() => {
+  processDueMarketingCampaigns().catch(error => console.error('[marketing] schedule check failed:', error.message));
+}, 60 * 1000);
+
 app.post('/api/discount/email', async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = normalizeMarketingEmail(req.body?.email);
+    const consentGiven = req.body?.marketingConsent === true ||
+      req.body?.consent === true ||
+      String(req.body?.marketingConsent || req.body?.consent || '').toLowerCase() === 'true';
+
     if (!email) return res.status(400).json({ error: 'Email required' });
+    if (!isValidEmailFormat(email)) return res.status(400).json({ error: 'Please enter a valid email address' });
+    if (isDisposableEmail(email)) return res.status(400).json({ error: 'Please use a real email address' });
+    if (!consentGiven) return res.status(400).json({ error: 'Please agree to receive offers and updates first' });
+
     console.log(`[DISCOUNT] Coupon WELCOME10 claimed by: ${email}`);
+    await upsertMarketingSubscriber({
+      email,
+      name: req.body?.name || '',
+      source: 'discount_popup',
+      consent: true,
+      consentText: req.body?.consentText || 'I agree to receive offers and updates from Lencho. I can unsubscribe anytime.',
+      offerCode: 'WELCOME10',
+      metadata: { ip: req.ip || '', userAgent: req.headers['user-agent'] || '' }
+    });
+
     if (!useDB) {
-      const discounts = readJson(FILES.discounts);
-      discounts.push({ email, code: 'WELCOME10', createdAt: new Date().toISOString() });
+      const discounts = Array.isArray(readJson(FILES.discounts)) ? readJson(FILES.discounts) : [];
+      const index = discounts.findIndex(item => normalizeMarketingEmail(item.email) === email);
+      const next = { email, code: 'WELCOME10', createdAt: index >= 0 ? discounts[index].createdAt : new Date().toISOString(), updatedAt: new Date().toISOString() };
+      if (index >= 0) discounts[index] = { ...discounts[index], ...next };
+      else discounts.unshift(next);
       writeJson(FILES.discounts, discounts);
     }
+
     res.json({ success: true, code: 'WELCOME10' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/admin/discounts', requireAdmin, async (req, res) => {
   try {
-    if (!useDB) {
-      const discounts = readJson(FILES.discounts);
-      return res.json(discounts);
+    if (useDB && MarketingSubscriber) {
+      const subscribers = await listMarketingSubscribers({ source: 'discount_popup' });
+      return res.json(subscribers.map(item => ({ email: item.email, code: item.offerCode || 'WELCOME10', createdAt: item.consentAt || item.createdAt })));
     }
-    res.json([]);
+    const discounts = readJson(FILES.discounts);
+    res.json(Array.isArray(discounts) ? discounts : []);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/marketing/subscribers', requireAdmin, async (req, res) => {
+  try {
+    const subscribers = await listMarketingSubscribers({ status: req.query.status, source: req.query.source });
+    const all = await listMarketingSubscribers({});
+    const stats = {
+      total: all.length,
+      subscribed: all.filter(item => item.status === 'subscribed').length,
+      unsubscribed: all.filter(item => item.status === 'unsubscribed').length,
+      popup: all.filter(item => String(item.source || '').includes('popup')).length
+    };
+    res.json({ subscribers, stats });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/admin/marketing/subscribers/:email/status', requireAdmin, async (req, res) => {
+  try {
+    const subscriber = await updateMarketingSubscriberStatus(req.params.email, req.body?.status);
+    if (!subscriber) return res.status(404).json({ error: 'Subscriber not found' });
+    res.json({ success: true, subscriber });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/marketing/campaigns', requireAdmin, async (req, res) => {
+  try {
+    res.json({ campaigns: await listMarketingCampaigns() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/marketing/campaigns/:id/logs', requireAdmin, async (req, res) => {
+  try {
+    res.json({ logs: await listMarketingLogs(req.params.id) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/marketing/campaigns', requireAdmin, async (req, res) => {
+  try {
+    const action = String(req.body?.action || 'draft').toLowerCase();
+    const payload = normalizeMarketingCampaignPayload(req.body || {});
+
+    if (!payload.subject) return res.status(400).json({ error: 'Subject is required' });
+    if (!payload.body) return res.status(400).json({ error: 'Message body is required' });
+
+    if (action === 'test') {
+      const testEmail = normalizeMarketingEmail(req.body?.testEmail);
+      if (!isValidEmailFormat(testEmail)) return res.status(400).json({ error: 'Valid test email required' });
+
+      const settings = await getAllSettingsObject();
+      const smtpConfig = getSmtpConfigFromSettings({
+        smtpHost: settings.smtpHost,
+        smtpPort: settings.smtpPort,
+        smtpUser: settings.smtpUser,
+        smtpPass: settings.smtpPass,
+        storeName: settings.storeName || DEFAULT_EMAIL_FROM_NAME
+      });
+
+      if (isPlaceholderSMTP(smtpConfig.user) || isPlaceholderSMTP(smtpConfig.pass)) {
+        return res.status(400).json({ error: 'SMTP is not configured. Add SMTP email and app password in Admin > Business Settings first.' });
+      }
+
+      const transporter = await getVerifiedSmtpTransporter(smtpConfig);
+      const result = await sendMarketingEmailWithTransporter(transporter, smtpConfig, { ...payload, id: 'test' }, { email: testEmail, status: 'subscribed' }, settings);
+      return res.json({ success: true, message: 'Test email sent', messageId: result?.messageId || '' });
+    }
+
+    if (action === 'schedule' && (!payload.scheduledAt || Number.isNaN(new Date(payload.scheduledAt).getTime()))) {
+      return res.status(400).json({ error: 'Valid schedule date/time required' });
+    }
+
+    const campaign = await createMarketingCampaign({
+      ...payload,
+      status: action === 'schedule' ? 'scheduled' : action === 'send' ? 'sending' : 'draft',
+      scheduledAt: action === 'schedule' ? payload.scheduledAt : null,
+      createdBy: req.auth?.userId || '',
+      testEmail: req.body?.testEmail || ''
+    });
+
+    if (action === 'schedule') {
+      return res.json({ success: true, message: 'Campaign scheduled', campaign });
+    }
+
+    if (action === 'send') {
+      processMarketingCampaignSend(campaign.id).catch(error => console.error('[marketing] send failed:', error.message));
+      return res.json({ success: true, message: 'Campaign send started', campaign });
+    }
+
+    res.json({ success: true, message: 'Campaign draft saved', campaign });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/marketing/unsubscribe', async (req, res) => {
+  const email = normalizeMarketingEmail(req.query.email);
+  const token = String(req.query.token || '').trim();
+  const valid = email && verifyMarketingToken(email, token);
+
+  if (valid) {
+    await updateMarketingSubscriberStatus(email, 'unsubscribed');
+  }
+
+  res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"><title>Lencho Unsubscribe</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:Arial,sans-serif;background:#f8f3ef;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;color:#1f1f38;"><main style="background:#fff;border:1px solid #eee;border-radius:16px;padding:28px;max-width:440px;text-align:center;box-shadow:0 16px 50px rgba(31,31,56,.08);"><h1 style="margin-top:0;">${valid ? 'You are unsubscribed' : 'Invalid unsubscribe link'}</h1><p style="line-height:1.6;color:#666;">${valid ? 'You will not receive marketing offers from Lencho on this email anymore.' : 'This link is expired or invalid. Please contact support if you need help.'}</p><a href="${serverEscapeHtml(SITE_URL)}" style="display:inline-block;margin-top:12px;color:#a85070;font-weight:700;">Back to Lencho</a></main></body></html>`);
+});
+
+app.post('/api/marketing/unsubscribe', async (req, res) => {
+  try {
+    const email = normalizeMarketingEmail(req.body?.email);
+    const token = String(req.body?.token || '').trim();
+    if (!email || !verifyMarketingToken(email, token)) return res.status(400).json({ error: 'Invalid unsubscribe request' });
+    await updateMarketingSubscriberStatus(email, 'unsubscribed');
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -4344,29 +4987,42 @@ app.post('/api/admin/settings', requireAdmin, async (req, res) => {
 });
 
 // ─── CMS PAGE MANAGEMENT ──────────────────────────────────────
+app.get('/api/admin/legal-pages', requireAdmin, async (req, res) => {
+  try {
+    const settingsObj = await getAllSettingsObject();
+    const pages = LEGAL_PAGE_DEFINITIONS.map(page => ({
+      ...page,
+      content: settingsObj[`cms_${page.slug}`] || ''
+    }));
+    res.json({ pages });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Get CMS pages
 app.get('/api/cms/:pageType', async (req, res) => {
   try {
     const pageType = req.params.pageType.toLowerCase();
-    const allowedPages = ['terms', 'privacy', 'disclaimer'];
-    if (!allowedPages.includes(pageType)) {
+    if (!LEGAL_PAGE_SLUGS.has(pageType)) {
       return res.status(400).json({ error: 'Invalid page type' });
     }
+    const pageDef = LEGAL_PAGE_DEFINITIONS.find(page => page.slug === pageType);
 
     if (useDB) {
       const settings = await Settings.findOne({ key: `cms_${pageType}` });
       if (settings) {
-        return res.json({ content: settings.value || '' });
+        return res.json({ title: pageDef?.title || pageType, content: settings.value || '' });
       }
     } else {
       const settingsObj = getFallbackSettingsObject();
       const content = settingsObj[`cms_${pageType}`];
       if (content) {
-        return res.json({ content });
+        return res.json({ title: pageDef?.title || pageType, content });
       }
     }
 
-    res.json({ content: '' });
+    res.json({ title: pageDef?.title || pageType, content: '' });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -4377,14 +5033,13 @@ app.post('/api/admin/cms/:pageType', requireAdmin, async (req, res) => {
   try {
     const pageType = req.params.pageType.toLowerCase();
     const { content } = req.body;
-    const allowedPages = ['terms', 'privacy', 'disclaimer'];
     
-    if (!allowedPages.includes(pageType)) {
+    if (!LEGAL_PAGE_SLUGS.has(pageType)) {
       return res.status(400).json({ error: 'Invalid page type' });
     }
 
-    if (!content || typeof content !== 'string') {
-      return res.status(400).json({ error: 'Content must be a non-empty string' });
+    if (typeof content !== 'string') {
+      return res.status(400).json({ error: 'Content must be a string' });
     }
 
     if (useDB) {

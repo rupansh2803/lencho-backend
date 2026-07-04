@@ -1039,6 +1039,25 @@ ul {
   border-color: var(--rose)
 }
 
+.popup-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  text-align: left;
+  color: #777;
+  font-size: .76rem;
+  line-height: 1.45;
+}
+
+.popup-consent input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-top: 2px;
+  padding: 0;
+  accent-color: var(--rose);
+}
+
 .popup-result {
   font-weight: 600;
   color: var(--rose-dark);

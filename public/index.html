@@ -6,7 +6,7 @@
   
   <!-- SEO Meta Tags -->
   <title>Lencho - Premium Artificial Jewellery Under ₹199 | Luxury Look at Affordable Prices</title>
-  <meta name="description" content="Shop premium artificial jewellery at Lencho. Trending earrings, necklaces, toe rings and more at unbeatable prices. ₹99 onwards. Free shipping + COD available. Trusted by 50K+ customers."/>
+  <meta name="description" content="Shop premium artificial jewellery at Lencho. Trending earrings, necklaces, toe rings and more with clear prices, secure checkout, and delivery support."/>
   <meta name="keywords" content="artificial jewellery, imitation jewellery, earrings online, necklace, toe rings, affordable jewellery India, trendy jewellery under 199, rose gold jewellery, Lencho jewellery"/>
   <meta name="author" content="Lencho India"/>
   <meta name="copyright" content="© 2026 Lencho. All rights reserved."/>
@@ -26,7 +26,7 @@
   <!-- Twitter Card Tags -->
   <meta name="twitter:card" content="summary_large_image"/>
   <meta name="twitter:title" content="Lencho – Premium Jewellery Under ₹199"/>
-  <meta name="twitter:description" content="Shop trending earrings, necklaces, and more. Free shipping on all orders. Trusted by thousands!"/>
+  <meta name="twitter:description" content="Shop trending earrings, necklaces, and more with clear prices, secure checkout, and delivery support."/>
   <meta name="twitter:image" content="https://lencho.in/images/twitter-image.png"/>
   
   <!-- Canonical URL -->
@@ -57,7 +57,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="/css/style.css?v=5.0"/>
+  <link rel="stylesheet" href="/css/style.css?v=5.1"/>
   
   <!-- Google Tag Manager (Optional - Add your GTM ID) -->
   <!-- <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
@@ -144,6 +144,10 @@
       <p class="popup-sub">Enter your email to claim your special discount code</p>
       <div class="popup-form">
         <input type="email" id="popup-email" placeholder="Enter your email address" autocomplete="email"/>
+        <label class="popup-consent">
+          <input type="checkbox" id="popup-consent"/>
+          <span>I agree to receive offers and updates from Lencho. I can unsubscribe anytime.</span>
+        </label>
         <button class="btn-primary" onclick="claimDiscount()">Claim My Discount 🎁</button>
       </div>
       <div id="popup-result" class="popup-result"></div>
@@ -402,6 +406,12 @@
       <p style="margin-top:.5rem;font-size:.75rem;">
         <a onclick="navigate('/terms')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Terms &amp; Conditions</a> |
         <a onclick="navigate('/privacy')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Privacy Policy</a> |
+        <a onclick="navigate('/shipping')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Shipping</a> |
+        <a onclick="navigate('/returns')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Returns &amp; Refunds</a> |
+        <a onclick="navigate('/cancellation')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Cancellation</a> |
+        <a onclick="navigate('/payment-policy')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Payment/COD</a> |
+        <a onclick="navigate('/contact-details')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Contact Details</a> |
+        <a onclick="navigate('/grievance')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Grievance</a> |
         <a onclick="navigate('/disclaimer')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Disclaimer</a>
       </p>
     </div>
@@ -438,10 +448,10 @@
       setTimeout(() => document.getElementById('loading-screen')?.classList.add('hidden'), 2500);
       const scripts = [
         '/js/firebase.js?v=1.1',
-        '/js/app.js?v=5.2',
+        '/js/app.js?v=5.3',
         '/js/pages.js?v=4.7',
         '/js/dashboard.js?v=4.5',
-        '/js/admin.js?v=5.7',
+        '/js/admin.js?v=5.8',
         '/js/admin-gst-settings.js?v=4.5',
         '/js/chatbot.js?v=4.5'
       ];

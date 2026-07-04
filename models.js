@@ -185,6 +185,55 @@ const loginEventSchema = new mongoose.Schema({
   userAgent: { type: String, default: '' },
 }, { timestamps: true });
 
+// ─── MARKETING SUBSCRIBERS / CAMPAIGNS ─────────────────────────────
+const marketingSubscriberSchema = new mongoose.Schema({
+  email:            { type: String, required: true, unique: true, lowercase: true, trim: true },
+  name:             { type: String, default: '' },
+  source:           { type: String, default: 'popup' },
+  consent:          { type: Boolean, default: true },
+  consentText:      { type: String, default: '' },
+  consentAt:        { type: Date, default: Date.now },
+  status:           { type: String, enum: ['subscribed', 'unsubscribed'], default: 'subscribed' },
+  unsubscribeToken: { type: String, default: '' },
+  offerCode:        { type: String, default: '' },
+  lastSentAt:       { type: Date, default: null },
+  tags:             [String],
+  metadata:         { type: mongoose.Schema.Types.Mixed, default: {} },
+}, { timestamps: true });
+
+marketingSubscriberSchema.index({ status: 1, source: 1 });
+
+const marketingCampaignSchema = new mongoose.Schema({
+  subject:     { type: String, required: true },
+  previewText: { type: String, default: '' },
+  body:        { type: String, required: true },
+  offerCode:   { type: String, default: '' },
+  imageUrl:    { type: String, default: '' },
+  ctaText:     { type: String, default: '' },
+  ctaUrl:      { type: String, default: '' },
+  segment:     { type: String, enum: ['subscribed', 'all', 'popup', 'discount_popup'], default: 'subscribed' },
+  status:      { type: String, enum: ['draft', 'scheduled', 'sending', 'sent', 'failed'], default: 'draft' },
+  scheduledAt: { type: Date, default: null },
+  sentAt:      { type: Date, default: null },
+  sentCount:   { type: Number, default: 0 },
+  failedCount: { type: Number, default: 0 },
+  testEmail:   { type: String, default: '' },
+  createdBy:   { type: String, default: '' },
+}, { timestamps: true });
+
+marketingCampaignSchema.index({ status: 1, scheduledAt: 1 });
+
+const marketingEmailLogSchema = new mongoose.Schema({
+  campaignId: { type: String, required: true },
+  email:      { type: String, required: true },
+  status:     { type: String, enum: ['sent', 'failed', 'skipped'], default: 'sent' },
+  error:      { type: String, default: '' },
+  messageId:  { type: String, default: '' },
+  sentAt:     { type: Date, default: Date.now },
+}, { timestamps: true });
+
+marketingEmailLogSchema.index({ campaignId: 1, createdAt: -1 });
+
 module.exports = {
   User:     mongoose.model('User',     userSchema),
   Category: mongoose.model('Category', categorySchema),
@@ -197,4 +246,7 @@ module.exports = {
   Testimonial: mongoose.model('Testimonial', testimonialSchema),
   Inquiry:  mongoose.model('Inquiry',  inquirySchema),
   LoginEvent: mongoose.model('LoginEvent', loginEventSchema),
+  MarketingSubscriber: mongoose.model('MarketingSubscriber', marketingSubscriberSchema),
+  MarketingCampaign: mongoose.model('MarketingCampaign', marketingCampaignSchema),
+  MarketingEmailLog: mongoose.model('MarketingEmailLog', marketingEmailLogSchema),
 };

@@ -83,6 +83,17 @@ const MEDIA_FALLBACKS = {
   default: '/images/hero.png'
 };
 let currentPageContext = { route: '/', category: '', product: null };
+const LEGAL_ROUTE_META = {
+  '/terms': { slug: 'terms', title: 'Terms and Conditions', fallback: 'Terms and Conditions content is not set in the admin panel yet.' },
+  '/privacy': { slug: 'privacy', title: 'Privacy Policy', fallback: 'Privacy Policy content is not set in the admin panel yet.' },
+  '/shipping': { slug: 'shipping', title: 'Shipping Policy', fallback: 'Shipping Policy content is not set in the admin panel yet.' },
+  '/returns': { slug: 'returns', title: 'Return and Refund Policy', fallback: 'Return and Refund Policy content is not set in the admin panel yet.' },
+  '/cancellation': { slug: 'cancellation', title: 'Cancellation Policy', fallback: 'Cancellation Policy content is not set in the admin panel yet.' },
+  '/contact-details': { slug: 'contact-details', title: 'Contact Us', fallback: 'Contact details are not set in the admin panel yet.' },
+  '/grievance': { slug: 'grievance', title: 'Grievance Officer', fallback: 'Grievance officer details are not set in the admin panel yet.' },
+  '/payment-policy': { slug: 'payment-policy', title: 'Payment, COD and Refund Timeline', fallback: 'Payment, COD and refund timeline content is not set in the admin panel yet.' },
+  '/disclaimer': { slug: 'disclaimer', title: 'Disclaimer', fallback: 'Disclaimer content is not set in the admin panel yet.' }
+};
 
 // Global event delegation for all critical buttons (works even with CSP blocking inline handlers)
 document.addEventListener('click', (e) => {
@@ -358,6 +369,9 @@ async function applyRouteSeo(context = {}, settingsInput = null) {
   } else if (route === '/contact') {
     title = `Contact ${settings.storeName || 'Lencho'}`;
     description = 'Contact Lencho for product help, order support, and business inquiries.';
+  } else if (LEGAL_ROUTE_META[route]) {
+    title = `${LEGAL_ROUTE_META[route].title} | ${settings.storeName || 'Lencho'}`;
+    description = `${LEGAL_ROUTE_META[route].title} for ${settings.storeName || 'Lencho'} customers.`;
   }
 
   document.title = title;
@@ -459,9 +473,7 @@ async function navigate(path, pushState = true) {
     else if (route === '/contact') { renderContact(); }
     else if (route === '/dashboard') { app.style.paddingTop = '0'; renderDashboard(); }
     else if (route === '/wishlist') { renderWishlist(); }
-    else if (route === '/terms') { renderTerms(); }
-    else if (route === '/privacy') { renderPrivacy(); }
-    else if (route === '/disclaimer') { renderDisclaimer(); }
+    else if (LEGAL_ROUTE_META[route]) { renderCmsPage(LEGAL_ROUTE_META[route]); }
     else if (isAdmin) { renderAdmin(); }
     else { app.innerHTML = `<div class="page-wrap" style="text-align:center;padding-top:120px;"><div class="empty-icon">🔍</div><h2 style="font-family:'Cormorant Garamond',serif;font-size:2rem;">Page Not Found</h2><p style="color:var(--gray);margin:1rem 0 2rem;">The page you're looking for doesn't exist.</p><button class="btn-primary" onclick="navigate('/')">Go Home</button></div>`; }
   } catch (e) { console.error(e); }
@@ -1496,12 +1508,21 @@ function closePopup() {
 }
 async function claimDiscount() {
   const email = document.getElementById('popup-email')?.value;
+  const consent = document.getElementById('popup-consent')?.checked;
   if (!email) { toast('Please enter your email', 'error'); return; }
+  if (!consent) { toast('Please agree to receive offers and updates', 'error'); return; }
   const btn = document.querySelector('.popup-form .btn-primary');
   const form = document.querySelector('.popup-form');
   
   btn.textContent = 'Claiming...'; btn.disabled = true;
-  const r = await api('/api/discount/email', { method: 'POST', body: { email } });
+  const r = await api('/api/discount/email', {
+    method: 'POST',
+    body: {
+      email,
+      marketingConsent: true,
+      consentText: 'I agree to receive offers and updates from Lencho. I can unsubscribe anytime.'
+    }
+  });
   
   if (r.error) { 
     toast(r.error, 'error'); 
@@ -1963,7 +1984,7 @@ async function renderHome(options = {}) {
     <div class="hero-p-centered reveal" style="position:relative; z-index:2; padding: 60px 5% 0; margin-top:20px; max-width:860px;">
       <div class="hero-badge" style="color:var(--gold-light);background:rgba(0,0,0,0.3); border:1.5px solid rgba(201,168,76,.4);padding:12px 28px;border-radius:99px;display:inline-block;margin-bottom:1.5rem;letter-spacing:.25em;font-size:.85rem;backdrop-filter:blur(8px);font-weight:600;">${g('heroBadge', '✦ PREMIUM COLLECTION 2026 ✦')}</div>
       <h1 class="hero-p-title" style="margin-bottom:1.5rem; font-size: clamp(2.5rem, 7vw, 5rem); line-height:1.15; color:#fff; text-shadow: 0 10px 30px rgba(0,0,0,0.8);">${g('heroTitle', 'Luxury Redefined')}<br/><span style="color:var(--gold-light); font-family:'Playfair Display',serif; font-style:italic;">${g('heroSubtitle', 'For The Modern Woman')}</span></h1>
-      <p class="hero-p-sub" style="max-width:700px; margin: 0 auto 1.5rem; color:#fff; font-size:1.15rem; line-height:1.7; font-weight:600; text-shadow: 0 4px 16px rgba(0,0,0,0.9);">${g('heroDescription', 'Premium artificial jewellery for every occasion. Look expensive, spend smart. 4.8⭐ trusted by 50K+ customers.')}</p>
+      <p class="hero-p-sub" style="max-width:700px; margin: 0 auto 1.5rem; color:#fff; font-size:1.15rem; line-height:1.7; font-weight:600; text-shadow: 0 4px 16px rgba(0,0,0,0.9);">${g('heroDescription', 'Premium artificial jewellery for every occasion. Look expensive, spend smart with clear pricing and fast support.')}</p>
       
       <div class="hero-btns" style="display:flex; justify-content:center; gap:1rem; flex-wrap:wrap; margin-bottom:2rem;">
         <button class="btn-gold" style="padding:18px 42px; font-size:1rem; font-weight:700;box-shadow:0 8px 25px rgba(201,149,76,.4);" onclick="navigate('/products')">${g('heroButton1Text', '🛍️ Shop Now & Save')}</button>
@@ -2753,56 +2774,34 @@ async function loadPublicSettings() {
 }
 
 // ── POLICY PAGES ──────────────────────────────────────────────
-async function renderTerms() {
+function formatCmsContent(content = '') {
+  const escaped = escapeHtml(content || '');
+  const linked = escaped.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:var(--rose-dark);font-weight:700;">$1</a>');
+  return linked.replace(/\r\n/g, '\n').replace(/\n/g, '<br>');
+}
+
+async function renderCmsPage(meta) {
   const app = document.getElementById('app');
+  const title = meta?.title || 'Legal Page';
+  const slug = meta?.slug || '';
   try {
-    const s = await api('/api/cms/terms', { timeoutMs: 2000 });
-    const content = s?.content || 'Terms and Conditions content not set in admin panel yet.';
+    const s = await api(`/api/cms/${slug}`, { timeoutMs: 2500 });
+    const content = s?.content || meta?.fallback || 'Content is not set in the admin panel yet.';
     app.innerHTML = `
-    <div class="page-wrap" style="max-width:900px;margin:0 auto;">
-      <h1 class="page-title">Terms and Conditions</h1>
-      <div style="background:#fff;padding:2rem;border-radius:12px;color:var(--dark);line-height:1.8;font-size:0.95rem;">
-        ${content.replace(/\n/g, '<br>')}
+    <div class="page-wrap" style="max-width:920px;margin:0 auto;">
+      <h1 class="page-title">${escapeHtml(s?.title || title)}</h1>
+      <div style="background:#fff;padding:2rem;border-radius:12px;color:var(--dark);line-height:1.8;font-size:0.95rem;border:1px solid rgba(31,31,56,.08);">
+        ${formatCmsContent(content)}
       </div>
     </div>`;
   } catch (e) {
-    app.innerHTML = `<div class="page-wrap" style="max-width:900px;margin:0 auto;"><h1 class="page-title">Terms and Conditions</h1><div style="background:#fff;padding:2rem;border-radius:12px;color:var(--dark);">Content coming soon...</div></div>`;
+    app.innerHTML = `<div class="page-wrap" style="max-width:920px;margin:0 auto;"><h1 class="page-title">${escapeHtml(title)}</h1><div style="background:#fff;padding:2rem;border-radius:12px;color:var(--dark);">Content coming soon...</div></div>`;
   }
 }
 
-async function renderPrivacy() {
-  const app = document.getElementById('app');
-  try {
-    const s = await api('/api/cms/privacy', { timeoutMs: 2000 });
-    const content = s?.content || 'Privacy Policy content not set in admin panel yet.';
-    app.innerHTML = `
-    <div class="page-wrap" style="max-width:900px;margin:0 auto;">
-      <h1 class="page-title">Privacy Policy</h1>
-      <div style="background:#fff;padding:2rem;border-radius:12px;color:var(--dark);line-height:1.8;font-size:0.95rem;">
-        ${content.replace(/\n/g, '<br>')}
-      </div>
-    </div>`;
-  } catch (e) {
-    app.innerHTML = `<div class="page-wrap" style="max-width:900px;margin:0 auto;"><h1 class="page-title">Privacy Policy</h1><div style="background:#fff;padding:2rem;border-radius:12px;color:var(--dark);">Content coming soon...</div></div>`;
-  }
-}
-
-async function renderDisclaimer() {
-  const app = document.getElementById('app');
-  try {
-    const s = await api('/api/cms/disclaimer', { timeoutMs: 2000 });
-    const content = s?.content || 'Disclaimer content not set in admin panel yet.';
-    app.innerHTML = `
-    <div class="page-wrap" style="max-width:900px;margin:0 auto;">
-      <h1 class="page-title">Disclaimer</h1>
-      <div style="background:#fff;padding:2rem;border-radius:12px;color:var(--dark);line-height:1.8;font-size:0.95rem;">
-        ${content.replace(/\n/g, '<br>')}
-      </div>
-    </div>`;
-  } catch (e) {
-    app.innerHTML = `<div class="page-wrap" style="max-width:900px;margin:0 auto;"><h1 class="page-title">Disclaimer</h1><div style="background:#fff;padding:2rem;border-radius:12px;color:var(--dark);">Content coming soon...</div></div>`;
-  }
-}
+async function renderTerms() { return renderCmsPage(LEGAL_ROUTE_META['/terms']); }
+async function renderPrivacy() { return renderCmsPage(LEGAL_ROUTE_META['/privacy']); }
+async function renderDisclaimer() { return renderCmsPage(LEGAL_ROUTE_META['/disclaimer']); }
 
 // ── SOCIAL SYNC ───────────────────────────────────────────
 async function syncSocialLinks() {

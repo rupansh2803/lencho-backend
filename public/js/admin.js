@@ -375,11 +375,13 @@ function buildAdminPanel() {
         <div class="admin-menu-item" id="am-woollen" onclick="adminTab('woollen')"><i class="fas fa-mitten" style="width:20px;"></i> Woollen Store</div>
         <div class="admin-menu-item" id="am-collections" onclick="adminTab('collections')"><i class="fas fa-layer-group" style="width:20px;"></i> Jewellery Collections</div>
         <div class="admin-menu-item" id="am-inquiries" onclick="adminTab('inquiries')"><i class="fas fa-envelope-open-text" style="width:20px;"></i> Inquiries</div>
+        <div class="admin-menu-item" id="am-marketing" onclick="adminTab('marketing')"><i class="fas fa-paper-plane" style="width:20px;"></i> Marketing Hub</div>
         <div class="admin-menu-item" id="am-users" onclick="adminTab('users')"><i class="fas fa-users" style="width:20px;"></i> Users</div>
         <div class="admin-menu-item" id="am-gst" onclick="adminTab('gst')"><i class="fas fa-file-invoice" style="width:20px;"></i> GST Hub</div>
         <div class="admin-menu-item" id="am-testimonials" onclick="adminTab('testimonials')"><i class="fas fa-comment-dots" style="width:20px;"></i> Testimonials</div>
         <div class="admin-menu-item" id="am-login-logs" onclick="adminTab('login-logs')"><i class="fas fa-user-clock" style="width:20px;"></i> Login Logs</div>
         <div class="admin-menu-item" id="am-delivery-manager" onclick="adminTab('delivery-manager')"><i class="fas fa-truck-fast" style="width:20px;"></i> Delivery Manager</div>
+        <div class="admin-menu-item" id="am-legal-pages" onclick="adminTab('legal-pages')"><i class="fas fa-balance-scale" style="width:20px;"></i> Legal Pages</div>
         <div class="admin-menu-item" id="am-site-manager" onclick="adminTab('site-manager')"><i class="fas fa-paint-brush" style="width:20px;"></i> Site Manager</div>
         <div class="admin-menu-item" id="am-settings" onclick="adminTab('settings')"><i class="fas fa-cog" style="width:20px;"></i> Business Settings</div>
         <div class="admin-menu-item" id="am-backup" onclick="adminTab('backup')"><i class="fas fa-shield-alt" style="width:20px;"></i> Backup & Recovery</div>
@@ -441,11 +443,13 @@ function adminTab(tab) {
   if (tab === 'woollen') adminWoollen();
   if (tab === 'collections') adminCollections();
   if (tab === 'inquiries') adminInquiries();
+  if (tab === 'marketing') adminMarketingHub();
   if (tab === 'users') adminUsers();
   if (tab === 'gst') adminGST();
   if (tab === 'testimonials') adminTestimonials();
   if (tab === 'login-logs') adminLoginLogs();
   if (tab === 'delivery-manager') adminDeliveryManager();
+  if (tab === 'legal-pages') adminLegalPages();
   if (tab === 'site-manager') adminSiteManager();
   if (tab === 'settings') {
     if (typeof adminStoreSettings === 'function') adminStoreSettings();
@@ -1568,6 +1572,361 @@ async function adminDiscounts() {
 }
 
 // ── TESTIMONIALS MANAGEMENT ─────────────────────────────────
+function adminEscapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function adminEscapeAttr(value = '') {
+  return adminEscapeHtml(value).replace(/`/g, '&#96;');
+}
+
+function adminDateTime(value) {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function legalPageStarterTemplate(slug = '') {
+  const templates = {
+    privacy: `Privacy Policy\n\nBusiness legal name:\nWebsite:\nContact email:\nPhone:\nAddress:\n\n1. Information we collect\nName, email, phone number, shipping address, billing details, order details, device/browser information, and payment status.\n\n2. How we use information\nTo process orders, deliver products, provide customer support, send offers only with consent, prevent fraud, and improve the website.\n\n3. Payments\nPayments are processed by secure payment partners. We do not store card, UPI PIN, or netbanking passwords.\n\n4. Marketing consent\nCustomers can unsubscribe from promotional emails anytime using the unsubscribe link.\n\n5. Contact\nFor privacy requests, contact:`,
+    terms: `Terms and Conditions\n\nBusiness legal name:\nWebsite:\nContact email:\nPhone:\nAddress:\n\n1. Product information\nProduct images, prices, taxes, delivery charges, and availability are shown on the website and may change without prior notice.\n\n2. Orders\nOrders are confirmed after successful payment or accepted COD request. We may cancel orders if stock, payment, address, or fraud checks fail.\n\n3. Pricing and taxes\nAll product prices, taxes, shipping charges, and discounts will be shown before checkout.\n\n4. Customer responsibilities\nCustomers must provide correct contact and delivery details.\n\n5. Contact`,
+    shipping: `Shipping Policy\n\nBusiness legal name:\nSupport email:\nSupport phone:\nPickup/dispatch location:\n\n1. Shipping locations\nWe ship to serviceable pin codes in India.\n\n2. Dispatch timeline\nOrders are usually dispatched within __ business days.\n\n3. Delivery timeline\nEstimated delivery is __ to __ business days after dispatch depending on location.\n\n4. Shipping charges\nShipping charges/free shipping threshold are shown at checkout.\n\n5. Tracking\nTracking details will be shared after shipment is created.`,
+    returns: `Return and Refund Policy\n\nBusiness legal name:\nSupport email:\nSupport phone:\n\n1. Return window\nCustomers can request return/replacement within __ days of delivery for eligible products.\n\n2. Eligibility\nProduct must be unused, unwashed, undamaged, and with original packaging.\n\n3. Non-returnable items\nMention hygiene/customized/sale items if applicable.\n\n4. Refund timeline\nRefunds are processed within __ business days after return approval/quality check.\n\n5. Refund method\nRefund is issued to original payment method or store credit, as applicable.`,
+    cancellation: `Cancellation Policy\n\nBusiness legal name:\nSupport email:\nSupport phone:\n\n1. Before dispatch\nOrders can be cancelled before dispatch by contacting support.\n\n2. After dispatch\nAfter dispatch, cancellation may not be possible. Customer may follow return policy after delivery if eligible.\n\n3. COD cancellation\nRepeated fake COD orders may be restricted.\n\n4. Refund timeline\nPrepaid cancellation refunds are processed within __ business days.`,
+    'contact-details': `Contact Us\n\nBusiness legal name:\nEmail:\nPhone:\nWhatsApp:\nRegistered/business address:\nCustomer support hours:\n\nFor product/order support, customers can contact us using the above details.`,
+    grievance: `Grievance Officer\n\nBusiness legal name:\nGrievance officer name:\nEmail:\nPhone:\nAddress:\nWorking hours:\n\nCustomers can contact the grievance officer for unresolved complaints. We aim to acknowledge complaints within __ hours and resolve them within __ days.`,
+    'payment-policy': `Payment, COD and Refund Timeline\n\nBusiness legal name:\nSupport email:\n\n1. Payment methods\nWe accept prepaid payments through available payment partners and COD where enabled.\n\n2. COD\nCOD availability depends on pin code, order value, and internal checks.\n\n3. Failed payments\nIf money is deducted but order is not confirmed, contact support with payment reference.\n\n4. Refund timeline\nApproved refunds are usually processed within __ business days. Bank/payment partner timelines may apply.`,
+    disclaimer: `Disclaimer\n\nThe information on this website is provided in good faith for general shopping and product information. Product colors may vary slightly due to screen settings and photography lighting. Handmade products may have minor natural variations.`
+  };
+  return templates[slug] || '';
+}
+
+async function adminLegalPages(selectedSlug = 'privacy') {
+  const [res, settingsRaw] = await Promise.all([
+    api('/api/admin/legal-pages', { timeoutMs: 12000 }),
+    api('/api/settings', { timeoutMs: 12000 })
+  ]);
+  const settings = normalizeSettings(settingsRaw);
+  const settingValue = (key, fallback = '') => settings[key] ?? fallback;
+  const fallbackPages = [
+    { slug: 'terms', title: 'Terms and Conditions' },
+    { slug: 'privacy', title: 'Privacy Policy' },
+    { slug: 'shipping', title: 'Shipping Policy' },
+    { slug: 'returns', title: 'Return and Refund Policy' },
+    { slug: 'cancellation', title: 'Cancellation Policy' },
+    { slug: 'contact-details', title: 'Contact Us' },
+    { slug: 'grievance', title: 'Grievance Officer' },
+    { slug: 'payment-policy', title: 'Payment, COD and Refund Timeline' },
+    { slug: 'disclaimer', title: 'Disclaimer' }
+  ];
+  const pages = Array.isArray(res.pages) && res.pages.length ? res.pages : fallbackPages;
+  const selected = pages.find(page => page.slug === selectedSlug) || pages[0];
+
+  document.getElementById('admin-content').innerHTML = `
+    <div class="admin-header" style="align-items:flex-start;gap:1rem;">
+      <div>
+        <h1 class="admin-page-title">Legal Pages</h1>
+        <p style="color:var(--gray);margin-top:4px;">Add your real policies here. Footer links and public pages update from this CMS.</p>
+      </div>
+      <button class="btn-outline" onclick="navigate('/${adminEscapeAttr(selected.slug)}')"><i class="fas fa-eye"></i> View Current Page</button>
+    </div>
+
+    <div class="admin-form" style="margin-bottom:1rem;">
+      <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-building"></i> Business Legal Details</h3>
+      <div class="form-grid">
+        <div class="form-group"><label>Business Legal Name</label><input id="legalBusinessName" value="${adminEscapeAttr(settingValue('legalBusinessName', settingValue('storeName', 'Lencho')))}" placeholder="Your legal business name"/></div>
+        <div class="form-group"><label>Support Email</label><input id="legalSupportEmail" value="${adminEscapeAttr(settingValue('legalSupportEmail', settingValue('footerEmail', settingValue('storeEmail'))))}" placeholder="support@example.com"/></div>
+        <div class="form-group"><label>Support Phone</label><input id="legalSupportPhone" value="${adminEscapeAttr(settingValue('legalSupportPhone', settingValue('footerPhone', settingValue('storePhone'))))}" placeholder="+91 ..."/></div>
+        <div class="form-group"><label>Grievance Officer Name</label><input id="grievanceOfficerName" value="${adminEscapeAttr(settingValue('grievanceOfficerName'))}" placeholder="Name"/></div>
+        <div class="form-group"><label>Grievance Officer Email</label><input id="grievanceOfficerEmail" value="${adminEscapeAttr(settingValue('grievanceOfficerEmail', settingValue('legalSupportEmail', settingValue('storeEmail'))))}" placeholder="grievance@example.com"/></div>
+        <div class="form-group"><label>Refund Timeline</label><input id="refundTimeline" value="${adminEscapeAttr(settingValue('refundTimeline'))}" placeholder="Example: 5-7 business days after approval"/></div>
+      </div>
+      <div class="form-group"><label>Business Address</label><textarea id="legalBusinessAddress" rows="2" placeholder="Full business address">${adminEscapeHtml(settingValue('legalBusinessAddress', settingValue('footerAddress', settingValue('storeAddress'))))}</textarea></div>
+      <button class="btn-primary" onclick="saveLegalBusinessDetails()"><i class="fas fa-save"></i> Save Business Details</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;align-items:start;">
+      <div class="admin-form" style="padding:1rem;">
+        <h3 style="font-size:1rem;margin-bottom:.8rem;color:var(--rose-dark);">Pages</h3>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${pages.map(page => `
+            <button class="${page.slug === selected.slug ? 'btn-primary' : 'btn-outline'}" style="justify-content:flex-start;text-align:left;padding:.75rem .85rem;" onclick="adminLegalPages('${adminEscapeAttr(page.slug)}')">
+              ${adminEscapeHtml(page.title)}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="admin-form">
+        <input type="hidden" id="legal-page-slug" value="${adminEscapeAttr(selected.slug)}"/>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Page</label>
+            <select onchange="adminLegalPages(this.value)">
+              ${pages.map(page => `<option value="${adminEscapeAttr(page.slug)}" ${page.slug === selected.slug ? 'selected' : ''}>${adminEscapeHtml(page.title)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Public URL</label>
+            <input value="/${adminEscapeAttr(selected.slug)}" readonly/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>${adminEscapeHtml(selected.title)} Content</label>
+          <textarea id="legal-page-content" rows="18" placeholder="Paste or write your legal page content here...">${adminEscapeHtml(selected.content || '')}</textarea>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Upload PDF / file</label>
+            <input type="file" id="legal-page-file" accept=".pdf,.doc,.docx,.txt,image/*,application/pdf"/>
+          </div>
+          <div class="form-group">
+            <label>Quick actions</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="btn-outline" type="button" onclick="uploadLegalPageFile()"><i class="fas fa-upload"></i> Upload & Insert Link</button>
+              <button class="btn-outline" type="button" onclick="insertLegalPageTemplate('${adminEscapeAttr(selected.slug)}')"><i class="fas fa-magic"></i> Insert Starter Template</button>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:1rem;">
+          <button class="btn-primary" onclick="saveLegalPage()"><i class="fas fa-save"></i> Save Legal Page</button>
+          <button class="btn-outline" onclick="navigate('/${adminEscapeAttr(selected.slug)}')"><i class="fas fa-external-link-alt"></i> View Live</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function insertLegalPageTemplate(slug) {
+  const textarea = document.getElementById('legal-page-content');
+  if (!textarea) return;
+  if (textarea.value.trim() && !confirm('Replace current text with the starter template?')) return;
+  textarea.value = legalPageStarterTemplate(slug);
+}
+
+async function uploadLegalPageFile() {
+  const fileInput = document.getElementById('legal-page-file');
+  const textarea = document.getElementById('legal-page-content');
+  if (!fileInput?.files?.[0] || !textarea) return toast('Please select a file first', 'error');
+
+  const fd = new FormData();
+  fd.append('media', fileInput.files[0]);
+  fd.append('folder', 'legal');
+
+  const resp = await fetch('/api/admin/upload-media', {
+    method: 'POST',
+    credentials: 'include',
+    headers: getAdminAuthHeaders(),
+    body: fd
+  });
+  const raw = await resp.text();
+  let data = {};
+  try { data = raw ? JSON.parse(raw) : {}; } catch { return toast('Upload API returned invalid response', 'error'); }
+  if (!resp.ok || data.error || !data.url) return toast(data.error || 'Upload failed', 'error');
+
+  textarea.value = `${textarea.value.trim()}\n\nDownload file: ${data.url}`;
+  toast('File link inserted. Save page to publish it.', 'success');
+}
+
+async function saveLegalPage() {
+  const slug = document.getElementById('legal-page-slug')?.value;
+  const content = document.getElementById('legal-page-content')?.value ?? '';
+  if (!slug) return toast('Select a page first', 'error');
+  const r = await api(`/api/admin/cms/${slug}`, { method: 'POST', body: { content }, timeoutMs: 15000 });
+  if (r.error) return toast(r.error, 'error');
+  toast('Legal page saved and published', 'success');
+  adminLegalPages(slug);
+}
+
+async function saveLegalBusinessDetails() {
+  const payload = {};
+  ['legalBusinessName', 'legalSupportEmail', 'legalSupportPhone', 'grievanceOfficerName', 'grievanceOfficerEmail', 'refundTimeline', 'legalBusinessAddress'].forEach(key => {
+    const el = document.getElementById(key);
+    if (el) payload[key] = el.value;
+  });
+  if (payload.legalSupportEmail !== undefined) payload.footerEmail = payload.legalSupportEmail;
+  if (payload.legalSupportPhone !== undefined) payload.footerPhone = payload.legalSupportPhone;
+  if (payload.legalBusinessAddress !== undefined) payload.footerAddress = payload.legalBusinessAddress;
+  const r = await api('/api/admin/settings', { method: 'POST', body: payload, timeoutMs: 15000 });
+  if (r.error) return toast(r.error, 'error');
+  toast('Business legal details saved', 'success');
+}
+
+async function adminMarketingHub() {
+  const [subRes, campRes] = await Promise.all([
+    api('/api/admin/marketing/subscribers', { timeoutMs: 15000 }),
+    api('/api/admin/marketing/campaigns', { timeoutMs: 15000 })
+  ]);
+  const subscribers = Array.isArray(subRes.subscribers) ? subRes.subscribers : [];
+  const stats = subRes.stats || {
+    total: subscribers.length,
+    subscribed: subscribers.filter(s => s.status === 'subscribed').length,
+    unsubscribed: subscribers.filter(s => s.status === 'unsubscribed').length,
+    popup: subscribers.filter(s => String(s.source || '').includes('popup')).length
+  };
+  const campaigns = Array.isArray(campRes.campaigns) ? campRes.campaigns : [];
+
+  document.getElementById('admin-content').innerHTML = `
+    <div class="admin-header" style="align-items:flex-start;gap:1rem;">
+      <div>
+        <h1 class="admin-page-title">Marketing Hub</h1>
+        <p style="color:var(--gray);margin-top:4px;">Popup emails, campaign sending, unsubscribe safety, and send logs.</p>
+      </div>
+      <button class="btn-outline" onclick="adminMarketingHub()"><i class="fas fa-sync"></i> Refresh</button>
+    </div>
+
+    <div class="stats-grid" style="margin-bottom:1.5rem;">
+      <div class="stat-card"><div class="stat-label">Total Subscribers</div><div class="stat-value">${Number(stats.total || 0).toLocaleString('en-IN')}</div></div>
+      <div class="stat-card"><div class="stat-label">Subscribed</div><div class="stat-value">${Number(stats.subscribed || 0).toLocaleString('en-IN')}</div></div>
+      <div class="stat-card"><div class="stat-label">Unsubscribed</div><div class="stat-value">${Number(stats.unsubscribed || 0).toLocaleString('en-IN')}</div></div>
+      <div class="stat-card"><div class="stat-label">Popup Source</div><div class="stat-value">${Number(stats.popup || 0).toLocaleString('en-IN')}</div></div>
+    </div>
+
+    <div class="admin-form" style="margin-bottom:1.5rem;">
+      <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-envelope-open-text"></i> Create Campaign</h3>
+      <div class="form-grid">
+        <div class="form-group"><label>Subject *</label><input id="mkt-subject" placeholder="Flat 20% off today only"/></div>
+        <div class="form-group"><label>Preview Text</label><input id="mkt-preview" placeholder="Short inbox preview line"/></div>
+      </div>
+      <div class="form-group"><label>Message *</label><textarea id="mkt-body" rows="6" placeholder="Write your offer/reminder message..."></textarea></div>
+      <div class="form-grid">
+        <div class="form-group"><label>Offer Code</label><input id="mkt-offer" placeholder="WELCOME10"/></div>
+        <div class="form-group"><label>Segment</label><select id="mkt-segment"><option value="subscribed">Subscribed users</option><option value="discount_popup">Discount popup users</option><option value="popup">All popup users</option><option value="all">All subscribed statuses except unsubscribed</option></select></div>
+        <div class="form-group"><label>CTA Text</label><input id="mkt-cta-text" placeholder="Shop Now"/></div>
+        <div class="form-group"><label>CTA URL</label><input id="mkt-cta-url" placeholder="https://lencho.in/products"/></div>
+      </div>
+      <div class="form-grid">
+        <div class="form-group"><label>Image URL</label><input id="mkt-image" placeholder="https://..."/></div>
+        <div class="form-group"><label>Upload Campaign Image</label><input type="file" id="mkt-image-file" accept="image/*"/></div>
+      </div>
+      <button class="btn-outline" type="button" onclick="uploadCmsMedia('mkt-image-file','mkt-image')"><i class="fas fa-upload"></i> Upload Image</button>
+      <div class="form-grid" style="margin-top:1rem;">
+        <div class="form-group"><label>Test Email</label><input id="mkt-test-email" placeholder="you@example.com"/></div>
+        <div class="form-group"><label>Schedule Date/Time</label><input id="mkt-scheduled-at" type="datetime-local"/></div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:1rem;">
+        <button class="btn-outline" onclick="submitMarketingCampaign('draft')"><i class="fas fa-save"></i> Save Draft</button>
+        <button class="btn-outline" onclick="submitMarketingCampaign('test')"><i class="fas fa-paper-plane"></i> Send Test Email</button>
+        <button class="btn-outline" onclick="submitMarketingCampaign('schedule')"><i class="fas fa-clock"></i> Schedule Reminder</button>
+        <button class="btn-primary" onclick="submitMarketingCampaign('send')"><i class="fas fa-bullhorn"></i> Send to Segment</button>
+      </div>
+    </div>
+
+    <div class="admin-table-wrap" style="margin-bottom:1.5rem;">
+      <div class="admin-table-header"><h3>Subscribers (${subscribers.length})</h3></div>
+      <table>
+        <thead><tr><th>Email</th><th>Source</th><th>Status</th><th>Consent Date</th><th>Last Sent</th><th>Action</th></tr></thead>
+        <tbody>${subscribers.slice(0, 300).map(sub => `
+          <tr>
+            <td><b>${adminEscapeHtml(sub.email)}</b></td>
+            <td>${adminEscapeHtml(sub.source || '-')}</td>
+            <td><span style="padding:4px 9px;border-radius:99px;font-size:.72rem;font-weight:700;background:${sub.status === 'subscribed' ? '#dcfce7' : '#fee2e2'};color:${sub.status === 'subscribed' ? '#166534' : '#991b1b'};">${adminEscapeHtml(sub.status)}</span></td>
+            <td>${adminDateTime(sub.consentAt || sub.createdAt)}</td>
+            <td>${adminDateTime(sub.lastSentAt)}</td>
+            <td>${sub.status === 'subscribed'
+              ? `<button class="btn-sm btn-outline" onclick="toggleMarketingSubscriberStatus('${adminEscapeAttr(sub.email)}','unsubscribed')">Unsubscribe</button>`
+              : `<button class="btn-sm btn-outline" onclick="toggleMarketingSubscriberStatus('${adminEscapeAttr(sub.email)}','subscribed')">Resubscribe</button>`}</td>
+          </tr>
+        `).join('')}
+        ${!subscribers.length ? '<tr><td colspan="6" style="text-align:center;color:var(--gray);">No subscribers yet. Popup signups will appear here.</td></tr>' : ''}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="admin-table-wrap">
+      <div class="admin-table-header"><h3>Campaigns (${campaigns.length})</h3></div>
+      <table>
+        <thead><tr><th>Subject</th><th>Status</th><th>Segment</th><th>Sent</th><th>Failed</th><th>Created</th><th>Logs</th></tr></thead>
+        <tbody>${campaigns.map(c => `
+          <tr>
+            <td><b>${adminEscapeHtml(c.subject)}</b><div style="font-size:.72rem;color:var(--gray);max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${adminEscapeHtml(c.previewText || c.body || '')}</div></td>
+            <td>${adminEscapeHtml(c.status)}</td>
+            <td>${adminEscapeHtml(c.segment)}</td>
+            <td>${Number(c.sentCount || 0).toLocaleString('en-IN')}</td>
+            <td>${Number(c.failedCount || 0).toLocaleString('en-IN')}</td>
+            <td>${adminDateTime(c.createdAt)}</td>
+            <td><button class="btn-sm btn-outline" onclick="viewMarketingCampaignLogs('${adminEscapeAttr(c.id)}')">View Logs</button></td>
+          </tr>
+        `).join('')}
+        ${!campaigns.length ? '<tr><td colspan="7" style="text-align:center;color:var(--gray);">No campaigns yet.</td></tr>' : ''}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function collectMarketingCampaignPayload(action) {
+  return {
+    action,
+    subject: document.getElementById('mkt-subject')?.value || '',
+    previewText: document.getElementById('mkt-preview')?.value || '',
+    body: document.getElementById('mkt-body')?.value || '',
+    offerCode: document.getElementById('mkt-offer')?.value || '',
+    imageUrl: document.getElementById('mkt-image')?.value || '',
+    ctaText: document.getElementById('mkt-cta-text')?.value || '',
+    ctaUrl: document.getElementById('mkt-cta-url')?.value || '',
+    segment: document.getElementById('mkt-segment')?.value || 'subscribed',
+    testEmail: document.getElementById('mkt-test-email')?.value || '',
+    scheduledAt: document.getElementById('mkt-scheduled-at')?.value || ''
+  };
+}
+
+async function submitMarketingCampaign(action) {
+  const payload = collectMarketingCampaignPayload(action);
+  if (!payload.subject.trim()) return toast('Subject is required', 'error');
+  if (!payload.body.trim()) return toast('Message is required', 'error');
+  if (action === 'test' && !payload.testEmail.trim()) return toast('Test email is required', 'error');
+  if (action === 'schedule' && !payload.scheduledAt) return toast('Schedule date/time is required', 'error');
+  if (action === 'send' && !confirm('Send this campaign to the selected subscribed segment now?')) return;
+
+  const r = await api('/api/admin/marketing/campaigns', { method: 'POST', body: payload, timeoutMs: 120000 });
+  if (r.error) return toast(r.error, 'error');
+  toast(r.message || 'Marketing action completed', 'success');
+  if (action !== 'test') setTimeout(adminMarketingHub, 600);
+}
+
+async function toggleMarketingSubscriberStatus(email, status) {
+  const r = await api(`/api/admin/marketing/subscribers/${encodeURIComponent(email)}/status`, { method: 'PATCH', body: { status }, timeoutMs: 15000 });
+  if (r.error) return toast(r.error, 'error');
+  toast('Subscriber status updated', 'success');
+  adminMarketingHub();
+}
+
+async function viewMarketingCampaignLogs(campaignId) {
+  const r = await api(`/api/admin/marketing/campaigns/${campaignId}/logs`, { timeoutMs: 15000 });
+  if (r.error) return toast(r.error, 'error');
+  const logs = Array.isArray(r.logs) ? r.logs : [];
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width:860px;width:92vw;max-height:82vh;overflow:auto;padding:1.5rem;">
+      <div style="display:flex;justify-content:space-between;gap:1rem;align-items:center;margin-bottom:1rem;">
+        <h3>Email Logs</h3>
+        <button class="btn-outline" onclick="this.closest('.modal-overlay').remove()">Close</button>
+      </div>
+      <div class="admin-table-wrap">
+        <table>
+          <thead><tr><th>Email</th><th>Status</th><th>Error</th><th>Time</th></tr></thead>
+          <tbody>${logs.map(log => `
+            <tr>
+              <td>${adminEscapeHtml(log.email)}</td>
+              <td>${adminEscapeHtml(log.status)}</td>
+              <td style="max-width:360px;font-size:.78rem;color:#991b1b;">${adminEscapeHtml(log.error || '')}</td>
+              <td>${adminDateTime(log.sentAt || log.createdAt)}</td>
+            </tr>
+          `).join('')}
+          ${!logs.length ? '<tr><td colspan="4" style="text-align:center;color:var(--gray);">No logs yet.</td></tr>' : ''}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
 async function adminTestimonials() {
   const settings = normalizeSettings(await api('/api/settings'));
   const showTestimonials = settings.showTestimonials !== false; // defaults to true
