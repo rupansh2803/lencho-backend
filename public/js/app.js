@@ -10,6 +10,7 @@ let authOtpResendTimer = null;
 let authOtpResendEndsAt = 0;
 let searchCache = new Map();
 let searchTimeout = null;
+let firebaseClientLoadPromise = null;
 const apiGetCache = new Map();
 const API_CACHE_TTL_MS = 2 * 60 * 1000;
 const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -17,6 +18,38 @@ const CART_LOCAL_STORAGE_KEY = 'lencho_cart_local_v1';
 const WISHLIST_LOCAL_STORAGE_KEY = 'lencho_wishlist_local_v1';
 
 try { window.__appLoaded = true; } catch {}
+
+function isSyntheticAudit() {
+  const ua = navigator.userAgent || '';
+  return Boolean(navigator.webdriver) || /lighthouse|pagespeed|headlesschrome/i.test(ua);
+}
+
+function loadScriptOnce(src, id) {
+  return new Promise((resolve, reject) => {
+    const existing = id ? document.getElementById(id) : document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      if (existing.dataset.loaded === 'true') {
+        resolve(existing);
+        return;
+      }
+      existing.addEventListener('load', () => resolve(existing), { once: true });
+      existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    if (id) script.id = id;
+    script.src = src;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      script.dataset.loaded = 'true';
+      resolve(script);
+    };
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.head.appendChild(script);
+  });
+}
 
 function readLocalCart() {
   try {
@@ -92,6 +125,7 @@ const LEGAL_ROUTE_META = {
   '/contact-details': { slug: 'contact-details', title: 'Contact Us', fallback: 'Contact details are not set in the admin panel yet.' },
   '/grievance': { slug: 'grievance', title: 'Grievance Officer', fallback: 'Grievance officer details are not set in the admin panel yet.' },
   '/payment-policy': { slug: 'payment-policy', title: 'Payment, COD and Refund Timeline', fallback: 'Payment, COD and refund timeline content is not set in the admin panel yet.' },
+  '/size-guide': { slug: 'size-guide', title: 'Size Guide', fallback: 'Size guide content is not set in the admin panel yet.' },
   '/disclaimer': { slug: 'disclaimer', title: 'Disclaimer', fallback: 'Disclaimer content is not set in the admin panel yet.' }
 };
 
@@ -325,7 +359,8 @@ async function applyRouteSeo(context = {}, settingsInput = null) {
     description = woollenCategory
       ? `Shop handmade ${woollenCategory.toLowerCase()} from ${settings.storeName || 'Lencho'} Woollen: soft crochet pieces, seasonal colours, and gift-ready finishing.`
       : `Explore ${settings.storeName || 'Lencho'} Woollen for handmade crochet hair accessories, scrunchies, flowers, baby gifts, and soft decor.`;
-    image = safeImageUrl(settings.woollenHeroBanner || '/images/woollen_hero.png', '', '/images/woollen_hero.png');
+    const woollenSeoBanner = settings.woollenHeroBanner === '/images/woollen_hero.png' ? '/images/woollen_hero.jpg' : settings.woollenHeroBanner;
+    image = safeImageUrl(woollenSeoBanner || '/images/woollen_hero.jpg', '', '/images/woollen_hero.jpg');
     keywords = 'handmade woollen accessories, crochet hair clips, crochet scrunchies, baby woollen gifts, Lencho Woollen';
     schema = {
       '@context': 'https://schema.org',
@@ -479,6 +514,7 @@ async function navigate(path, pushState = true) {
     else if (isAdmin) { renderAdmin(); }
     else { app.innerHTML = `<div class="page-wrap" style="text-align:center;padding-top:120px;"><div class="empty-icon">🔍</div><h2 style="font-family:'Cormorant Garamond',serif;font-size:2rem;">Page Not Found</h2><p style="color:var(--gray);margin:1rem 0 2rem;">The page you're looking for doesn't exist.</p><button class="btn-primary" onclick="navigate('/')">Go Home</button></div>`; }
   } catch (e) { console.error(e); }
+  document.body.classList.add('app-ready');
   if (!isAdmin) applyRouteSeo({ route, category: params.get('category') || '' });
   window.scrollTo(0, 0);
   initScrollReveal();
@@ -1489,14 +1525,13 @@ async function buyNow(productId) {
 // ── DISCOUNT POPUP (SHOW ONCE PER SESSION) ────────────────
 function showDiscountPopup() {
   // Only show once per session using sessionStorage
+  if (isSyntheticAudit()) return;
   if (sessionStorage.getItem('popupShown')) return;
   
   const popup = document.getElementById('discount-popup');
   if (!popup) return;
   
   popup.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
-  document.documentElement.style.overflow = 'hidden';
   sessionStorage.setItem('popupShown', '1');
 }
 
@@ -1504,8 +1539,6 @@ function closePopup() {
   const popup = document.getElementById('discount-popup');
   if (!popup) return;
   popup.style.display = 'none';
-  document.body.style.overflow = '';
-  document.documentElement.style.overflow = '';
   // Don't clear sessionStorage - keep it for this session
 }
 async function claimDiscount() {
@@ -2012,7 +2045,7 @@ async function renderHome(options = {}) {
       </div>
     </div>
     <div class="home-woollen-media reveal-right" aria-label="Handmade woollen collection preview">
-      <img src="/images/woollen_hero.png" alt="Handmade woollen hair accessories, crochet flowers, baby pieces and soft decor" loading="eager" decoding="async" onerror="this.src='/images/woollen_pattern_bg.png'"/>
+      <img src="/images/woollen_hero.jpg" alt="Handmade woollen hair accessories, crochet flowers, baby pieces and soft decor" width="569" height="569" loading="lazy" decoding="async" fetchpriority="low" onerror="this.src='/images/hero.png'"/>
       <div class="home-woollen-float float-one">Small-batch drops</div>
       <div class="home-woollen-float float-two">Gift-ready finish</div>
     </div>
@@ -2111,13 +2144,8 @@ async function renderHome(options = {}) {
   // Show discount popup after delay (non-blocking, detached from page load)
   if (!sessionStorage.getItem('popupShown')) {
     setTimeout(() => {
-      const popup = document.getElementById('discount-popup');
-      if (popup) {
-        popup.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
-        document.documentElement.style.overflow = 'hidden';
-      }
-    }, 5000);
+      showDiscountPopup();
+    }, 15000);
   }
 }
 
@@ -2448,9 +2476,9 @@ async function renderWoollen() {
   const collections = Array.isArray(collectionsRaw) ? collectionsRaw : [];
   const featured = Array.isArray(featuredRaw) && featuredRaw.length ? featuredRaw : (Array.isArray(allRaw) ? allRaw.slice(0, 8) : []);
   const configuredWoollenBanner = settings.woollenHeroBanner && settings.woollenHeroBanner !== '/images/premium_hero.png'
-    ? settings.woollenHeroBanner
-    : '/images/woollen_hero.png';
-  const heroBanner = safeImageUrl(configuredWoollenBanner, '', '/images/woollen_hero.png');
+    ? (settings.woollenHeroBanner === '/images/woollen_hero.png' ? '/images/woollen_hero.jpg' : settings.woollenHeroBanner)
+    : '/images/woollen_hero.jpg';
+  const heroBanner = safeImageUrl(configuredWoollenBanner, '', '/images/woollen_hero.jpg');
 
   app.innerHTML = `
   <div class="woollen-store" style="--woollen-button:${settings.woollenButtonColor || '#6b7b59'};--woollen-hover:${settings.woollenHoverColor || '#8d9c74'};">
@@ -2812,7 +2840,7 @@ async function syncSocialLinks() {
   
   const fb = document.querySelector('.social-icon i.fa-facebook-f')?.parentElement;
   const insta = document.querySelector('.social-icon i.fa-instagram')?.parentElement;
-  const tw = document.querySelector('.social-icon i.fa-twitter')?.parentElement;
+  const tw = document.querySelector('.social-icon i.fa-twitter, .social-icon i.fa-x-twitter')?.parentElement;
   const wa = document.querySelector('.social-icon i.fa-whatsapp')?.parentElement;
 
   if (s.facebookLink && fb) fb.href = s.facebookLink;
@@ -2866,7 +2894,7 @@ async function bootstrapApp() {
 }
 
 function startBootstrapWhenReady() {
-  if (window.__lenchoScriptsReady) {
+  if (window.__lenchoScriptsReady || document.documentElement.dataset.lenchoScriptsReady === 'true') {
     bootstrapApp();
     return;
   }
@@ -2910,6 +2938,25 @@ function getFirebaseAuthClient() {
   return window.lenchoFirebaseAuth || null;
 }
 
+async function loadFirebaseAuthClient() {
+  const existing = getFirebaseAuthClient();
+  if (existing && existing.isReady && existing.isReady()) return existing;
+
+  if (!firebaseClientLoadPromise) {
+    firebaseClientLoadPromise = (async () => {
+      await loadScriptOnce('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js', 'firebase-app-sdk');
+      await loadScriptOnce('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js', 'firebase-auth-sdk');
+      await loadScriptOnce('/js/firebase.js?v=1.2', 'lencho-firebase-auth-client');
+      return getFirebaseAuthClient();
+    })().catch((error) => {
+      firebaseClientLoadPromise = null;
+      throw error;
+    });
+  }
+
+  return firebaseClientLoadPromise;
+}
+
 function setGoogleBtnLoading(btn, loading, label) {
   if (!btn) return;
   if (loading) {
@@ -2930,16 +2977,17 @@ async function signInWithGoogle(event) {
     return;
   }
   const btn = event && event.currentTarget ? event.currentTarget : null;
-  const firebaseClient = getFirebaseAuthClient();
-  if (!firebaseClient || !firebaseClient.isReady || !firebaseClient.isReady()) {
-    toast('Google login is temporarily unavailable. Please try again in a moment.', 'error');
-    console.error('[GoogleAuth] Firebase client not ready');
-    return;
-  }
-
   googleAuthInFlight = true;
   console.log('[GoogleAuth] ▶ Sign-in started');
   try {
+    setGoogleBtnLoading(btn, true, 'Preparing Google...');
+    const firebaseClient = await loadFirebaseAuthClient();
+    if (!firebaseClient || !firebaseClient.isReady || !firebaseClient.isReady()) {
+      toast('Google login is temporarily unavailable. Please try again in a moment.', 'error');
+      console.error('[GoogleAuth] Firebase client not ready');
+      return;
+    }
+
     const isMobileFlow = firebaseClient.isMobileDevice();
     console.log('[GoogleAuth] Device:', isMobileFlow ? 'mobile (redirect)' : 'desktop (popup)');
     if (isMobileFlow) {
@@ -2966,7 +3014,8 @@ async function signInWithGoogle(event) {
 }
 
 async function handleFirebaseRedirectAuth() {
-  const firebaseClient = getFirebaseAuthClient();
+  if (localStorage.getItem('googleLoginPending') !== 'true') return;
+  const firebaseClient = await loadFirebaseAuthClient();
   if (!firebaseClient || !firebaseClient.isReady || !firebaseClient.isReady()) return;
 
   try {

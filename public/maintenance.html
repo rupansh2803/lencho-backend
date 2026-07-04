@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="robots" content="noindex, nofollow"/>
+  <title>Lencho - Under Maintenance</title>
+  <style>
+    :root {
+      --rose: #c96a8a;
+      --rose-dark: #9b4065;
+      --gold: #c9954c;
+      --dark: #18122b;
+      --cream: #fffaf6;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: var(--dark);
+      background:
+        radial-gradient(circle at 16% 20%, rgba(201, 106, 138, .16), transparent 32%),
+        radial-gradient(circle at 84% 78%, rgba(201, 149, 76, .16), transparent 30%),
+        linear-gradient(135deg, #ffffff 0%, var(--cream) 100%);
+      font-family: Arial, sans-serif;
+    }
+
+    main {
+      width: min(560px, 100%);
+      text-align: center;
+      padding: clamp(32px, 8vw, 56px);
+      border: 1px solid rgba(201, 106, 138, .22);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, .86);
+      box-shadow: 0 28px 70px rgba(24, 18, 43, .12);
+    }
+
+    img {
+      width: 120px;
+      height: auto;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 8vw, 3.25rem);
+      line-height: 1.05;
+      font-family: Georgia, serif;
+    }
+
+    p {
+      margin: 0;
+      color: #6d6472;
+      font-size: 1rem;
+      line-height: 1.7;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 22px 0 0;
+      padding: 10px 16px;
+      border-radius: 999px;
+      color: var(--rose-dark);
+      background: rgba(201, 106, 138, .1);
+      font-weight: 700;
+      font-size: .86rem;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/images/logo.png" alt="Lencho" width="120" height="80"/>
+    <h1>We will be back soon</h1>
+    <p>Lencho is getting a quick polish. Please check again in a little while.</p>
+    <div class="badge">Maintenance Mode</div>
+  </main>
+</body>
+</html>

@@ -421,6 +421,7 @@ const LEGAL_PAGE_DEFINITIONS = Object.freeze([
   { slug: 'contact-details', title: 'Contact Us', footerLabel: 'Contact Details' },
   { slug: 'grievance', title: 'Grievance Officer', footerLabel: 'Grievance' },
   { slug: 'payment-policy', title: 'Payment, COD and Refund Timeline', footerLabel: 'Payment Policy' },
+  { slug: 'size-guide', title: 'Size Guide', footerLabel: 'Size Guide' },
   { slug: 'disclaimer', title: 'Disclaimer', footerLabel: 'Disclaimer' }
 ]);
 const LEGAL_PAGE_SLUGS = new Set(LEGAL_PAGE_DEFINITIONS.map(page => page.slug));
@@ -533,7 +534,7 @@ const DEFAULT_FALLBACK_SETTINGS = {
   woollenHeroTitle: 'Handmade Woollen Collection',
   woollenHeroSubtitle: 'Premium crochet accessories, decor, and soft festive pieces.',
   woollenHeroButtonText: 'View All Woollen',
-  woollenHeroBanner: '/images/woollen_hero.png',
+  woollenHeroBanner: '/images/woollen_hero.jpg',
   woollenAbout: 'A separate handmade store experience for crochet, woollen accessories, gifts, and decor.',
   woollenHeaderBg: '#fff7fb',
   woollenHeaderText: '#3f2434',
@@ -1477,13 +1478,55 @@ app.use(morgan('tiny'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+function maintenanceModeEnabled() {
+  return parseBooleanEnv(process.env.MAINTENANCE_MODE, false);
+}
+
+function isMaintenanceBypassPath(reqPath = '') {
+  return reqPath === '/maintenance.html' ||
+    reqPath === '/favicon.svg' ||
+    reqPath === '/robots.txt' ||
+    reqPath === '/sitemap.xml' ||
+    reqPath === '/llms.txt' ||
+    reqPath.startsWith('/admin') ||
+    reqPath.startsWith('/api/admin') ||
+    reqPath.startsWith('/api/auth') ||
+    reqPath.startsWith('/api/me') ||
+    reqPath.startsWith('/css/') ||
+    reqPath.startsWith('/js/') ||
+    reqPath.startsWith('/images/') ||
+    reqPath.startsWith('/uploads/');
+}
+
+app.use((req, res, next) => {
+  if (!maintenanceModeEnabled() || isMaintenanceBypassPath(req.path)) return next();
+  if (req.path.startsWith('/api/')) {
+    res.set('Retry-After', '3600');
+    return res.status(503).json({ error: 'Site is under maintenance. Please try again shortly.' });
+  }
+  res.set('Retry-After', '3600');
+  return res.status(503).sendFile(path.join(__dirname, 'public', 'maintenance.html'));
+});
+
+function setStaticCacheHeaders(res, filePath) {
+  if (/\.(?:css|js|png|jpg|jpeg|webp|avif|svg|ico|woff2?|ttf)$/i.test(filePath)) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  } else if (/\.(?:html|txt|xml|json)$/i.test(filePath)) {
+    res.setHeader('Cache-Control', 'public, max-age=300');
+  }
+}
+
 // Add cache headers for static assets (serve legacy public folder)
-app.use(express.static(path.join(__dirname, 'public'), { 
-  maxAge: '7d', 
-  etag: false,
-  index: false
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: 0,
+  etag: true,
+  index: false,
+  setHeaders: setStaticCacheHeaders
 }));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), { maxAge: '30d' }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  maxAge: '365d',
+  immutable: true
+}));
 
 // Cache slow-changing API responses only. Catalog must refresh immediately after admin edits.
 app.use((req, res, next) => {
@@ -5275,7 +5318,7 @@ app.get('/debug', (req, res) => {
   res.send(`<div style="font-family:sans-serif;padding:2rem;text-align:center;"><h1 style="color:#c9748f;">✦ Lencho V3 Live Debug ✦</h1><p><b>Time:</b> ${new Date().toLocaleString('en-IN')}</p><p><b>Status:</b> Live!</p><button onclick="location.href='/'" style="padding:10px 20px;background:#c9748f;color:#fff;border:none;border-radius:5px;cursor:pointer;">Go to Home</button></div>`);
 });
 
-['products', 'product', 'cart', 'checkout', 'orders', 'track', 'dashboard', 'admin', 'login', 'signup', 'wishlist', 'contact', 'terms', 'privacy', 'disclaimer', 'woollen']
+['products', 'product', 'cart', 'checkout', 'orders', 'track', 'dashboard', 'admin', 'login', 'signup', 'wishlist', 'contact', 'terms', 'privacy', 'shipping', 'returns', 'cancellation', 'contact-details', 'grievance', 'payment-policy', 'size-guide', 'disclaimer', 'woollen']
   .forEach(page => { app.get(`/${page}`, sendIndex); app.get(`/${page}/:sub`, sendIndex); });
 
 app.use('/api', (req, res) => {

@@ -41,23 +41,31 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link rel="preconnect" href="https://images.unsplash.com" crossorigin/>
-  <link rel="preconnect" href="https://plus.unsplash.com" crossorigin/>
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net"/>
   <link rel="dns-prefetch" href="https://images.unsplash.com"/>
-  <link rel="dns-prefetch" href="https://plus.unsplash.com"/>
+  <link rel="preload" as="image" href="/images/hero_model.png" fetchpriority="high"/>
   
   <!-- Google Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=Jost:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&display=swap" rel="stylesheet"/>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=Jost:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=Jost:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&display=swap" rel="stylesheet"/></noscript>
   
   <!-- Font Awesome Icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer"/>
-  
-  <!-- Firebase SDK (Google Auth only) -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" onload="this.onload=null;this.rel='stylesheet'"/>
+  <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer"/></noscript>
   
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="/css/style.css?v=5.2"/>
+  <link rel="stylesheet" href="/css/style.css?v=5.3"/>
+
+  <script>
+    window.__lenchoScriptsReady = false;
+  </script>
+  <script defer src="/js/app.js?v=5.6"></script>
+  <script defer src="/js/pages.js?v=4.9"></script>
+  <script defer src="/js/dashboard.js?v=4.6"></script>
+  <script defer src="/js/admin.js?v=6.0"></script>
+  <script defer src="/js/admin-gst-settings.js?v=4.6"></script>
+  <script defer src="/js/chatbot.js?v=4.6"></script>
+  <script defer src="/js/boot.js?v=1.1"></script>
   
   <!-- Google Tag Manager (Optional - Add your GTM ID) -->
   <!-- <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
@@ -127,10 +135,7 @@
 </head>
 <body>
   <!-- Loading Screen -->
-  <div id="loading-screen">
-    <div class="loader-logo"><img src="/images/logo.png" alt="Lencho"/></div>
-    <div class="loader-spinner"></div>
-  </div>
+  <div id="loading-screen" class="hidden" aria-hidden="true"></div>
 
   <!-- Toast Notification -->
   <div id="toast-container"></div>
@@ -301,10 +306,10 @@
   <header id="site-header">
     <div class="header-inner">
       <button class="hamburger" id="hamburger-btn"><i class="fas fa-bars"></i></button>
-      <a href="/" class="site-logo" onclick="navigate('/')"><img src="/images/logo.png" alt="Lencho Logo"/></a>
+      <a href="/" class="site-logo" onclick="event.preventDefault(); navigate('/')"><img src="/images/logo.png" alt="Lencho Logo" width="120" height="80" decoding="async" fetchpriority="high"/></a>
       <nav class="main-nav" id="main-nav">
         <button class="nav-close" id="nav-close-btn"><i class="fas fa-times"></i></button>
-        <a href="/" class="nav-link" onclick="navigate('/')">Home</a>
+        <a href="/" class="nav-link" onclick="event.preventDefault(); navigate('/')">Home</a>
         <a href="/woollen" class="nav-link" onclick="event.preventDefault(); navigate('/woollen')">Woollen</a>
         <div class="nav-dropdown" id="nav-collections-dd">
           <span class="nav-link" style="cursor:pointer;" onclick="toggleNavDropdown(event)" data-href="/products">Collections <i class="fas fa-chevron-down" style="font-size:.65rem;transition:transform .2s;" id="coll-arrow"></i></span>
@@ -358,31 +363,31 @@
         <div class="footer-logo">✦ Lencho ✦</div>
         <p class="footer-desc">Crafting elegance for the modern woman. Premium artificial jewellery that celebrates your unique style.</p>
         <div class="social-links">
-          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Follow us on Instagram" title="Instagram"><i class="fab fa-instagram"></i></a>
-          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Like us on Facebook" title="Facebook"><i class="fab fa-facebook-f"></i></a>
-          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Chat with us on WhatsApp" title="WhatsApp"><i class="fab fa-whatsapp"></i></a>
-          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Follow us on Twitter" title="Twitter"><i class="fab fa-x-twitter"></i></a>
-          <a href="#" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Follow us on Pinterest" title="Pinterest"><i class="fab fa-pinterest-p"></i></a>
+          <a href="https://www.instagram.com/lencho_official" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Follow us on Instagram" title="Instagram"><i class="fab fa-instagram"></i></a>
+          <a href="https://www.facebook.com/lencho_official" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Like us on Facebook" title="Facebook"><i class="fab fa-facebook-f"></i></a>
+          <a href="https://wa.me/917404217625" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Chat with us on WhatsApp" title="WhatsApp"><i class="fab fa-whatsapp"></i></a>
+          <a href="https://x.com/lencho_official" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Follow us on Twitter" title="Twitter"><i class="fab fa-x-twitter"></i></a>
+          <a href="https://www.pinterest.com/lencho_official" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Follow us on Pinterest" title="Pinterest"><i class="fab fa-pinterest-p"></i></a>
         </div>
       </div>
       <div class="footer-col footer-dropdown" onclick="toggleFooterDropdown(this)">
         <h4>Quick Links <i class="fas fa-chevron-down" style="font-size:.65rem;transition:transform .2s;margin-left:8px;"></i></h4>
         <ul class="footer-col-menu">
-          <li><a onclick="navigate('/')">Home</a></li>
-          <li><a onclick="navigate('/products?category=earrings')">Earrings</a></li>
-          <li><a onclick="navigate('/products?category=necklace')">Necklace</a></li>
-          <li><a onclick="navigate('/products?category=toe-rings')">Toe Rings</a></li>
-          <li><a onclick="navigate('/track')">Track Order</a></li>
+          <li><a href="/" onclick="event.preventDefault(); navigate('/')">Home</a></li>
+          <li><a href="/products?category=earrings" onclick="event.preventDefault(); navigate('/products?category=earrings')">Earrings</a></li>
+          <li><a href="/products?category=necklace" onclick="event.preventDefault(); navigate('/products?category=necklace')">Necklace</a></li>
+          <li><a href="/products?category=toe-rings" onclick="event.preventDefault(); navigate('/products?category=toe-rings')">Toe Rings</a></li>
+          <li><a href="/track" onclick="event.preventDefault(); navigate('/track')">Track Order</a></li>
         </ul>
       </div>
       <div class="footer-col footer-dropdown" onclick="toggleFooterDropdown(this)">
         <h4>Customer Care <i class="fas fa-chevron-down" style="font-size:.65rem;transition:transform .2s;margin-left:8px;"></i></h4>
         <ul class="footer-col-menu">
-          <li><a onclick="navigate('/dashboard')">My Account</a></li>
-          <li><a onclick="navigate('/cart')">My Cart</a></li>
-          <li><a onclick="navigate('/wishlist')">Wishlist</a></li>
-          <li><a href="#">Returns & Refunds</a></li>
-          <li><a href="#">Size Guide</a></li>
+          <li><a href="/dashboard" onclick="event.preventDefault(); navigate('/dashboard')">My Account</a></li>
+          <li><a href="/cart" onclick="event.preventDefault(); navigate('/cart')">My Cart</a></li>
+          <li><a href="/wishlist" onclick="event.preventDefault(); navigate('/wishlist')">Wishlist</a></li>
+          <li><a href="/returns" onclick="event.preventDefault(); navigate('/returns')">Returns & Refunds</a></li>
+          <li><a href="/size-guide" onclick="event.preventDefault(); navigate('/size-guide')">Size Guide</a></li>
         </ul>
       </div>
       <div class="footer-col footer-dropdown" onclick="toggleFooterDropdown(this)" id="contact">
@@ -404,15 +409,15 @@
       <p>© 2026 Lencho. All rights reserved.</p>
       <p>Made with ❤️ in India | Premium Artificial Jewellery Brand</p>
       <p style="margin-top:.5rem;font-size:.75rem;">
-        <a onclick="navigate('/terms')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Terms &amp; Conditions</a> |
-        <a onclick="navigate('/privacy')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Privacy Policy</a> |
-        <a onclick="navigate('/shipping')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Shipping</a> |
-        <a onclick="navigate('/returns')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Returns &amp; Refunds</a> |
-        <a onclick="navigate('/cancellation')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Cancellation</a> |
-        <a onclick="navigate('/payment-policy')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Payment/COD</a> |
-        <a onclick="navigate('/contact-details')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Contact Details</a> |
-        <a onclick="navigate('/grievance')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Grievance</a> |
-        <a onclick="navigate('/disclaimer')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Disclaimer</a>
+        <a href="/terms" onclick="event.preventDefault(); navigate('/terms')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Terms &amp; Conditions</a> |
+        <a href="/privacy" onclick="event.preventDefault(); navigate('/privacy')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Privacy Policy</a> |
+        <a href="/shipping" onclick="event.preventDefault(); navigate('/shipping')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Shipping</a> |
+        <a href="/returns" onclick="event.preventDefault(); navigate('/returns')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Returns &amp; Refunds</a> |
+        <a href="/cancellation" onclick="event.preventDefault(); navigate('/cancellation')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Cancellation</a> |
+        <a href="/payment-policy" onclick="event.preventDefault(); navigate('/payment-policy')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Payment/COD</a> |
+        <a href="/contact-details" onclick="event.preventDefault(); navigate('/contact-details')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Contact Details</a> |
+        <a href="/grievance" onclick="event.preventDefault(); navigate('/grievance')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Grievance</a> |
+        <a href="/disclaimer" onclick="event.preventDefault(); navigate('/disclaimer')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Disclaimer</a>
       </p>
     </div>
   </footer>
@@ -443,35 +448,5 @@
     </div>
   </div>
 
-  <script>
-    (async () => {
-      setTimeout(() => document.getElementById('loading-screen')?.classList.add('hidden'), 2500);
-      const scripts = [
-        '/js/firebase.js?v=1.1',
-        '/js/app.js?v=5.4',
-        '/js/pages.js?v=4.8',
-        '/js/dashboard.js?v=4.5',
-        '/js/admin.js?v=5.9',
-        '/js/admin-gst-settings.js?v=4.5',
-        '/js/chatbot.js?v=4.5'
-      ];
-
-      for (const src of scripts) {
-        const response = await fetch(src, { cache: 'no-store' });
-        if (!response.ok) throw new Error(`Failed to load ${src} (${response.status})`);
-
-        const code = await response.text();
-        const script = document.createElement('script');
-        script.textContent = code;
-        document.body.appendChild(script);
-      }
-
-      window.__lenchoScriptsReady = true;
-      window.dispatchEvent(new Event('lencho-scripts-ready'));
-    })().catch((error) => {
-      console.error('Script loader failed:', error);
-      document.getElementById('loading-screen')?.classList.add('hidden');
-    });
-  </script>
 </body>
 </html>

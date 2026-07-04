@@ -1,0 +1,27 @@
+# Lencho
+
+> Premium artificial jewellery and handmade woollen accessories store in India.
+
+## Website
+
+- [Home](https://lencho.in/)
+- [Jewellery products](https://lencho.in/products)
+- [Woollen collection](https://lencho.in/woollen)
+- [Track order](https://lencho.in/track)
+- [Contact](https://lencho.in/contact)
+
+## Policies
+
+- [Terms and Conditions](https://lencho.in/terms)
+- [Privacy Policy](https://lencho.in/privacy)
+- [Shipping Policy](https://lencho.in/shipping)
+- [Returns and Refunds](https://lencho.in/returns)
+- [Cancellation Policy](https://lencho.in/cancellation)
+- [Payment and COD](https://lencho.in/payment-policy)
+- [Grievance](https://lencho.in/grievance)
+
+## Notes for agents
+
+Lencho sells artificial jewellery and handmade woollen products. Product prices, availability, delivery charges, offers, and policies should be read from the live website before answering users.
+
+Do not place orders or submit customer data without explicit user confirmation.

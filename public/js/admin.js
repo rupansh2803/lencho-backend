@@ -1602,6 +1602,7 @@ function legalPageStarterTemplate(slug = '') {
     'contact-details': `Contact Us\n\nBusiness legal name:\nEmail:\nPhone:\nWhatsApp:\nRegistered/business address:\nCustomer support hours:\n\nFor product/order support, customers can contact us using the above details.`,
     grievance: `Grievance Officer\n\nBusiness legal name:\nGrievance officer name:\nEmail:\nPhone:\nAddress:\nWorking hours:\n\nCustomers can contact the grievance officer for unresolved complaints. We aim to acknowledge complaints within __ hours and resolve them within __ days.`,
     'payment-policy': `Payment, COD and Refund Timeline\n\nBusiness legal name:\nSupport email:\n\n1. Payment methods\nWe accept prepaid payments through available payment partners and COD where enabled.\n\n2. COD\nCOD availability depends on pin code, order value, and internal checks.\n\n3. Failed payments\nIf money is deducted but order is not confirmed, contact support with payment reference.\n\n4. Refund timeline\nApproved refunds are usually processed within __ business days. Bank/payment partner timelines may apply.`,
+    'size-guide': `Size Guide\n\nBusiness legal name:\nSupport email:\n\n1. Jewellery sizing\nAdd ring, toe ring, bracelet, bangle, chain, necklace, and anklet sizing guidance here.\n\n2. Adjustable products\nMention which products are adjustable and how customers should fit them safely.\n\n3. Measurement help\nExplain how customers can measure at home and contact support before ordering.\n\n4. Fit note\nProduct fit may vary slightly by design, material, and handmade finishing.`,
     disclaimer: `Disclaimer\n\nThe information on this website is provided in good faith for general shopping and product information. Product colors may vary slightly due to screen settings and photography lighting. Handmade products may have minor natural variations.`
   };
   return templates[slug] || '';
@@ -1623,6 +1624,7 @@ async function adminLegalPages(selectedSlug = 'privacy') {
     { slug: 'contact-details', title: 'Contact Us' },
     { slug: 'grievance', title: 'Grievance Officer' },
     { slug: 'payment-policy', title: 'Payment, COD and Refund Timeline' },
+    { slug: 'size-guide', title: 'Size Guide' },
     { slug: 'disclaimer', title: 'Disclaimer' }
   ];
   const pages = Array.isArray(res.pages) && res.pages.length ? res.pages : fallbackPages;

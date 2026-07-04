@@ -1939,8 +1939,8 @@ section {
   padding: clamp(3.25rem, 6vw, 5.5rem) 5%;
   overflow: hidden;
   background:
-    linear-gradient(120deg, rgba(255, 247, 251, .95) 0%, rgba(238, 249, 243, .96) 52%, rgba(255, 247, 224, .92) 100%),
-    url('/images/woollen_pattern_bg.png') center/520px;
+    radial-gradient(circle at 82% 18%, rgba(242, 208, 122, .14), transparent 34%),
+    linear-gradient(120deg, rgba(255, 247, 251, .95) 0%, rgba(238, 249, 243, .96) 52%, rgba(255, 247, 224, .92) 100%);
   border-top: 1px solid rgba(95, 125, 111, .11);
   border-bottom: 1px solid rgba(95, 125, 111, .11);
 }
@@ -7129,8 +7129,8 @@ label[for="captcha"],
 }
 .woollen-why-bg-pattern {
   position: absolute; inset: 0;
-  background-image: url('/images/woollen_pattern_bg.png');
-  background-size: 300px;
+  background-image: radial-gradient(circle at 20% 20%, rgba(107, 163, 104, .18), transparent 30%), radial-gradient(circle at 78% 70%, rgba(242, 208, 122, .2), transparent 32%);
+  background-size: auto;
   opacity: .05;
   pointer-events: none;
 }
@@ -8015,6 +8015,38 @@ body {
   .home-woollen-premium .section-title {
     font-size: clamp(2rem, 8vw, 3rem) !important;
   }
+}
+
+#loading-screen {
+  display: none !important;
+}
+
+body:not(.app-ready) #site-footer {
+  display: none !important;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  caret-color: var(--rose-dark) !important;
+  cursor: text !important;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+input:focus,
+textarea:focus,
+select:focus,
+[contenteditable="true"]:focus {
+  outline: 2px solid rgba(201, 106, 138, .32) !important;
+  outline-offset: 2px;
+}
+
+.home-woollen-premium {
+  background:
+    radial-gradient(circle at 80% 20%, rgba(242, 208, 122, .14), transparent 32%),
+    radial-gradient(circle at 15% 85%, rgba(110, 157, 139, .12), transparent 34%),
+    linear-gradient(135deg, #fffdfb 0%, #f5fbf8 55%, #fffaf0 100%) !important;
 }
 
 

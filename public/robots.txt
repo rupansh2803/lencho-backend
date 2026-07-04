@@ -7,6 +7,7 @@ Disallow: /*.json$
 Disallow: /*?sort=
 Allow: /
 Allow: /public/
+Allow: /llms.txt
 
 # Sitemaps
 Sitemap: https://lencho.in/sitemap.xml
