@@ -214,6 +214,353 @@ async function renderProductDetail(id) {
   loadRecommended(p.category, p.id);
 }
 
+function productDetailEscape(value = '') {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function productDetailText(product, key, fallback = '') {
+  const raw = product?.[key];
+  if (Array.isArray(raw)) return raw.map(item => String(item || '').trim()).filter(Boolean).join(', ') || fallback;
+  const text = String(raw ?? '').trim();
+  return text || fallback;
+}
+
+function productDetailLabel(value = '') {
+  return String(value || '').replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function productDetailList(value) {
+  if (Array.isArray(value)) return value.map(item => String(item || '').trim()).filter(Boolean);
+  const text = String(value || '').trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed.map(item => String(item || '').trim()).filter(Boolean);
+  } catch {}
+  return text.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+}
+
+function productDetailRowsHtml(rows) {
+  const cleanRows = rows
+    .map(([label, value]) => [label, String(value ?? '').trim()])
+    .filter(([, value]) => value);
+  if (!cleanRows.length) return '<div class="market-empty">Details will appear here after admin fills them.</div>';
+  return cleanRows.map(([label, value]) => `
+    <div class="market-spec-row">
+      <span>${productDetailEscape(label)}</span>
+      <strong>${productDetailEscape(value)}</strong>
+    </div>
+  `).join('');
+}
+
+function productDetailHighlights(product) {
+  const adminHighlights = productDetailList(product?.productHighlights);
+  if (adminHighlights.length) return adminHighlights.slice(0, 8);
+  return [
+    productDetailText(product, 'color') ? `Color: ${productDetailText(product, 'color')}` : '',
+    productDetailText(product, 'baseMaterial') ? `Base material: ${productDetailText(product, 'baseMaterial')}` : '',
+    productDetailText(product, 'ringSize') || productDetailText(product, 'size') ? `Size: ${productDetailText(product, 'ringSize') || productDetailText(product, 'size')}` : '',
+    productDetailText(product, 'occasion') ? `Occasion: ${productDetailText(product, 'occasion')}` : '',
+    productDetailText(product, 'finish') ? `Finish: ${productDetailText(product, 'finish')}` : '',
+    product?.gstRate ? `GST invoice available (${product.gstRate}%)` : ''
+  ].filter(Boolean).slice(0, 6);
+}
+
+function productDetailSpecRows(product) {
+  const sizeValue = productDetailText(product, 'ringSize') || productDetailText(product, 'size');
+  const netWeight = productDetailText(product, 'netWeight');
+  return [
+    ['Brand', productDetailText(product, 'brand', 'Lencho')],
+    ['Model Name', productDetailText(product, 'modelName', product.name || '')],
+    ['Model Number', productDetailText(product, 'modelNumber') || productDetailText(product, 'styleCode')],
+    ['Type', productDetailText(product, 'type') || productDetailLabel(product.category)],
+    ['Color', productDetailText(product, 'color')],
+    ['Ideal For', productDetailText(product, 'idealFor')],
+    ['Collection', productDetailText(product, 'collection')],
+    ['Occasion', productDetailText(product, 'occasion')],
+    ['Fit', productDetailText(product, 'fit')],
+    ['Base Material', productDetailText(product, 'baseMaterial')],
+    ['Plating', productDetailText(product, 'plating')],
+    ['Finish', productDetailText(product, 'finish')],
+    ['Stone Type', productDetailText(product, 'stoneType')],
+    ['Diamond Cut', productDetailText(product, 'diamondCut')],
+    ['Size', sizeValue],
+    ['Net Quantity', productDetailText(product, 'netQuantity')],
+    ['Net Weight', netWeight ? (/g|kg/i.test(netWeight) ? netWeight : `${netWeight} gms`) : ''],
+    ['In The Box', productDetailText(product, 'packageContains')],
+    ['Warranty', productDetailText(product, 'warranty')],
+    ['HSN Code', productDetailText(product, 'hsn')],
+    ['GST Rate', product?.gstRate ? `${product.gstRate}%` : '']
+  ];
+}
+
+function productDetailManufacturerRows(product) {
+  const manufacturer = [
+    productDetailText(product, 'manufacturerName'),
+    productDetailText(product, 'manufacturerAddress'),
+    productDetailText(product, 'manufacturerPincode')
+  ].filter(Boolean).join(', ');
+  const packer = [
+    productDetailText(product, 'packerName'),
+    productDetailText(product, 'packerAddress'),
+    productDetailText(product, 'packerPincode')
+  ].filter(Boolean).join(', ');
+  const importer = [
+    productDetailText(product, 'importerName'),
+    productDetailText(product, 'importerAddress'),
+    productDetailText(product, 'importerPincode')
+  ].filter(Boolean).join(', ');
+  return [
+    ['Generic Name', productDetailText(product, 'genericName')],
+    ['Country of Origin', productDetailText(product, 'countryOfOrigin', 'India')],
+    ['Manufacturer', manufacturer],
+    ['Packer', packer],
+    ['Importer', importer],
+    ['Seller SKU ID', productDetailText(product, 'sellerSku') || productDetailText(product, 'sku')],
+    ['Style Code / Product ID', productDetailText(product, 'styleCode')],
+    ['Care Instructions', productDetailText(product, 'careInstructions')]
+  ];
+}
+
+function renderProductDetailSkeleton() {
+  return `
+    <div class="product-detail-container product-detail-skeleton container">
+      <div class="product-detail-grid">
+        <div class="skeleton-block skeleton-gallery"></div>
+        <div class="skeleton-info">
+          <div class="skeleton-line wide"></div>
+          <div class="skeleton-line medium"></div>
+          <div class="skeleton-line price"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function renderProductDetail(id) {
+  const app = document.getElementById('app');
+  app.innerHTML = renderProductDetailSkeleton();
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+
+  const p = await api(`/api/products/${id}`, { timeoutMs: 5000 });
+  if (p.error) {
+    app.innerHTML = `<div class="container" style="padding:10rem 0;text-align:center;"><h2>Product Not Found</h2><button class="btn-primary" onclick="navigate('/products')">Back to Shop</button></div>`;
+    return;
+  }
+
+  const selectedVariant = p.hasVariants ? (p.variants?.[0] || null) : null;
+  const activeImages = selectedVariant?.images?.length ? selectedVariant.images : (Array.isArray(p.images) && p.images.length ? p.images : [p.image]);
+  const activePrice = Number(selectedVariant?.price) || Number(p.price) || 0;
+  const activeMrp = Number(selectedVariant?.mrp) || Number(p.mrp) || 0;
+  const activeStock = Number(selectedVariant?.stock) || Number(p.stock) || 0;
+  const discountVal = activeMrp ? Math.round(((activeMrp - activePrice) / activeMrp) * 100) : 0;
+  const categoryLabel = productDetailLabel(p.category);
+  const brandName = productDetailText(p, 'brand', 'Lencho');
+  const productType = productDetailText(p, 'type') || categoryLabel;
+  const highlights = productDetailHighlights(p);
+  const deliveryStart = formatDate(new Date(Date.now() + 3 * 86400000));
+  const deliveryEnd = formatDate(new Date(Date.now() + 5 * 86400000));
+  const detailPath = p.storeType === 'woollen' ? '/woollen/products' : '/products';
+  currentPageContext = { route: `/product/${p.id}`, category: p.category, product: p };
+  window.__selectedProductVariant = selectedVariant ? selectedVariant.id : '';
+
+  app.innerHTML = `
+  <div class="product-detail-container product-detail-market container reveal">
+    <button class="back-link" type="button" onclick="navigate('${detailPath}')"><i class="fas fa-arrow-left"></i> Back to shop</button>
+    <div class="product-detail-grid">
+      <div class="product-gallery">
+        <div class="gallery-thumbs-top">
+          ${activeImages.map((img, i) => `
+            <div class="thumb-item ${i === 0 ? 'active' : ''}" onclick="setThumb(this, '${img}')">
+              <img src="${safeImageUrl(img, p.category)}" ${imageFallbackAttr(p.category, img)} alt="Thumbnail ${i + 1}"/>
+            </div>
+          `).join('')}
+        </div>
+        <div class="gallery-main">
+          <img id="main-product-img" src="${safeImageUrl(activeImages[0], p.category)}" ${imageFallbackAttr(p.category, activeImages[0])} alt="${productDetailEscape(p.name)}"/>
+          ${discountVal ? `<span class="badge-large">${discountVal}% OFF</span>` : ''}
+        </div>
+      </div>
+
+      <div class="product-info-amazon">
+        <div class="product-breadcrumb-mini">${productDetailEscape(brandName)} / ${productDetailEscape(productType)}</div>
+        <h1 class="product-title">${productDetailEscape(p.name)}</h1>
+
+        <div class="rating-and-reviews">
+          <span class="stars">${renderStars(p.rating || 0)}</span>
+          ${p.reviews?.length ? `<span class="review-count">${p.reviews.length} ${p.reviews.length === 1 ? 'review' : 'reviews'}</span>` : '<span class="review-count">No reviews yet</span>'}
+        </div>
+
+        <div class="price-section market-price-row">
+          <span class="price-current" id="product-price-current">${formatCurrency(activePrice)}</span>
+          ${activeMrp ? `<span class="price-mrp" id="product-price-mrp">${formatCurrency(activeMrp)}</span>` : '<span class="price-mrp" id="product-price-mrp" style="display:none;"></span>'}
+          ${discountVal ? `<span class="discount-badge">${discountVal}% OFF</span>` : ''}
+        </div>
+
+        ${p.hasVariants ? `
+          <div class="variant-panel">
+            <div class="variant-title">Select ${productDetailEscape(p.variantType || 'Variant')}</div>
+            <div id="product-variant-options" class="variant-options">
+              ${p.variants.map((variant, index) => {
+                const isColor = p.variantType === 'color';
+                return `
+                  <button type="button" class="variant-chip ${index === 0 ? 'active' : ''}" onclick="selectProductVariant('${p.id}','${variant.id}')">
+                    ${isColor ? `<span style="width:18px;height:18px;border-radius:999px;border:1px solid rgba(0,0,0,.12);background:${variant.colorHex || '#f1d1db'};display:inline-block;"></span>` : ''}
+                    <span>${productDetailEscape(variant.label)}</span>
+                  </button>
+                `;
+              }).join('')}
+            </div>
+            <div id="product-sku-line" class="market-sku-line">${selectedVariant?.sku ? `SKU: ${productDetailEscape(selectedVariant.sku)}` : (p.sku ? `SKU: ${productDetailEscape(p.sku)}` : '')}</div>
+          </div>
+        ` : (p.sku || p.sellerSku ? `<div id="product-sku-line" class="market-sku-line">SKU: ${productDetailEscape(p.sellerSku || p.sku)}</div>` : '<div id="product-sku-line"></div>')}
+
+        <div class="delivery-info-amazon market-delivery-card">
+          <h3>Delivery details</h3>
+          <div class="delivery-row delivery-home-row">
+            <i class="fas fa-home"></i>
+            <span><strong>HOME</strong> Delivery by ${deliveryStart} - ${deliveryEnd}</span>
+          </div>
+          <div class="delivery-row">
+            <i class="fas fa-shipping-fast"></i>
+            <span>Free delivery above ${formatCurrency(999)} | Standard: 3-5 days</span>
+          </div>
+          <div class="delivery-row">
+            <i class="fas fa-undo"></i>
+            <span>7-Day Returns | Easy exchange as per policy</span>
+          </div>
+          <div class="delivery-row">
+            <i class="fas fa-shield-alt"></i>
+            <span>Secure checkout | GST invoice available</span>
+          </div>
+        </div>
+
+        <div class="stock-info">
+          <strong>Availability:</strong>
+          <span id="product-stock-label" class="${activeStock > 10 ? 'stock-available' : activeStock > 0 ? 'stock-limited' : 'stock-unavailable'}">
+            ${activeStock > 10 ? 'In Stock' : activeStock > 0 ? `Only ${activeStock} left` : 'Out of Stock'}
+          </span>
+        </div>
+
+        <div class="product-actions">
+          <button class="btn-add-to-cart" id="product-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '')" ${activeStock===0?'disabled':''}>
+            <i class="fas fa-shopping-bag"></i> Add to Cart
+          </button>
+          <button class="btn-wishlist-large" onclick="toggleWishlist('${p.id}',this)">
+            <i class="fas fa-heart"></i> Add to Wishlist
+          </button>
+        </div>
+
+        <div class="product-highlights-card">
+          <h3>Product highlights</h3>
+          <div class="product-highlights-grid">
+            ${[
+              ['Color', productDetailText(p, 'color')],
+              ['Occasion', productDetailText(p, 'occasion')],
+              ['Base Material', productDetailText(p, 'baseMaterial')],
+              ['Size', productDetailText(p, 'ringSize') || productDetailText(p, 'size')]
+            ].filter(([, value]) => value).map(([label, value]) => `
+              <div><span>${productDetailEscape(label)}</span><strong>${productDetailEscape(value)}</strong></div>
+            `).join('') || `<div><span>Category</span><strong>${productDetailEscape(categoryLabel)}</strong></div>`}
+          </div>
+        </div>
+
+        <div class="market-detail-card">
+          <div class="market-detail-tabs">
+            <button class="detail-tab active" data-tab="specs" onclick="switchProductDetailTab('specs')">Specifications</button>
+            <button class="detail-tab" data-tab="description" onclick="switchProductDetailTab('description')">Description</button>
+            <button class="detail-tab" data-tab="manufacturer" onclick="switchProductDetailTab('manufacturer')">Manufacturer info</button>
+          </div>
+          <div class="detail-tab-panel active" id="detail-tab-specs">
+            ${productDetailRowsHtml(productDetailSpecRows(p))}
+          </div>
+          <div class="detail-tab-panel" id="detail-tab-description">
+            <p>${productDetailEscape(p.description || 'Description will appear here after admin fills it.')}</p>
+            ${highlights.length ? `<ul class="about-list compact">${highlights.map(item => `<li>${productDetailEscape(item)}</li>`).join('')}</ul>` : ''}
+          </div>
+          <div class="detail-tab-panel" id="detail-tab-manufacturer">
+            ${productDetailRowsHtml(productDetailManufacturerRows(p))}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="market-after-grid">
+      <div class="reviews-section">
+        <h2>Ratings and reviews</h2>
+        <div class="market-rating-summary">
+          <strong>${Number(p.rating || 0).toFixed(1).replace('.0', '') || '0'}</strong>
+          <span>${renderStars(p.rating || 0)}</span>
+          <small>${p.reviews?.length || 0} verified review${(p.reviews?.length || 0) === 1 ? '' : 's'}</small>
+        </div>
+        <div id="reviews-list">
+          ${(p.reviews && p.reviews.length) ? p.reviews.map(r=>`
+            <div class="review-card">
+              <div class="review-header">
+                <span class="reviewer-name">${productDetailEscape(r.userName)}</span>
+                <div class="stars" style="font-size:.85rem;">${renderStars(r.rating)}</div>
+                <span class="review-date">${formatDate(r.date)}</span>
+              </div>
+              <p class="review-text">${productDetailEscape(r.comment)}</p>
+            </div>`).join('') : '<p style="color:var(--gray);">No reviews yet. Be the first to review!</p>'}
+        </div>
+        <div class="add-review">
+          <h3>Write a Review</h3>
+          <div class="form-group"><label>Rating</label>
+            <div id="star-picker" style="display:flex;gap:.5rem;font-size:1.5rem;color:#ddd;cursor:pointer;">
+              ${[1,2,3,4,5].map(n=>`<span onclick="setReviewRating(${n})" onmouseover="hoverRating(${n})" onmouseout="resetRatingHover()" data-val="${n}">&#9733;</span>`).join('')}
+            </div>
+            <input type="hidden" id="review-rating" value="5"/>
+          </div>
+          <div class="form-group"><label>Your Review</label><textarea id="review-comment" rows="3" placeholder="Share your experience..." style="resize:none;"></textarea></div>
+          <button class="btn-primary" onclick="submitReview('${p.id}')">Submit Review</button>
+        </div>
+      </div>
+
+      <div class="market-qa-card">
+        <h2>Questions and Answers</h2>
+        <p>Be the first to ask about this product.</p>
+        <div class="qa-input-row">
+          <input placeholder="Ask a question" aria-label="Ask a question about this product"/>
+          <button class="btn-outline" onclick="toast('Question feature will be connected soon', 'info')">Ask</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:5rem;">
+      <div class="section-header reveal">
+        <h2 class="section-title">Recommended For You</h2>
+        <div class="divider"></div>
+        <p class="section-desc">Handpicked styles to complete your look</p>
+      </div>
+      <div class="products-grid" id="recommended-grid">
+         <div style="grid-column:1/-1;text-align:center;color:var(--gray);">Looking for matching styles...</div>
+      </div>
+    </div>
+  </div>`;
+
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  initScrollReveal();
+  loadRecommended(p.category, p.id);
+}
+
+function switchProductDetailTab(tab) {
+  document.querySelectorAll('.detail-tab').forEach(button => {
+    button.classList.toggle('active', button.dataset.tab === tab);
+  });
+  document.querySelectorAll('.detail-tab-panel').forEach(panel => {
+    panel.classList.toggle('active', panel.id === `detail-tab-${tab}`);
+  });
+}
+
 async function selectProductVariant(productId, variantId) {
   const product = currentPageContext?.product;
   if (!product || String(product.id) !== String(productId)) return;
@@ -533,7 +880,7 @@ async function renderWishlist() {
           return `
         <div class="product-card reveal" onclick="navigate('/product/${p.id||p._id}')" style="cursor:pointer;border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08);transition:all .3s;">
           <div style="position:relative;aspect-ratio:1;overflow:hidden;background:#f9f9f9;">
-            <img src="${safeImageUrl(p.images?.[0] || p.image, p.category)}" ${imageFallbackAttr(p.category, p.images?.[0])} alt="${p.name}" style="width:100%;height:100%;object-fit:cover;"/>
+            <img src="${safeImageUrl(p.images?.[0] || p.image, p.category)}" ${imageFallbackAttr(p.category, p.images?.[0])} alt="${p.name}" style="width:100%;height:100%;object-fit:contain;background:#fff;"/>
             ${discountVal ? `<span style="position:absolute;top:12px;left:12px;background:#ff4d6d;color:#fff;padding:6px 12px;border-radius:8px;font-size:.75rem;font-weight:700;">${discountVal}% OFF</span>` : ''}
             <button class="product-wish active" onclick="event.stopPropagation(); removeFromWatchlist('${p.id||p._id}', this)" title="Remove from Watchlist" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.95);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;transition:transform .2s;font-size:.9rem;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'"><i class="fas fa-heart" style="color:#c9748f;"></i></button>
           </div>

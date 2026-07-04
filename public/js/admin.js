@@ -2824,6 +2824,118 @@ function adminProductManagerSlugLabel(slug = '') {
   return String(slug || '').replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
 }
 
+const ADMIN_PRODUCT_DETAIL_FIELDS = [
+  { key: 'brand', label: 'Brand', placeholder: 'Lencho' },
+  { key: 'modelName', label: 'Model Name', placeholder: 'Adjustable Toe Ring' },
+  { key: 'modelNumber', label: 'Model Number', placeholder: 'LEN-TR-001' },
+  { key: 'type', label: 'Product Type', placeholder: 'Toe Ring / Earrings / Scrunchie' },
+  { key: 'color', label: 'Color', placeholder: 'Silver / Rose Gold / Pink' },
+  { key: 'size', label: 'Size', placeholder: 'Free Size / S / M / L' },
+  { key: 'ringSize', label: 'Ring Size', placeholder: 'Adjustable' },
+  { key: 'idealFor', label: 'Ideal For', placeholder: 'Women / Girls / Baby' },
+  { key: 'occasion', label: 'Occasion', placeholder: 'Everyday / Festive / Wedding' },
+  { key: 'collection', label: 'Collection', placeholder: 'Ethnic / Western / Handmade' },
+  { key: 'fit', label: 'Fit', placeholder: 'Regular / Adjustable' },
+  { key: 'baseMaterial', label: 'Base Material', placeholder: 'Brass, Metal, Alloy' },
+  { key: 'plating', label: 'Plating', placeholder: 'Silver Plated / Gold Plated' },
+  { key: 'finish', label: 'Finish', placeholder: 'Oxidized / Glossy / Matte' },
+  { key: 'stoneType', label: 'Stone Type', placeholder: 'Crystal / Pearl / NA' },
+  { key: 'diamondCut', label: 'Diamond Cut', placeholder: 'NA' },
+  { key: 'netQuantity', label: 'Net Quantity', placeholder: '1 pair / 6 pieces' },
+  { key: 'netWeight', label: 'Net Weight (gms)', placeholder: '25' },
+  { key: 'packageContains', label: 'In The Box', placeholder: '1 pair toe rings' },
+  { key: 'warranty', label: 'Warranty', placeholder: 'No warranty / 7-day replacement' },
+  { key: 'sellerSku', label: 'Seller SKU ID', placeholder: 'LEN-SELLER-001' },
+  { key: 'styleCode', label: 'Style Code / Product ID', placeholder: 'LEN-STYLE-001' },
+  { key: 'genericName', label: 'Generic Name', placeholder: 'Artificial Jewellery' },
+  { key: 'countryOfOrigin', label: 'Country of Origin', placeholder: 'India' }
+];
+
+const ADMIN_PRODUCT_LEGAL_FIELDS = [
+  { key: 'manufacturerName', label: 'Manufacturer Name', placeholder: 'Lencho' },
+  { key: 'manufacturerAddress', label: 'Manufacturer Address', placeholder: 'Full manufacturer address' },
+  { key: 'manufacturerPincode', label: 'Manufacturer Pincode', placeholder: '133201' },
+  { key: 'packerName', label: 'Packer Name', placeholder: 'Lencho' },
+  { key: 'packerAddress', label: 'Packer Address', placeholder: 'Full packer address' },
+  { key: 'packerPincode', label: 'Packer Pincode', placeholder: '133201' },
+  { key: 'importerName', label: 'Importer Name', placeholder: 'Only if imported' },
+  { key: 'importerAddress', label: 'Importer Address', placeholder: 'Only if imported' },
+  { key: 'importerPincode', label: 'Importer Pincode', placeholder: 'Only if imported' }
+];
+
+function adminProductDetailValue(product, key) {
+  const value = product?.[key];
+  if (Array.isArray(value)) return value.join('\n');
+  return value ?? '';
+}
+
+function renderAdminProductDetailInput(field, product) {
+  return `<div class="form-group"><label>${field.label}</label><input id="p-${field.key}" value="${adminProductManagerEscape(adminProductDetailValue(product, field.key))}" placeholder="${adminProductManagerEscape(field.placeholder || '')}"/></div>`;
+}
+
+function renderAdminProductDetailSection(product) {
+  return `
+    <div class="admin-seller-section">
+      <div class="admin-seller-head">
+        <div>
+          <h3>Marketplace Product Details</h3>
+          <p>Fill these like a seller panel so the live product page looks professional.</p>
+        </div>
+        <span>Specs</span>
+      </div>
+      <div class="form-grid">
+        ${ADMIN_PRODUCT_DETAIL_FIELDS.map(field => renderAdminProductDetailInput(field, product)).join('')}
+      </div>
+      <div class="form-grid">
+        <div class="form-group"><label>Product Highlights (one per line)</label><textarea id="p-productHighlights" rows="4" placeholder="Adjustable size&#10;Silver oxidized finish&#10;Comfortable daily wear">${adminProductManagerEscape(adminProductDetailValue(product, 'productHighlights'))}</textarea></div>
+        <div class="form-group"><label>Care Instructions</label><textarea id="p-careInstructions" rows="4" placeholder="Keep away from water and perfume">${adminProductManagerEscape(adminProductDetailValue(product, 'careInstructions'))}</textarea></div>
+        <div class="form-group"><label>Search Keywords</label><textarea id="p-searchKeywords" rows="4" placeholder="toe ring, bichiya, silver jewellery">${adminProductManagerEscape(adminProductDetailValue(product, 'searchKeywords'))}</textarea></div>
+        <div class="form-group"><label>Return Policy Text</label><textarea id="p-returnPolicyText" rows="4" placeholder="7-day return/exchange as per policy">${adminProductManagerEscape(adminProductDetailValue(product, 'returnPolicyText'))}</textarea></div>
+      </div>
+    </div>
+
+    <div class="admin-seller-section">
+      <div class="admin-seller-head">
+        <div>
+          <h3>Legal / Manufacturer Info</h3>
+          <p>Useful for invoices, compliance pages, and product detail trust sections.</p>
+        </div>
+        <span>Legal</span>
+      </div>
+      <div class="form-grid">
+        ${ADMIN_PRODUCT_LEGAL_FIELDS.map(field => renderAdminProductDetailInput(field, product)).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function collectAdminProductDetailPayload() {
+  const payload = {};
+  [...ADMIN_PRODUCT_DETAIL_FIELDS, ...ADMIN_PRODUCT_LEGAL_FIELDS].forEach(field => {
+    payload[field.key] = document.getElementById(`p-${field.key}`)?.value.trim() || '';
+  });
+  payload.productHighlights = (document.getElementById('p-productHighlights')?.value || '')
+    .split(/\r?\n/)
+    .map(item => item.trim())
+    .filter(Boolean);
+  payload.careInstructions = document.getElementById('p-careInstructions')?.value.trim() || '';
+  payload.searchKeywords = document.getElementById('p-searchKeywords')?.value.trim() || '';
+  payload.returnPolicyText = document.getElementById('p-returnPolicyText')?.value.trim() || '';
+  return payload;
+}
+
+function copyAdminProductDetailFields(source = {}) {
+  const detail = {};
+  [...ADMIN_PRODUCT_DETAIL_FIELDS, ...ADMIN_PRODUCT_LEGAL_FIELDS].forEach(field => {
+    detail[field.key] = source[field.key] || '';
+  });
+  detail.productHighlights = Array.isArray(source.productHighlights) ? [...source.productHighlights] : [];
+  detail.careInstructions = source.careInstructions || '';
+  detail.searchKeywords = source.searchKeywords || '';
+  detail.returnPolicyText = source.returnPolicyText || '';
+  return detail;
+}
+
 function snapshotAdminProductManagerDraft() {
   if (!document.getElementById('p-name') || !adminProductFormState) return adminProductManagerState.editingProduct;
   try {
@@ -3067,6 +3179,8 @@ function renderAdminProductManager(preserveDraft = false) {
 
       <div class="form-group"><label>Description *</label><textarea id="p-desc" rows="4" placeholder="Product description...">${adminProductManagerEscape(product?.description || '')}</textarea></div>
 
+      ${renderAdminProductDetailSection(product)}
+
       <div id="admin-variant-section" style="display:${adminProductFormState.hasVariants ? 'block' : 'none'};margin-bottom:1.5rem;border:1px solid var(--border);border-radius:16px;padding:1rem;">
         <div class="form-grid"><div class="form-group"><label>Variant Type</label><select id="p-variant-type" onchange="renderAdminVariantRows()">${['color','size','weight','material','length','custom'].map(type => `<option value="${type}" ${adminProductFormState.variantType===type?'selected':''}>${type.charAt(0).toUpperCase()+type.slice(1)}</option>`).join('')}</select></div></div>
         <div id="admin-variant-rows"></div>
@@ -3290,6 +3404,7 @@ function collectAdminProductPayload() {
     gstRate: document.getElementById('p-gst').value,
     hsn: document.getElementById('p-hsn').value,
     description: document.getElementById('p-desc').value.trim(),
+    ...collectAdminProductDetailPayload(),
     featured: document.getElementById('p-featured').value,
     popular: document.getElementById('p-popular').value,
     trending: document.getElementById('p-trending').value,
@@ -3326,6 +3441,7 @@ function createAdminDraftFromPayload(payload) {
     gstRate: payload.gstRate,
     hsn: payload.hsn,
     description: payload.description,
+    ...copyAdminProductDetailFields(payload),
     featured: payload.featured === 'true' || payload.featured === true,
     popular: payload.popular === 'true' || payload.popular === true,
     trending: payload.trending === 'true' || payload.trending === true,
@@ -3419,6 +3535,7 @@ function buildAdminProductBodyFromRecord(product, overrides = {}) {
     gstRate: merged.gstRate || 3,
     hsn: merged.hsn || '7117',
     description: merged.description || '',
+    ...copyAdminProductDetailFields(merged),
     featured: merged.featured ? 'true' : 'false',
     popular: merged.popular ? 'true' : 'false',
     trending: merged.trending ? 'true' : 'false',

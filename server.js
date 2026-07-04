@@ -836,6 +836,37 @@ function sanitizeImageList(list, category = '') {
     .slice(0, 20);
 }
 
+const PRODUCT_DETAIL_TEXT_FIELDS = [
+  'brand', 'modelName', 'modelNumber', 'type', 'color', 'size', 'ringSize',
+  'idealFor', 'occasion', 'collection', 'fit', 'baseMaterial', 'plating',
+  'finish', 'stoneType', 'diamondCut', 'netQuantity', 'netWeight',
+  'packageContains', 'warranty', 'sellerSku', 'styleCode', 'genericName',
+  'countryOfOrigin', 'careInstructions', 'searchKeywords', 'shippingProfile',
+  'returnPolicyText', 'manufacturerName', 'manufacturerAddress',
+  'manufacturerPincode', 'packerName', 'packerAddress', 'packerPincode',
+  'importerName', 'importerAddress', 'importerPincode'
+];
+
+function normalizeStringList(value, fallback = []) {
+  const parsed = parseMaybeJson(value, value);
+  const raw = Array.isArray(parsed)
+    ? parsed
+    : String(parsed || '').split(/\r?\n/);
+  const normalized = raw
+    .map(item => String(item || '').trim())
+    .filter(Boolean);
+  return normalized.length ? normalized.slice(0, 16) : (Array.isArray(fallback) ? fallback.map(item => String(item || '').trim()).filter(Boolean).slice(0, 16) : []);
+}
+
+function collectProductDetailFields(body = {}, existingProduct = null) {
+  const fields = {};
+  PRODUCT_DETAIL_TEXT_FIELDS.forEach(key => {
+    fields[key] = String(body[key] ?? existingProduct?.[key] ?? '').trim();
+  });
+  fields.productHighlights = normalizeStringList(body.productHighlights ?? existingProduct?.productHighlights, existingProduct?.productHighlights || []);
+  return fields;
+}
+
 function normalizeVariantList(variants, category = '') {
   const list = Array.isArray(variants) ? variants : [];
   return list
@@ -911,6 +942,7 @@ async function buildProductPayload(req, existingProduct = null) {
     stock: normalizedStock,
     description: String(body.description || existingProduct?.description || '').trim(),
     images,
+    ...collectProductDetailFields(body, existingProduct),
     gstRate: Number(body.gstRate ?? existingProduct?.gstRate) || 18,
     hsn: String(body.hsn || existingProduct?.hsn || '7117').trim(),
     featured: toBoolean(body.featured, existingProduct?.featured || false),
@@ -952,8 +984,10 @@ function normalizeProductRecord(product) {
   const variants = normalizeVariantList(product.variants || [], category);
   const hasVariants = product.hasVariants === true || product.hasVariants === 'true' || variants.length > 0;
   const primaryVariant = variants[0] || null;
+  const detailFields = collectProductDetailFields(product, product);
   return {
     ...product,
+    ...detailFields,
     id: product._id?.toString?.() || product.id,
     category,
     sku: String(product.sku || '').trim(),

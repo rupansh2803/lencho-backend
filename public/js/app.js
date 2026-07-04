@@ -444,6 +444,8 @@ async function navigate(path, pushState = true) {
   const footer = document.getElementById('site-footer');
   const header = document.getElementById('site-header');
   app.innerHTML = '<div style="min-height:60vh;display:flex;align-items:center;justify-content:center;"><div class="loader-logo" style="color:var(--rose);font-size:1.5rem;">✦</div></div>';
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
   const [route, query] = path.split('?');
   const params = new URLSearchParams(query || '');
   setPageContext({ route, category: params.get('category') || '' });
@@ -459,13 +461,13 @@ async function navigate(path, pushState = true) {
     else if (route === '/jewellery') { app.style.paddingTop = '0'; renderJewelleryLanding(); }
     else if (route === '/jewellery/products') { renderProducts(params, { basePath: '/jewellery/products' }); }
     else if (route.startsWith('/jewellery/category/')) { const next = new URLSearchParams(query || ''); next.set('category', route.split('/jewellery/category/')[1]); renderProducts(next, { basePath: '/jewellery/products' }); }
-    else if (route.startsWith('/jewellery/product/')) { renderProductDetail(route.split('/jewellery/product/')[1]); }
+    else if (route.startsWith('/jewellery/product/')) { await renderProductDetail(route.split('/jewellery/product/')[1]); }
     else if (route === '/products') { renderProducts(params); }
     else if (route === '/woollen') { renderWoollen(); }
     else if (route.startsWith('/woollen/category/')) { const next = new URLSearchParams(query || ''); next.set('category', route.split('/woollen/category/')[1]); renderWoollenProducts(next); }
     else if (route === '/woollen/products') { renderWoollenProducts(params); }
-    else if (route.startsWith('/woollen/product/')) { renderProductDetail(route.split('/woollen/product/')[1]); }
-    else if (route.startsWith('/product/')) { renderProductDetail(route.split('/product/')[1]); }
+    else if (route.startsWith('/woollen/product/')) { await renderProductDetail(route.split('/woollen/product/')[1]); }
+    else if (route.startsWith('/product/')) { await renderProductDetail(route.split('/product/')[1]); }
     else if (route === '/cart') { renderCart(); }
     else if (route === '/checkout') { renderCheckout(); }
     else if (route.startsWith('/checkout-now/')) { renderCheckoutNow(route.split('/checkout-now/')[1]); }
@@ -1881,7 +1883,7 @@ function renderFallbackFeaturedCards(container) {
   container.innerHTML = fallbackFeatured.map((item, i) => `
     <div class="product-card reveal" style="border-radius:16px !important;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08) !important;transition:transform .3s ease,box-shadow .3s ease !important;background:#fff;border:1px solid rgba(201,106,138,.08);" onclick="navigate('/products?category=${item.slug}')">
       <div class="product-img-wrap" style="position:relative;overflow:hidden;aspect-ratio:1/1.15;cursor:pointer;">
-        <img class="product-img" src="${safeImageUrl(item.image, item.slug)}" alt="${item.title}" loading="lazy" decoding="async" ${imageFallbackAttr(item.slug)} style="width:100%;height:100%;object-fit:cover;display:block;"/>
+        <img class="product-img" src="${safeImageUrl(item.image, item.slug)}" alt="${item.title}" loading="lazy" decoding="async" ${imageFallbackAttr(item.slug)} style="width:100%;height:100%;object-fit:contain;object-position:center;background:#fff;display:block;"/>
         <span class="product-badge" style="position:absolute;top:12px;left:12px;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;padding:6px 12px;border-radius:8px;font-weight:700;font-size:.75rem;z-index:2;">✦ Featured ✦</span>
       </div>
       <div class="product-body" style="padding:1rem 1rem 1.2rem;">
@@ -2481,7 +2483,7 @@ async function renderWoollen() {
       <div class="woollen-collections-grid">
         ${collections.map((c, i) => `
           <button class="woollen-collection-card" style="${woollenThemeStyle(c, i)};padding:0;overflow:hidden;text-align:left;" onclick="navigate('/woollen/category/${c.slug}')">
-            <div style="aspect-ratio:1/1.15;overflow:hidden;"><img src="${safeImageUrl(c.bannerImage || c.image, c.slug, heroBanner)}" alt="${c.name}" style="width:100%;height:100%;object-fit:cover;display:block;"/></div>
+            <div style="aspect-ratio:1/1.15;overflow:hidden;background:#fff;"><img src="${safeImageUrl(c.bannerImage || c.image, c.slug, heroBanner)}" alt="${c.name}" style="width:100%;height:100%;object-fit:contain;object-position:center;display:block;"/></div>
             <div style="padding:1.1rem 1rem 1.15rem;display:flex;flex-direction:column;gap:.35rem;">
               <span class="woollen-icon" style="margin-bottom:.2rem;"><i class="${woollenIcon(c.icon)}"></i></span>
               <span class="woollen-card-name">${c.name}</span>
