@@ -230,20 +230,20 @@ function getJwtAuthPayload(req) {
 }
 
 function getAuthContext(req) {
-  if (req.session?.userId) {
-    return {
-      userId: req.session.userId,
-      role: req.session.role || 'user',
-      source: 'session'
-    };
-  }
-
   const jwtPayload = getJwtAuthPayload(req);
   if (jwtPayload) {
     return {
       userId: jwtPayload.userId || jwtPayload.id || null,
       role: jwtPayload.role || 'user',
       source: 'jwt'
+    };
+  }
+
+  if (req.session?.userId) {
+    return {
+      userId: req.session.userId,
+      role: req.session.role || 'user',
+      source: 'session'
     };
   }
 
@@ -852,6 +852,7 @@ async function buildProductPayload(req, existingProduct = null) {
   }
 
   images = Array.from(new Set(images)).slice(0, 20);
+  if (!images.length) images = [getCategoryFallbackImage(category)];
 
   const firstVariant = parsedVariants[0] || null;
   const basePrice = Number(body.price ?? existingProduct?.price) || 0;
@@ -893,7 +894,6 @@ async function buildProductPayload(req, existingProduct = null) {
 function validateProductPayload(payload) {
   if (!payload.name) return 'Product name is required';
   if (!payload.category) return 'Collection category is required';
-  if (!payload.images?.length) return 'At least one product image is required';
   if (payload.hasVariants) {
     if (!payload.variantType) return 'Variant type is required';
     if (!payload.variants?.length) return 'Add at least one variant row';
@@ -1409,9 +1409,11 @@ app.use(express.static(path.join(__dirname, 'public'), {
 }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), { maxAge: '30d' }));
 
-// Cache API responses for 5 minutes where possible
+// Cache slow-changing API responses only. Catalog must refresh immediately after admin edits.
 app.use((req, res, next) => {
-  if (req.method === 'GET' && !req.path.includes('/admin/')) {
+  if (req.method === 'GET' && /^\/api\/(products|categories)\b/.test(req.path)) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  } else if (req.method === 'GET' && !req.path.includes('/admin/')) {
     res.set('Cache-Control', 'public, max-age=300');  // 5 minute cache
   }
   next();
@@ -3157,11 +3159,13 @@ app.get('/api/products', async (req, res) => {
   try {
     await incrementStoreVisitorCount(req);
     const { category, featured, popular, trending, newArrival, sale, search, sku, sort, stock, status, storeType } = req.query;
+    const auth = getAuthContext(req);
+    const effectiveStatus = status || (auth.role === 'admin' ? '' : 'published');
     if (useDB) {
       let query = {};
       if (category) query.category = category;
       if (storeType) query.storeType = storeType;
-      if (status) query.status = String(status).trim().toLowerCase();
+      if (effectiveStatus) query.status = String(effectiveStatus).trim().toLowerCase();
       if (featured === 'true') query.featured = true;
       if (popular === 'true') query.popular = true;
       if (trending === 'true') query.trending = true;
@@ -3196,7 +3200,7 @@ app.get('/api/products', async (req, res) => {
       let fallbackProducts = getJsonCatalogProducts();
       if (category) fallbackProducts = fallbackProducts.filter(p => p.category === category);
       if (storeType) fallbackProducts = fallbackProducts.filter(p => (p.storeType || 'main') === storeType);
-      if (status) fallbackProducts = fallbackProducts.filter(p => String(p.status || 'published').toLowerCase() === String(status).toLowerCase());
+      if (effectiveStatus) fallbackProducts = fallbackProducts.filter(p => String(p.status || 'published').toLowerCase() === String(effectiveStatus).toLowerCase());
       if (featured === 'true') fallbackProducts = fallbackProducts.filter(p => p.featured);
       if (popular === 'true') fallbackProducts = fallbackProducts.filter(p => p.popular);
       if (trending === 'true') fallbackProducts = fallbackProducts.filter(p => p.trending);
@@ -3219,7 +3223,7 @@ app.get('/api/products', async (req, res) => {
     let products = getJsonCatalogProducts();
     if (category) products = products.filter(p => p.category === category);
     if (storeType) products = products.filter(p => (p.storeType || 'main') === storeType);
-    if (status) products = products.filter(p => String(p.status || 'published').toLowerCase() === String(status).toLowerCase());
+    if (effectiveStatus) products = products.filter(p => String(p.status || 'published').toLowerCase() === String(effectiveStatus).toLowerCase());
     if (featured === 'true') products = products.filter(p => p.featured);
     if (popular === 'true') products = products.filter(p => p.popular);
     if (trending === 'true') products = products.filter(p => p.trending);

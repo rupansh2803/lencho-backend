@@ -454,7 +454,7 @@ async function api(url, opts = {}) {
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const method = String(opts.method || 'GET').toUpperCase();
-    const cacheable = method === 'GET' && /^\/api\/(products|categories|testimonials|recommendations|settings(\/public)?)\b/.test(url);
+    const cacheable = method === 'GET' && /^\/api\/(testimonials|recommendations|settings(\/public)?)\b/.test(url);
     if (method !== 'GET') apiGetCache.clear();
 
     if (cacheable) {

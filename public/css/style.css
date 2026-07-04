@@ -7212,4 +7212,134 @@ body.woollen-theme #site-footer .footer-bottom {
   color: rgba(255, 255, 255, 0.8) !important;
 }
 
+/* Admin/product stability fixes */
+.admin-layout.light-theme .admin-main {
+  padding: 1.25rem;
+  background: #f6f7fb;
+}
+
+.admin-layout.light-theme #admin-content {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.admin-layout.light-theme .admin-header {
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.admin-layout.light-theme .admin-page-title {
+  font-family: inherit;
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.admin-layout.light-theme .admin-form {
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.admin-layout.light-theme .form-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.admin-layout.light-theme input,
+.admin-layout.light-theme select,
+.admin-layout.light-theme textarea {
+  font-size: .92rem;
+  min-height: 42px;
+}
+
+#admin-product-image-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 140px)) !important;
+  justify-content: start !important;
+  align-items: start !important;
+  gap: 12px !important;
+}
+
+#admin-product-image-grid > div {
+  width: 100%;
+}
+
+#admin-product-image-grid img {
+  object-fit: contain !important;
+  background: #fff;
+}
+
+.admin-table-wrap {
+  overflow-x: auto;
+}
+
+.products-grid {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  align-items: start;
+}
+
+.product-card {
+  width: 100%;
+  max-width: 320px;
+  justify-self: center;
+}
+
+.product-card .product-img-wrap {
+  max-height: 280px;
+}
+
+.product-card .product-img {
+  object-fit: contain !important;
+  background: #fff;
+}
+
+.product-detail-container {
+  max-width: 1180px;
+}
+
+.product-detail-grid {
+  grid-template-columns: minmax(0, 520px) minmax(0, 1fr);
+  gap: 2rem;
+}
+
+.gallery-main {
+  max-height: 520px;
+  border-radius: 12px;
+}
+
+.gallery-main img {
+  border-radius: 12px;
+}
+
+@media (max-width: 768px) {
+  .admin-layout.light-theme .admin-main {
+    padding: 70px 0 0;
+  }
+
+  .admin-layout.light-theme #admin-content {
+    padding: .85rem !important;
+  }
+
+  .admin-layout.light-theme .admin-form {
+    padding: 1rem;
+  }
+
+  #admin-product-image-grid {
+    grid-template-columns: repeat(auto-fill, minmax(96px, 120px)) !important;
+  }
+
+  .product-card {
+    max-width: 100%;
+  }
+
+  .product-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .gallery-main {
+    min-height: 0;
+    max-height: none;
+    aspect-ratio: 1 / 1;
+  }
+}
+
 
