@@ -1913,6 +1913,178 @@ section {
   object-position: center;
 }
 
+.home-woollen-premium {
+  position: relative;
+  grid-template-columns: minmax(0, .92fr) minmax(320px, .9fr);
+  gap: clamp(1.5rem, 4vw, 4rem);
+  padding: clamp(3.25rem, 6vw, 5.5rem) 5%;
+  overflow: hidden;
+  background:
+    linear-gradient(120deg, rgba(255, 247, 251, .95) 0%, rgba(238, 249, 243, .96) 52%, rgba(255, 247, 224, .92) 100%),
+    url('/images/woollen_pattern_bg.png') center/520px;
+  border-top: 1px solid rgba(95, 125, 111, .11);
+  border-bottom: 1px solid rgba(95, 125, 111, .11);
+}
+
+.home-woollen-premium::before {
+  content: '';
+  position: absolute;
+  inset: 18px 5% auto 5%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(160, 122, 92, .28), transparent);
+}
+
+.home-woollen-premium .section-eyebrow {
+  color: #b7567a;
+  letter-spacing: .16em;
+}
+
+.home-woollen-premium .section-title {
+  max-width: 650px;
+  color: #21172f;
+  font-size: clamp(2.15rem, 4.2vw, 4.2rem) !important;
+  line-height: .98;
+  letter-spacing: 0;
+}
+
+.home-woollen-premium .home-woollen-copy p {
+  max-width: 600px;
+  color: #5f6064;
+  font-size: clamp(.98rem, 1.4vw, 1.12rem);
+}
+
+.home-woollen-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .65rem;
+  margin: 1.35rem 0 1.45rem;
+}
+
+.home-woollen-chips span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: .45rem .8rem;
+  border: 1px solid rgba(95, 125, 111, .22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .72);
+  color: #516a5e;
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.home-woollen-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .8rem;
+  align-items: center;
+}
+
+.home-woollen-premium .home-woollen-media {
+  position: relative;
+  min-height: clamp(260px, 34vw, 430px);
+  max-height: 440px;
+  border-radius: 8px;
+  overflow: visible;
+  box-shadow: none;
+}
+
+.home-woollen-premium .home-woollen-media::before {
+  content: '';
+  position: absolute;
+  inset: -14px;
+  border: 1px solid rgba(95, 125, 111, .22);
+  border-radius: 12px;
+  transform: rotate(-1.5deg);
+}
+
+.home-woollen-premium .home-woollen-media img {
+  position: relative;
+  z-index: 1;
+  min-height: clamp(260px, 34vw, 430px);
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 24px 70px rgba(68, 57, 42, .18);
+  transform: rotate(.8deg);
+  animation: woollenImageDrift 9s ease-in-out infinite alternate;
+}
+
+.home-woollen-float {
+  position: absolute;
+  z-index: 2;
+  max-width: 170px;
+  padding: .7rem .85rem;
+  border: 1px solid rgba(255, 255, 255, .62);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .86);
+  color: #3f5f4e;
+  font-size: .78rem;
+  font-weight: 800;
+  box-shadow: 0 14px 34px rgba(52, 42, 37, .14);
+  backdrop-filter: blur(10px);
+  animation: woollenLabelFloat 4.8s ease-in-out infinite;
+}
+
+.home-woollen-float.float-one {
+  left: -24px;
+  bottom: 28px;
+}
+
+.home-woollen-float.float-two {
+  right: -18px;
+  top: 34px;
+  animation-delay: 1.1s;
+}
+
+.home-woollen-proof {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .9rem;
+  margin-top: .75rem;
+}
+
+.home-woollen-proof div {
+  padding: 1rem;
+  border: 1px solid rgba(95, 125, 111, .14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .62);
+}
+
+.home-woollen-proof strong,
+.home-woollen-proof span {
+  display: block;
+}
+
+.home-woollen-proof strong {
+  color: #2e493d;
+  font-size: .9rem;
+  margin-bottom: .35rem;
+}
+
+.home-woollen-proof span {
+  color: #73706d;
+  font-size: .82rem;
+  line-height: 1.5;
+}
+
+@keyframes woollenImageDrift {
+  from { transform: rotate(.8deg) translateY(0); }
+  to { transform: rotate(-.4deg) translateY(-8px); }
+}
+
+@keyframes woollenLabelFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-woollen-premium .home-woollen-media img,
+  .home-woollen-float {
+    animation: none;
+  }
+}
+
 .home-view-more-row {
   text-align: center;
   margin-top: 2rem;
@@ -5525,6 +5697,24 @@ label[for="captcha"],
   .home-woollen-entry {
     grid-template-columns: 1fr;
     padding: 2rem 5%;
+  }
+
+  .home-woollen-premium {
+    padding: 3rem 5%;
+  }
+
+  .home-woollen-proof {
+    grid-template-columns: 1fr;
+  }
+
+  .home-woollen-float.float-one {
+    left: 12px;
+    bottom: 18px;
+  }
+
+  .home-woollen-float.float-two {
+    right: 12px;
+    top: 18px;
   }
 
   .home-woollen-media,

@@ -304,7 +304,32 @@ async function applyRouteSeo(context = {}, settingsInput = null) {
     const label = category.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
     title = `${label} Collection | ${settings.storeName || 'Lencho'}`;
     description = `Browse ${label} at ${settings.storeName || 'Lencho'}. Premium styles, current discounts, and fast delivery support.`;
-  } else if (route.startsWith('/product/') && product) {
+  } else if (route === '/woollen' || route === '/woollen/products' || route.startsWith('/woollen/category/')) {
+    const woollenCategory = route.startsWith('/woollen/category/')
+      ? route.split('/woollen/category/')[1].replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+      : '';
+    title = woollenCategory
+      ? `${woollenCategory} Woollen Collection | ${settings.storeName || 'Lencho'}`
+      : `Handmade Woollen Collection | ${settings.storeName || 'Lencho'}`;
+    description = woollenCategory
+      ? `Shop handmade ${woollenCategory.toLowerCase()} from ${settings.storeName || 'Lencho'} Woollen: soft crochet pieces, seasonal colours, and gift-ready finishing.`
+      : `Explore ${settings.storeName || 'Lencho'} Woollen for handmade crochet hair accessories, scrunchies, flowers, baby gifts, and soft decor.`;
+    image = safeImageUrl(settings.woollenHeroBanner || '/images/woollen_hero.png', '', '/images/woollen_hero.png');
+    keywords = 'handmade woollen accessories, crochet hair clips, crochet scrunchies, baby woollen gifts, Lencho Woollen';
+    schema = {
+      '@context': 'https://schema.org',
+      '@type': 'CollectionPage',
+      name: title,
+      url: currentUrl,
+      image: `${baseUrl}${image.startsWith('/') ? image : `/${image}`}`,
+      description,
+      isPartOf: {
+        '@type': 'WebSite',
+        name: settings.storeName || 'Lencho',
+        url: baseUrl
+      }
+    };
+  } else if ((route.startsWith('/product/') || route.startsWith('/woollen/product/') || route.startsWith('/jewellery/product/')) && product) {
     title = `${product.name} | ${settings.storeName || 'Lencho'}`;
     description = product.description || defaultDescription;
     image = safeImageUrl(product.images?.[0], product.category, defaultImage);
@@ -1947,6 +1972,34 @@ async function renderHome(options = {}) {
     </div>
   </section>
 
+  <section class="home-woollen-entry home-woollen-premium" aria-labelledby="home-woollen-title">
+    <div class="home-woollen-copy reveal-left">
+      <div class="section-eyebrow">Handmade Woollen Store</div>
+      <h2 class="section-title" id="home-woollen-title">Woollen pieces that feel handmade, not mass-made</h2>
+      <p>Soft crochet hair accessories, flowers, baby pieces, scrunchies, bows, and warm decor in calm seasonal colours.</p>
+      <div class="home-woollen-chips" aria-label="Woollen highlights">
+        <span>Hair clips</span>
+        <span>Scrunchies</span>
+        <span>Baby gifts</span>
+        <span>Crochet decor</span>
+      </div>
+      <div class="home-woollen-actions">
+        <button class="btn-primary" onclick="navigate('/woollen')">Explore Woollen Store <i class="fas fa-arrow-right"></i></button>
+        <button class="btn-outline" onclick="navigate('/woollen/products')">View All Pieces</button>
+      </div>
+    </div>
+    <div class="home-woollen-media reveal-right" aria-label="Handmade woollen collection preview">
+      <img src="/images/woollen_hero.png" alt="Handmade woollen hair accessories, crochet flowers, baby pieces and soft decor" loading="eager" decoding="async" onerror="this.src='/images/woollen_pattern_bg.png'"/>
+      <div class="home-woollen-float float-one">Small-batch drops</div>
+      <div class="home-woollen-float float-two">Gift-ready finish</div>
+    </div>
+    <div class="home-woollen-proof reveal">
+      <div><strong>Soft yarn feel</strong><span>Gentle pieces for daily styling and gifting</span></div>
+      <div><strong>Separate catalogue</strong><span>Woollen products stay apart from jewellery</span></div>
+      <div><strong>Seasonal colours</strong><span>Fresh palettes for winter, baby, and decor drops</span></div>
+    </div>
+  </section>
+
   ${isOn('showTrustHub') ? `<!-- TRUST HUB -->
   <div class="trust-hub" style="background:linear-gradient(135deg, rgba(201,106,138,.08) 0%, rgba(201,149,76,.08) 100%);">
     <div class="trust-item"><i class="fas fa-truck-fast"></i> <span><strong>Free</strong> Delivery</span></div>
@@ -1986,18 +2039,6 @@ async function renderHome(options = {}) {
     <div class="products-grid" id="featured-grid"></div>
     <div class="home-view-more-row"><button class="btn-outline" onclick="navigate('/products?sort=best-selling')">View All Best Sellers <i class="fas fa-arrow-right"></i></button></div>
   </section>` : ''}
-
-  <section class="home-woollen-entry">
-    <div class="home-woollen-copy reveal-left">
-      <div class="section-eyebrow">Handmade Store</div>
-      <h2 class="section-title">Woollen Collection</h2>
-      <p>Soft handmade hair accessories, crochet flowers, baby pieces, decor, and limited seasonal drops.</p>
-      <button class="btn-primary" onclick="navigate('/woollen')">Explore Woollen Store <i class="fas fa-arrow-right"></i></button>
-    </div>
-    <div class="home-woollen-media reveal-right">
-      <img src="/images/woollen_hero.png" alt="Woollen Collection" loading="lazy" decoding="async" onerror="this.src='/images/woollen_pattern_bg.png'"/>
-    </div>
-  </section>
 
   ${isOn('showCollections') ? `<section class="categories home-collections-section" style="padding:3rem 5%;${g('homeCollectionsBg') ? `background:${g('homeCollectionsBg')};` : ''}">
     <div class="section-header reveal">
