@@ -68,7 +68,19 @@ const SITE_URL = readEnvVar('SITE_URL', ['FRONTEND_URL'], FRONTEND_URL);
 const JWT_SECRET_RESOLVED = readEnvVar('JWT_SECRET', [], 'your-secret-key');
 const SESSION_SECRET_RESOLVED = readEnvVar('SESSION_SECRET', [], 'lencho-secret');
 const MONGODB_URI = readEnvVar('MONGODB_URI', ['MONGO_URI', 'DATABASE_URL']);
-const REQUIRE_MONGODB = parseBooleanEnv(readEnvVar('REQUIRE_MONGODB', [], 'false'), false);
+const REQUIRE_MONGODB = true;
+
+function validateMongoUriForPermanentStorage(uri) {
+  const value = cleanEnvValue(uri);
+  if (!value) throw new Error('MONGODB_URI is not configured');
+  if (!value.startsWith('mongodb+srv://')) {
+    throw new Error('MONGODB_URI must be a MongoDB Atlas SRV connection string');
+  }
+  if (/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(value)) {
+    throw new Error('Local MongoDB URIs are not allowed');
+  }
+  return value;
+}
 
 if (!dotenvResult?.error) {
   console.log('[boot] Loaded .env file for local development');
@@ -597,7 +609,11 @@ app.use(cors({
 // ─── HEALTH CHECK (Fast Response) ─────────────────────────────
 app.get('/health', (req, res) => {
   res.set('Cache-Control', 'no-cache');
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), db: useDB ? 'connected' : 'fallback' });
+  res.status(useDB ? 200 : 503).json({
+    status: useDB ? 'ok' : 'unavailable',
+    timestamp: new Date().toISOString(),
+    db: useDB ? 'connected' : 'required'
+  });
 });
 
 app.get('/api/auth/me', async (req, res) => {
@@ -642,32 +658,12 @@ let useDB = false;
 // ─── MONGODB ──────────────────────────────────────────────────
 async function initDB() {
   try {
-    if (!MONGODB_URI) {
-      throw new Error('MONGODB_URI is not configured');
-    }
-
-    await mongoose.connect(MONGODB_URI);
-    // Seed initial products if none exist
-    const pCount = await Product.countDocuments();
-    if (pCount === 0) {
-      console.log('Seeding initial products...');
-      const sampleProducts = [
-        { name: 'Silver Oxidized Jhumka Earrings', category: 'earrings', price: 299, mrp: 599, discount: 50, stock: 20, featured: true, images: ['/images/p1.png'], description: 'Premium Silver Oxidized Jhumkas for everyday elegance.' },
-        { name: 'American Diamond Necklace Set', category: 'necklace', price: 1299, mrp: 2499, discount: 48, stock: 15, featured: true, images: ['/images/p2.png'], description: 'Stunning AD Necklace set with matching earrings.' },
-        { name: 'Gold Plated Toe Rings', category: 'toe-rings', price: 199, mrp: 399, discount: 50, stock: 50, featured: true, images: ['/images/p3.png'], description: 'Elegant toe rings for traditional look.' },
-        { name: 'Rose Gold Bracelet', category: 'bracelets', price: 599, mrp: 999, discount: 40, stock: 25, featured: true, images: ['/images/p4.png'], description: 'Trendy rose gold plated bracelet for modern outfits.' },
-        { name: 'Traditional Kundan Payal', category: 'payal', price: 899, mrp: 1499, discount: 40, stock: 10, featured: true, images: ['/images/payal.png'], description: 'Handcrafted Kundan Payal for a regal traditional look.' },
-        { name: 'Oxidized Silver Nose Pin', category: 'rings', price: 149, mrp: 299, discount: 50, stock: 100, featured: false, images: ['/images/p1.png'], description: 'Minimalist oxidized silver nose pin.' }
-      ];
-      await Product.deleteMany({}); // Clear old seeds if any
-      await Product.insertMany(sampleProducts);
-    }
-
+    const atlasUri = validateMongoUriForPermanentStorage(MONGODB_URI);
+    await mongoose.connect(atlasUri);
     useDB = true;
-    console.log('✅ MongoDB Connected → DB: lencho-db');
+    console.log('MongoDB Atlas connected. Permanent storage enabled.');
     await seedAdmin();
     await seedCategories();
-    await seedProducts();
     await seedSettings();
     warmupSmtpTransporter().catch(() => {});
     console.log('🚀 System Bootstrapped Successfully');
@@ -675,14 +671,10 @@ async function initDB() {
     console.log('⚠️ MongoDB Connection Error:', err.message);
     useDB = false;
 
-    if (REQUIRE_MONGODB) {
-      console.error('❌ MongoDB is required but connection failed.');
-      process.exit(1);
-      return;
-    }
+    console.error('MongoDB Atlas is required. Server stopped to prevent JSON fallback data loss.');
+    process.exit(1);
+    return;
 
-    console.warn('✅ Starting with JSON fallback storage (MongoDB unavailable). All features working normally.');
-    initFallback();
   }
 }
 initDB();
@@ -1210,40 +1202,7 @@ async function recordLoginActivity(payload) {
 }
 
 function syncFallbackAdmins() {
-  const users = readJson(FILES.users);
-  const fallbackAdmins = [
-    {
-      name: 'Admin',
-      email: 'rupanshsaini17@gmail.com',
-      password: 'Isha@1234@',
-      phone: '7404217625'
-    },
-    {
-      name: 'Admin',
-      email: 'admin@lencho.in',
-      password: 'admin123',
-      phone: '9999999999'
-    }
-  ];
-
-  for (const admin of fallbackAdmins) {
-    const index = users.findIndex(user => user.email === admin.email);
-    const nextAdmin = {
-      id: index >= 0 ? users[index].id : uuidv4(),
-      name: admin.name,
-      email: admin.email,
-      password: bcrypt.hashSync(admin.password, 10),
-      role: 'admin',
-      phone: admin.phone,
-      isVerified: true,
-      createdAt: index >= 0 ? users[index].createdAt || new Date().toISOString() : new Date().toISOString()
-    };
-
-    if (index >= 0) users[index] = { ...users[index], ...nextAdmin };
-    else users.push(nextAdmin);
-  }
-
-  writeJson(FILES.users, users);
+  throw new Error('JSON fallback admin sync is disabled. Configure MongoDB Atlas instead.');
 }
 
 function initFallback() {
@@ -1252,8 +1211,6 @@ function initFallback() {
   if (!fs.existsSync(VISITOR_STATS_FILE)) saveFallbackVisitorStats({ totalVisitors: 0, storeVisitors: 0 });
   syncFallbackAdmins();
   saveFallbackSettingsObject(getFallbackSettingsObject());
-  const prods = readJson(FILES.products);
-  if (!prods.length) seedProductsJSON();
 }
 
 // ─── SEED DATA ────────────────────────────────────────────────
@@ -1283,20 +1240,30 @@ async function seedCategories() {
 }
 
 async function seedAdmin() {
-  const email = 'rupanshsaini17@gmail.com';
-  const pass = 'Isha@1234@';
-  const phone = '7404217625';
+  if (!useDB) return;
 
-  if (useDB) {
-    const hashedPass = await bcrypt.hash(pass, 10);
-    // Force specific user to be admin with these credentials
-    await User.findOneAndUpdate(
-      { email }, 
-      { name: 'Admin', email, password: hashedPass, role: 'admin', phone, isVerified: true, securityQuestion: 'Birthplace', securityAnswer: 'Admin' }, 
-      { upsert: true, new: true }
-    );
-    console.log(`✅ Admin master account synced: ${email}`);
+  const existingAdminCount = await User.countDocuments({ role: 'admin' });
+  if (existingAdminCount > 0) {
+    console.log('Admin account exists. Preserving existing admin records.');
+    return;
   }
+
+  const email = cleanEnvValue(process.env.ADMIN_EMAIL) || 'admin@lencho.in';
+  const pass = cleanEnvValue(process.env.ADMIN_PASSWORD) || 'Admin@123456';
+  const phone = cleanEnvValue(process.env.ADMIN_PHONE) || '';
+  const hashedPass = await bcrypt.hash(pass, 10);
+
+  await User.create({
+    name: 'Admin',
+    email,
+    password: hashedPass,
+    role: 'admin',
+    phone,
+    isVerified: true,
+    securityQuestion: 'Birthplace',
+    securityAnswer: 'Admin'
+  });
+  console.log(`Admin bootstrap account created: ${email}`);
 }
 
 async function seedSettings() {
@@ -1423,28 +1390,12 @@ async function seedSettings() {
   }
 }
 
-async function seedProducts() {
-  const count = await Product.countDocuments();
-  if (!count) {
-    await Product.insertMany([
-      { name: 'Rose Gold Hoop Earrings', category: 'earrings', price: 599, mrp: 999, discount: 40, stock: 50, description: 'Elegant rose gold hoop earrings with crystal accents. Perfect for everyday wear.', images: ['/images/p1.png'], gstRate: 3, hsn: '7117', featured: true, rating: 4.5 },
-      { name: 'Golden Kundan Necklace Set', category: 'necklace', price: 1299, mrp: 2499, discount: 48, stock: 30, description: 'Stunning kundan necklace set. Gold-plated with meenakari work.', images: ['/images/p2.png'], gstRate: 3, hsn: '7117', featured: true, rating: 4.8 },
-      { name: 'Silver Oxidized Toe Rings', category: 'toe-rings', price: 299, mrp: 499, discount: 40, stock: 100, description: 'Handcrafted oxidized silver toe rings with tribal motifs.', images: ['/images/p3.png'], gstRate: 3, hsn: '7117', featured: true, rating: 4.3 },
-      { name: 'Boho Jhumka Earrings', category: 'earrings', price: 449, mrp: 799, discount: 44, stock: 75, description: 'Traditional jhumka with colorful beads and rose gold plating.', images: ['/images/p4.png'], gstRate: 3, hsn: '7117', featured: true, rating: 4.6 },
-      { name: 'Pearl Drop Necklace', category: 'necklace', price: 899, mrp: 1599, discount: 44, stock: 40, description: 'Elegant freshwater pearl drop necklace with gold chain.', images: ['/images/p2.png'], gstRate: 3, hsn: '7117', featured: false, rating: 4.4 },
-      { name: 'Crystal Stud Earrings', category: 'earrings', price: 349, mrp: 599, discount: 42, stock: 80, description: 'Sparkling crystal stud earrings in rose gold setting.', images: ['/images/p1.png'], gstRate: 3, hsn: '7117', featured: false, rating: 4.2 },
-    ]);
-    console.log('✅ Sample products seeded');
-  }
+async function disabledProductBootstrap() {
+  console.log('Product bootstrap is disabled. Existing MongoDB products are preserved.');
 }
 
-function seedProductsJSON() {
-  const sample = [
-    { id: uuidv4(), name: 'Rose Gold Hoop Earrings', category: 'earrings', price: 599, mrp: 999, discount: 40, stock: 50, description: 'Elegant rose gold hoop earrings.', images: ['/images/p1.png'], gstRate: 3, hsn: '7117', featured: true, rating: 4.5, reviews: [], createdAt: new Date().toISOString() },
-    { id: uuidv4(), name: 'Golden Kundan Necklace Set', category: 'necklace', price: 1299, mrp: 2499, discount: 48, stock: 30, description: 'Stunning kundan necklace.', images: ['/images/p2.png'], gstRate: 3, hsn: '7117', featured: true, rating: 4.8, reviews: [], createdAt: new Date().toISOString() },
-    { id: uuidv4(), name: 'Silver Oxidized Toe Rings', category: 'toe-rings', price: 299, mrp: 499, discount: 40, stock: 100, description: 'Handcrafted oxidized silver toe rings.', images: ['/images/p3.png'], gstRate: 3, hsn: '7117', featured: true, rating: 4.3, reviews: [], createdAt: new Date().toISOString() },
-  ];
-  writeJson(FILES.products, sample);
+function disabledJsonProductBootstrap() {
+  throw new Error('JSON product seeding is disabled. Configure MongoDB Atlas instead.');
 }
 
 // ─── MIDDLEWARE ────────────────────────────────────────────────
@@ -1477,6 +1428,14 @@ app.use(helmet({
 app.use(morgan('tiny'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+app.use((req, res, next) => {
+  if (useDB) return next();
+  if (req.path === '/health') return next();
+  res.status(503).json({
+    error: 'MongoDB Atlas is not connected yet. JSON fallback storage is disabled to protect permanent data.'
+  });
+});
 
 function maintenanceModeEnabled() {
   return parseBooleanEnv(process.env.MAINTENANCE_MODE, false);
@@ -4062,10 +4021,13 @@ app.post('/api/admin/products/bulk', requireAdmin, async (req, res) => {
 
     if (action === 'delete') {
       if (useDB) {
-        await Product.deleteMany({ _id: { $in: ids } });
+        for (const id of ids) {
+          if (/^[a-f\d]{24}$/i.test(id)) await Product.findByIdAndDelete(id);
+        }
+      } else {
+        const nextProducts = readJson(FILES.products).filter(item => !ids.includes(String(item.id || item._id)));
+        writeJson(FILES.products, nextProducts);
       }
-      const nextProducts = readJson(FILES.products).filter(item => !ids.includes(String(item.id || item._id)));
-      writeJson(FILES.products, nextProducts);
       return res.json({ success: true, message: 'Products deleted successfully', count: ids.length });
     }
 
@@ -4626,14 +4588,9 @@ app.put('/api/admin/inquiries/:id/status', requireAdmin, async (req, res) => {
 
 // ─── ADMIN TOOLS ──────────────────────────────────────────────
 app.put('/api/admin/clear-data', requireAdmin, async (req, res) => {
-  try {
-    if (!useDB) return res.status(400).json({ error: 'Database not connected' });
-    await Order.deleteMany({});
-    await Cart.deleteMany({});
-    await Wishlist.deleteMany({});
-    await Inquiry.deleteMany({});
-    res.json({ success: true, message: 'All test data cleared!' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  res.status(403).json({
+    error: 'Database reset is disabled in production-safe mode. Existing records are preserved across deploys.'
+  });
 });
 
 app.get('/api/admin/orders/:id/label-branded', requireAdmin, async (req, res) => {
@@ -5341,7 +5298,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🌟 Lencho API → Running on port ${PORT}`);
   console.log(`📌 Environment: ${NODE_ENV}`);
   console.log(`   Admin Panel → /admin`);
-  console.log(`   MongoDB: ${useDB ? '✅ Connected' : '⚠️  Using JSON fallback'}\n`);
+  console.log(`   MongoDB: ${useDB ? 'Connected' : 'Connecting / unavailable - requests blocked'}\n`);
   console.log('   Firebase Google Auth: ✅ Client-driven flow enabled');
   console.log(`   FRONTEND_URL: ${FRONTEND_URL}`);
   console.log(`   SESSION_SECRET: ${cleanEnvValue(process.env.SESSION_SECRET) ? '✅ Set' : '⚠️ Missing (using fallback)'}`);
