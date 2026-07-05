@@ -71,10 +71,11 @@ const MONGODB_URI = readEnvVar('MONGODB_URI', ['MONGO_URI', 'DATABASE_URL']);
 const REQUIRE_MONGODB = true;
 
 function validateMongoUriForPermanentStorage(uri) {
-  const value = cleanEnvValue(uri);
+  let value = cleanEnvValue(uri);
+  value = value.replace(/^\s*(MONGODB_URI|MONGO_URI|DATABASE_URL)\s*=\s*/i, '').trim();
   if (!value) throw new Error('MONGODB_URI is not configured');
   if (!value.startsWith('mongodb+srv://')) {
-    throw new Error('MONGODB_URI must be a MongoDB Atlas SRV connection string');
+    throw new Error('MONGODB_URI must start with mongodb+srv://. In Render, put only the URI in the value box, not MONGODB_URI=');
   }
   if (/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(value)) {
     throw new Error('Local MongoDB URIs are not allowed');
