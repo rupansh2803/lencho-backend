@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "migrate:json-to-mongodb": "node scripts/import-json-to-mongodb.js",
+    "migrate:json-to-mongodb:dry": "node scripts/import-json-to-mongodb.js --dry-run"
   },
   "keywords": [],
   "author": "",

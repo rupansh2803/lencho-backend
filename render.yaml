@@ -11,6 +11,8 @@ services:
         value: 10000
       - key: REQUIRE_MONGODB
         value: true
+      - key: CREATE_INITIAL_ADMIN
+        value: false
       - key: FRONTEND_URL
         value: https://lencho.in
       - key: SITE_URL

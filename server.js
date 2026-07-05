@@ -662,9 +662,7 @@ async function initDB() {
     await mongoose.connect(atlasUri);
     useDB = true;
     console.log('MongoDB Atlas connected. Permanent storage enabled.');
-    await seedAdmin();
-    await seedCategories();
-    await seedSettings();
+    await ensureInitialAdminIfRequested();
     warmupSmtpTransporter().catch(() => {});
     console.log('🚀 System Bootstrapped Successfully');
   } catch (err) {
@@ -1149,7 +1147,10 @@ async function incrementWebsiteVisitorCount(req) {
         { upsert: true, new: true }
       );
       return;
-    } catch (e) {}
+    } catch (e) {
+      console.error('Visitor count update failed:', e.message);
+      return;
+    }
   }
 
   const visitorStats = getFallbackVisitorStats();
@@ -1169,7 +1170,10 @@ async function incrementStoreVisitorCount(req) {
         { upsert: true, new: true }
       );
       return;
-    } catch (e) {}
+    } catch (e) {
+      console.error('Store visitor count update failed:', e.message);
+      return;
+    }
   }
 
   const visitorStats = getFallbackVisitorStats();
@@ -1193,7 +1197,10 @@ async function recordLoginActivity(payload) {
     try {
       await LoginEvent.create(event);
       return;
-    } catch (e) {}
+    } catch (e) {
+      console.error('Login activity write failed:', e.message);
+      return;
+    }
   }
 
   const logs = readJson(FILES.loginLogs);
@@ -1239,12 +1246,17 @@ async function seedCategories() {
   } catch (e) { console.error('Category Seed Error:', e.message); }
 }
 
-async function seedAdmin() {
+async function ensureInitialAdminIfRequested() {
   if (!useDB) return;
 
   const existingAdminCount = await User.countDocuments({ role: 'admin' });
   if (existingAdminCount > 0) {
     console.log('Admin account exists. Preserving existing admin records.');
+    return;
+  }
+
+  if (String(process.env.CREATE_INITIAL_ADMIN || '').toLowerCase() !== 'true') {
+    console.log('No admin bootstrap created. Set CREATE_INITIAL_ADMIN=true only for first-time setup.');
     return;
   }
 
@@ -3755,16 +3767,14 @@ app.get('/api/categories', async (req, res) => {
       const cats = await Category.find(query).sort('displayOrder').lean();
       if (cats && cats.length > 0) return res.json(cats.map(normalizeCategoryRecord).filter(Boolean));
 
-      const products = await Product.find({}).lean();
-      const fallbackProducts = products.length > 0 ? products.map(p => ({
+      const products = await Product.find(query).lean();
+      const productCats = products.map(p => ({
         id: p._id?.toString() || p.id,
         name: p.name,
         category: p.category,
         images: p.images || []
-      })) : getJsonCatalogProducts();
-      let fallbackCats = getJsonCategoriesFromProducts(fallbackProducts).map(normalizeCategoryRecord).filter(Boolean);
-      if (storeType) fallbackCats = getJsonCategories().filter(c => c.storeType === storeType);
-      return res.json(fallbackCats);
+      }));
+      return res.json(getJsonCategoriesFromProducts(productCats).map(normalizeCategoryRecord).filter(Boolean));
     }
     let cats = getJsonCategories();
     if (storeType) cats = cats.filter(c => c.storeType === storeType);
@@ -3874,30 +3884,7 @@ app.get('/api/products', async (req, res) => {
       else if (sort === 'rating') q = q.sort({ rating: -1 });
       else q = q.sort({ createdAt: -1 });
       const products = await q.lean();
-      if (products.length > 0) return res.json(products.map(normalizeProductRecord).filter(Boolean));
-
-      let fallbackProducts = getJsonCatalogProducts();
-      if (category) fallbackProducts = fallbackProducts.filter(p => p.category === category);
-      if (storeType) fallbackProducts = fallbackProducts.filter(p => (p.storeType || 'main') === storeType);
-      if (effectiveStatus) fallbackProducts = fallbackProducts.filter(p => String(p.status || 'published').toLowerCase() === String(effectiveStatus).toLowerCase());
-      if (featured === 'true') fallbackProducts = fallbackProducts.filter(p => p.featured);
-      if (popular === 'true') fallbackProducts = fallbackProducts.filter(p => p.popular);
-      if (trending === 'true') fallbackProducts = fallbackProducts.filter(p => p.trending);
-      if (newArrival === 'true') fallbackProducts = fallbackProducts.filter(p => p.newArrival);
-      if (sale === 'true') fallbackProducts = fallbackProducts.filter(p => p.sale);
-      if (stock === 'in') fallbackProducts = fallbackProducts.filter(p => Number(p.stock) > 0);
-      if (stock === 'out') fallbackProducts = fallbackProducts.filter(p => Number(p.stock) <= 0);
-      if (search) fallbackProducts = fallbackProducts.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || String(p.description || '').toLowerCase().includes(search.toLowerCase()) || String(p.sku || '').toLowerCase().includes(search.toLowerCase()));
-      if (sku) fallbackProducts = fallbackProducts.filter(p => String(p.sku || '').toLowerCase().includes(String(sku).toLowerCase()));
-      if (sort === 'price-asc') fallbackProducts.sort((a, b) => a.price - b.price);
-      if (sort === 'price-desc') fallbackProducts.sort((a, b) => b.price - a.price);
-      if (sort === 'rating') fallbackProducts.sort((a, b) => (b.rating || 0) - (a.rating || 0));
-      if (sort === 'oldest') fallbackProducts.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
-      if (sort === 'stock') fallbackProducts.sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0));
-      if (sort === 'best-selling') fallbackProducts.sort((a, b) => Number(b.popular) - Number(a.popular) || (b.rating || 0) - (a.rating || 0));
-      if (sort === 'featured') fallbackProducts.sort((a, b) => Number(b.featured) - Number(a.featured));
-      if (sort === 'trending') fallbackProducts.sort((a, b) => Number(b.trending) - Number(a.trending) || (b.rating || 0) - (a.rating || 0));
-      return res.json(fallbackProducts);
+      return res.json(products.map(normalizeProductRecord).filter(Boolean));
     }
     let products = getJsonCatalogProducts();
     if (category) products = products.filter(p => p.category === category);
@@ -3926,7 +3913,9 @@ app.get('/api/products', async (req, res) => {
 app.get('/api/products/:id', async (req, res) => {
   try {
     if (useDB) {
-      const p = await Product.findById(req.params.id).lean();
+      const id = String(req.params.id || '').trim();
+      let p = /^[a-f\d]{24}$/i.test(id) ? await Product.findById(id).lean() : null;
+      if (!p) p = await Product.findOne({ legacyId: id }).lean();
       if (!p) return res.status(404).json({ error: 'Product not found' });
       return res.json(normalizeProductRecord(p));
     }
@@ -3944,9 +3933,6 @@ app.post('/api/products', requireAdmin, upload.array('images', 5), async (req, r
     if (validationError) return res.status(400).json({ error: validationError });
     if (useDB) {
       const p = await Product.create(payload);
-      const products = readJson(FILES.products);
-      products.push({ ...p.toObject(), id: p._id.toString() });
-      writeJson(FILES.products, products);
       return res.json({ success: true, message: 'Product added successfully', product: normalizeProductRecord({ ...p.toObject(), id: p._id.toString() }) });
     }
     const products = readJson(FILES.products);
@@ -3981,12 +3967,7 @@ app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req
           } catch (e) { /* ignore deletion errors */ }
         }));
       }
-      const products = readJson(FILES.products);
-      const idx = products.findIndex(item => item.id === req.params.id || item._id === req.params.id);
       const next = { ...p.toObject(), id: p._id.toString() };
-      if (idx >= 0) products[idx] = { ...products[idx], ...next };
-      else products.push(next);
-      writeJson(FILES.products, products);
       return res.json({ success: true, message: 'Product updated successfully', product: normalizeProductRecord(next) });
     }
     const products = readJson(FILES.products);
@@ -4046,6 +4027,7 @@ app.post('/api/admin/products/bulk', requireAdmin, async (req, res) => {
 
     if (useDB) {
       await Product.updateMany({ _id: { $in: ids } }, { $set: updates });
+      return res.json({ success: true, message: 'Bulk action completed successfully', count: ids.length, updates });
     }
     const nextProducts = readJson(FILES.products).map(item => ids.includes(String(item.id || item._id))
       ? { ...item, ...updates, updatedAt: new Date().toISOString() }
@@ -4062,7 +4044,6 @@ app.delete('/api/products/:id', requireAdmin, async (req, res) => {
     if (useDB) {
       // Delete product and remove any local media files
       const p = await Product.findByIdAndDelete(req.params.id);
-      const products = readJson(FILES.products).filter(p => p.id !== req.params.id && p._id !== req.params.id);
       // Remove local files referenced by product.images
       if (p && Array.isArray(p.images)) {
         p.images.forEach(img => {
@@ -4074,7 +4055,6 @@ app.delete('/api/products/:id', requireAdmin, async (req, res) => {
           } catch (e) {}
         });
       }
-      writeJson(FILES.products, products);
       return res.json({ success: true });
     }
     const products = readJson(FILES.products);
@@ -5101,8 +5081,18 @@ if (!fs.existsSync(BACKUPS_DIR)) {
 }
 
 // Get visitor stats
-app.get('/api/admin/visitor-stats', requireAdmin, (req, res) => {
+app.get('/api/admin/visitor-stats', requireAdmin, async (req, res) => {
   try {
+    if (useDB) {
+      const [total, store] = await Promise.all([
+        Settings.findOne({ key: 'siteVisitorCount' }).lean(),
+        Settings.findOne({ key: 'storeVisitorCount' }).lean()
+      ]);
+      return res.json({
+        totalVisitors: Number(total?.value) || 0,
+        storeVisitors: Number(store?.value) || 0
+      });
+    }
     const stats = getFallbackVisitorStats();
     res.json(stats);
   } catch (e) {
@@ -5111,9 +5101,39 @@ app.get('/api/admin/visitor-stats', requireAdmin, (req, res) => {
 });
 
 // Update visitor count (admin only)
-app.put('/api/admin/visitor-count', requireAdmin, (req, res) => {
+app.put('/api/admin/visitor-count', requireAdmin, async (req, res) => {
   try {
     const { totalVisitors, storeVisitors } = req.body;
+    if (useDB) {
+      const updates = [];
+      if (totalVisitors !== undefined) {
+        updates.push(Settings.findOneAndUpdate(
+          { key: 'siteVisitorCount' },
+          { value: Number(totalVisitors) || 0, label: 'Website Visitor Count' },
+          { upsert: true, new: true }
+        ));
+      }
+      if (storeVisitors !== undefined) {
+        updates.push(Settings.findOneAndUpdate(
+          { key: 'storeVisitorCount' },
+          { value: Number(storeVisitors) || 0, label: 'Store Visitor Count' },
+          { upsert: true, new: true }
+        ));
+      }
+      await Promise.all(updates);
+      const [total, store] = await Promise.all([
+        Settings.findOne({ key: 'siteVisitorCount' }).lean(),
+        Settings.findOne({ key: 'storeVisitorCount' }).lean()
+      ]);
+      return res.json({
+        success: true,
+        message: 'Visitor count updated',
+        stats: {
+          totalVisitors: Number(total?.value) || 0,
+          storeVisitors: Number(store?.value) || 0
+        }
+      });
+    }
     const stats = getFallbackVisitorStats();
     
     if (totalVisitors !== undefined) stats.totalVisitors = Number(totalVisitors) || 0;
@@ -5202,6 +5222,9 @@ app.get('/api/admin/backups', requireAdmin, (req, res) => {
 // Restore from backup
 app.post('/api/admin/backups/:id/restore', requireAdmin, (req, res) => {
   try {
+    return res.status(403).json({
+      error: 'Runtime restore is disabled in production-safe mode. Use Git deploys for code and MongoDB Atlas for data.'
+    });
     const { id } = req.params;
     const backupDir = path.join(BACKUPS_DIR, id);
     

@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 
 // ── USER ──────────────────────────────────────────────────────
 const userSchema = new mongoose.Schema({
+  legacyId:  { type: String, default: '', index: true },
   name:      { type: String, required: true, trim: true },
   email:     { type: String, required: true, unique: true, lowercase: true },
   phone:     { type: String, default: '' },
@@ -28,6 +29,7 @@ const userSchema = new mongoose.Schema({
 
 // ── PRODUCT ───────────────────────────────────────────────────
 const productSchema = new mongoose.Schema({
+  legacyId:   { type: String, default: '', index: true },
   name:       { type: String, required: true },
   category:   { type: String, required: true },
   sku:        { type: String, default: '' },
@@ -192,6 +194,7 @@ const testimonialSchema = new mongoose.Schema({
 
 // ── CATEGORY (COLLECTION) ─────────────────────────────────────
 const categorySchema = new mongoose.Schema({
+  legacyId:     { type: String, default: '', index: true },
   name:        { type: String, required: true, unique: true },
   slug:        { type: String, required: true, unique: true },
   image:       { type: String, default: '' },
