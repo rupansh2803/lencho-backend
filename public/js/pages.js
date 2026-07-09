@@ -64,9 +64,9 @@ async function renderProductDetail(id) {
                 `;
               }).join('')}
             </div>
-            <div id="product-sku-line" style="margin-top:.65rem;font-size:.85rem;color:var(--gray);">${selectedVariant?.sku ? `SKU: ${selectedVariant.sku}` : (p.sku ? `SKU: ${p.sku}` : '')}</div>
+            <div id="product-sku-line" style="display:none;"></div>
           </div>
-        ` : (p.sku ? `<div id="product-sku-line" style="margin:.35rem 0 1rem;font-size:.85rem;color:var(--gray);">SKU: ${p.sku}</div>` : '<div id="product-sku-line"></div>')}
+        ` : '<div id="product-sku-line" style="display:none;"></div>'}
 
         <div class="delivery-info-amazon">
           <div class="delivery-row">
@@ -79,14 +79,14 @@ async function renderProductDetail(id) {
           </div>
           <div class="delivery-row">
             <i class="fas fa-shield-alt"></i>
-            <span>100% Authentic | GST Invoice Available</span>
+            <span>100% Authentic | Secure checkout</span>
           </div>
         </div>
 
         <div class="stock-info">
           <strong>Availability:</strong> 
           <span id="product-stock-label" class="${activeStock > 10 ? 'stock-available' : activeStock > 0 ? 'stock-limited' : 'stock-unavailable'}">
-            ${activeStock > 10 ? '✓ In Stock' : activeStock > 0 ? `⚠ Only ${activeStock} left` : '✗ Out of Stock'}
+            ${activeStock > 10 ? '✓ In Stock' : activeStock > 0 ? 'Only few left' : '✗ Out of Stock'}
           </span>
         </div>
 
@@ -94,8 +94,11 @@ async function renderProductDetail(id) {
           <button class="btn-add-to-cart" id="product-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '')" ${activeStock===0?'disabled':''}>
             <i class="fas fa-shopping-bag"></i> Add to Cart
           </button>
+          <button class="btn-buy-now-large" onclick="buyNow('${p.id}', window.__selectedProductVariant || '')" ${activeStock===0?'disabled':''}>
+            <i class="fas fa-bolt"></i> Buy Now
+          </button>
           <button class="btn-wishlist-large" onclick="toggleWishlist('${p.id}',this)">
-            <i class="fas fa-heart"></i> Add to Watchlist
+            <i class="fas fa-heart"></i> Add to Wishlist
           </button>
         </div>
 
@@ -145,7 +148,6 @@ async function renderProductDetail(id) {
                 <li>Free shipping on all orders above ₹999.</li>
                 <li>Estimated delivery time: 3-5 business days across India.</li>
                 <li>7-day easy returns and exchange policy.</li>
-                <li>GST invoice will be provided with the package.</li>
               </ul>
             </div>
           </div>
@@ -161,7 +163,6 @@ async function renderProductDetail(id) {
               <li><strong>${p.name}</strong> - Perfect for weddings, parties, and daily wear</li>
               <li>Handcrafted with precision and love</li>
               <li>7-Day Returns | Easy exchange policy available</li>
-              <li>GST Invoice provided with every order</li>
             </ul>
           </div>
         ` : ''}
@@ -267,7 +268,6 @@ function productDetailHighlights(product) {
     productDetailText(product, 'ringSize') || productDetailText(product, 'size') ? `Size: ${productDetailText(product, 'ringSize') || productDetailText(product, 'size')}` : '',
     productDetailText(product, 'occasion') ? `Occasion: ${productDetailText(product, 'occasion')}` : '',
     productDetailText(product, 'finish') ? `Finish: ${productDetailText(product, 'finish')}` : '',
-    product?.gstRate ? `GST invoice available (${product.gstRate}%)` : ''
   ].filter(Boolean).slice(0, 6);
 }
 
@@ -293,9 +293,7 @@ function productDetailSpecRows(product) {
     ['Net Quantity', productDetailText(product, 'netQuantity')],
     ['Net Weight', netWeight ? (/g|kg/i.test(netWeight) ? netWeight : `${netWeight} gms`) : ''],
     ['In The Box', productDetailText(product, 'packageContains')],
-    ['Warranty', productDetailText(product, 'warranty')],
-    ['HSN Code', productDetailText(product, 'hsn')],
-    ['GST Rate', product?.gstRate ? `${product.gstRate}%` : '']
+    ['Warranty', productDetailText(product, 'warranty')]
   ];
 }
 
@@ -404,6 +402,7 @@ async function renderProductDetail(id) {
           ${activeMrp ? `<span class="price-mrp" id="product-price-mrp">${formatCurrency(activeMrp)}</span>` : '<span class="price-mrp" id="product-price-mrp" style="display:none;"></span>'}
           ${discountVal ? `<span class="discount-badge">${discountVal}% OFF</span>` : ''}
         </div>
+        <div class="price-tax-note"><i class="fas fa-receipt"></i> Final price shown. Taxes are included and invoice details stay on the bill.</div>
 
         ${p.hasVariants ? `
           <div class="variant-panel">
@@ -419,9 +418,9 @@ async function renderProductDetail(id) {
                 `;
               }).join('')}
             </div>
-            <div id="product-sku-line" class="market-sku-line">${selectedVariant?.sku ? `SKU: ${productDetailEscape(selectedVariant.sku)}` : (p.sku ? `SKU: ${productDetailEscape(p.sku)}` : '')}</div>
+            <div id="product-sku-line" class="market-sku-line" hidden></div>
           </div>
-        ` : (p.sku || p.sellerSku ? `<div id="product-sku-line" class="market-sku-line">SKU: ${productDetailEscape(p.sellerSku || p.sku)}</div>` : '<div id="product-sku-line"></div>')}
+        ` : '<div id="product-sku-line" class="market-sku-line" hidden></div>'}
 
         <div class="delivery-info-amazon market-delivery-card">
           <h3>Delivery details</h3>
@@ -439,20 +438,29 @@ async function renderProductDetail(id) {
           </div>
           <div class="delivery-row">
             <i class="fas fa-shield-alt"></i>
-            <span>Secure checkout | GST invoice available</span>
+            <span>Secure checkout | Safe online payment</span>
           </div>
+        </div>
+
+        <div class="product-assurance-strip" aria-label="Buyer assurance">
+          <span><i class="fas fa-phone"></i> Fast WhatsApp support</span>
+          <span><i class="fas fa-box-open"></i> Gift-ready packing</span>
+          <span><i class="fas fa-star"></i> Real customer reviews</span>
         </div>
 
         <div class="stock-info">
           <strong>Availability:</strong>
           <span id="product-stock-label" class="${activeStock > 10 ? 'stock-available' : activeStock > 0 ? 'stock-limited' : 'stock-unavailable'}">
-            ${activeStock > 10 ? 'In Stock' : activeStock > 0 ? `Only ${activeStock} left` : 'Out of Stock'}
+            ${activeStock > 10 ? 'In Stock' : activeStock > 0 ? 'Only few left' : 'Out of Stock'}
           </span>
         </div>
 
         <div class="product-actions">
           <button class="btn-add-to-cart" id="product-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '')" ${activeStock===0?'disabled':''}>
             <i class="fas fa-shopping-bag"></i> Add to Cart
+          </button>
+          <button class="btn-buy-now-large" onclick="buyNow('${p.id}', window.__selectedProductVariant || '')" ${activeStock===0?'disabled':''}>
+            <i class="fas fa-bolt"></i> Buy Now
           </button>
           <button class="btn-wishlist-large" onclick="toggleWishlist('${p.id}',this)">
             <i class="fas fa-heart"></i> Add to Wishlist
@@ -525,12 +533,13 @@ async function renderProductDetail(id) {
         </div>
       </div>
 
-      <div class="market-qa-card">
-        <h2>Questions and Answers</h2>
-        <p>Be the first to ask about this product.</p>
-        <div class="qa-input-row">
-          <input placeholder="Ask a question" aria-label="Ask a question about this product"/>
-          <button class="btn-outline" onclick="toast('Question feature will be connected soon', 'info')">Ask</button>
+      <div class="market-qa-card product-care-card">
+        <h2>Product help</h2>
+        <div class="market-help-list">
+          <div><strong>Care</strong><span>Keep away from water, perfume, and harsh chemicals. Store in a dry pouch after use.</span></div>
+          <div><strong>Returns</strong><span>7-day return or exchange support as per policy after delivery.</span></div>
+          <div><strong>Color</strong><span>Photos are shot clearly; slight shade difference can happen because of screen brightness.</span></div>
+          <div><strong>Need help?</strong><span>Use WhatsApp/contact support for size, customization, bulk, or gift queries.</span></div>
         </div>
       </div>
     </div>
@@ -545,7 +554,12 @@ async function renderProductDetail(id) {
          <div style="grid-column:1/-1;text-align:center;color:var(--gray);">Looking for matching styles...</div>
       </div>
     </div>
-  </div>`;
+
+    <div class="mobile-buy-bar" aria-label="Quick buy controls">
+      <div class="mobile-buy-price"><strong id="mobile-buy-price">${formatCurrency(activePrice)}</strong><span>Tax included</span></div>
+      <button type="button" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '')" ${activeStock===0?'disabled':''}><i class="fas fa-shopping-bag"></i> Cart</button>
+      <button type="button" class="mobile-buy-now" onclick="buyNow('${p.id}', window.__selectedProductVariant || '')" ${activeStock===0?'disabled':''}><i class="fas fa-bolt"></i> Buy</button>
+    </div>  </div>`;
 
   window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   initScrollReveal();
@@ -584,6 +598,8 @@ async function selectProductVariant(productId, variantId) {
   if (mainImage) mainImage.src = safeImageUrl(images[0], product.category);
   const priceEl = document.getElementById('product-price-current');
   if (priceEl) priceEl.textContent = formatCurrency(price);
+  const mobilePriceEl = document.getElementById('mobile-buy-price');
+  if (mobilePriceEl) mobilePriceEl.textContent = formatCurrency(price);
   const mrpEl = document.getElementById('product-price-mrp');
   if (mrpEl) {
     if (mrp) {
@@ -599,7 +615,7 @@ async function selectProductVariant(productId, variantId) {
   const stockEl = document.getElementById('product-stock-label');
   if (stockEl) {
     stockEl.className = stock > 10 ? 'stock-available' : stock > 0 ? 'stock-limited' : 'stock-unavailable';
-    stockEl.textContent = stock > 10 ? '✓ In Stock' : stock > 0 ? `⚠ Only ${stock} left` : '✗ Out of Stock';
+    stockEl.textContent = stock > 10 ? 'In Stock' : stock > 0 ? 'Only few left' : 'Out of Stock';
   }
   const addButton = document.getElementById('product-add-cart-btn');
   if (addButton) addButton.disabled = stock <= 0;
@@ -679,9 +695,9 @@ async function submitReview(productId) {
   renderProductDetail(productId);
 }
 
-async function buyNow(productId) {
+async function buyNow(productId, variantId = '') {
   if (!currentUser) { openAuthModal(); return; }
-  await addToCart(productId, false);
+  await addToCart(productId, false, variantId || window.__selectedProductVariant || '');
   navigate('/checkout');
 }
 
@@ -853,11 +869,11 @@ async function applyCoupon(amount) {
   sessionStorage.setItem('coupon', JSON.stringify({ code, discountAmt: r.discountAmt }));
 }
 
-/* ── WATCHLIST / WISHLIST PAGE ────────────────────────────── */
+/* ── WISHLIST PAGE ────────────────────────────── */
 async function renderWishlist() {
   if (!currentUser) { openAuthModal(); navigate('/'); return; }
   const app = document.getElementById('app');
-  app.innerHTML = '<div class="page-wrap"><div style="text-align:center;padding:3rem;color:var(--gray);">⏳ Loading your watchlist...</div></div>';
+  app.innerHTML = '<div class="page-wrap"><div style="text-align:center;padding:3rem;color:var(--gray);">⏳ Loading your wishlist...</div></div>';
   
   try {
     const r = await Promise.race([
@@ -867,13 +883,13 @@ async function renderWishlist() {
     
     const items = Array.isArray(r) ? r : [];
     if (!items.length) {
-      app.innerHTML = `<div class="page-wrap"><h1 class="page-title">My Watchlist</h1><div class="empty-state"><div class="empty-icon">❤️</div><h3>Your watchlist is empty</h3><p>Add your favorite jewellery to come back to them later!</p><button class="btn-primary" onclick="navigate('/products')">Browse Collections</button></div></div>`;
+      app.innerHTML = `<div class="page-wrap"><h1 class="page-title">My Wishlist</h1><div class="empty-state"><div class="empty-icon">❤️</div><h3>Your wishlist is empty</h3><p>Add your favorite jewellery to come back to them later!</p><button class="btn-primary" onclick="navigate('/products')">Browse Collections</button></div></div>`;
       return;
     }
     
     app.innerHTML = `
     <div class="page-wrap">
-      <h1 class="page-title">My Watchlist <span style="font-size:1.2rem;color:var(--gray);">(${items.length} items)</span></h1>
+      <h1 class="page-title">My Wishlist <span style="font-size:1.2rem;color:var(--gray);">(${items.length} items)</span></h1>
       <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(250px, 1fr));gap:2rem;margin-top:2rem;">
         ${items.map(p => {
           const discountVal = p.mrp ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0;
@@ -882,7 +898,7 @@ async function renderWishlist() {
           <div style="position:relative;aspect-ratio:1;overflow:hidden;background:#f9f9f9;">
             <img src="${safeImageUrl(p.images?.[0] || p.image, p.category)}" ${imageFallbackAttr(p.category, p.images?.[0])} alt="${p.name}" style="width:100%;height:100%;object-fit:contain;background:#fff;"/>
             ${discountVal ? `<span style="position:absolute;top:12px;left:12px;background:#ff4d6d;color:#fff;padding:6px 12px;border-radius:8px;font-size:.75rem;font-weight:700;">${discountVal}% OFF</span>` : ''}
-            <button class="product-wish active" onclick="event.stopPropagation(); removeFromWatchlist('${p.id||p._id}', this)" title="Remove from Watchlist" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.95);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;transition:transform .2s;font-size:.9rem;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'"><i class="fas fa-heart" style="color:#c9748f;"></i></button>
+            <button class="product-wish active" onclick="event.stopPropagation(); removeFromWishlist('${p.id||p._id}', this)" title="Remove from Wishlist" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.95);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;transition:transform .2s;font-size:.9rem;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'"><i class="fas fa-heart" style="color:#c9748f;"></i></button>
           </div>
           <div style="padding:1rem;">
             <div style="font-weight:600;color:var(--dark);margin-bottom:.5rem;line-height:1.4;min-height:2.8em;">${p.name}</div>
@@ -898,26 +914,26 @@ async function renderWishlist() {
       </div>
     </div>`;
   } catch (e) {
-    console.error('Watchlist loading error:', e);
+    console.error('Wishlist loading error:', e);
     app.innerHTML = `<div class="page-wrap"><div style="text-align:center;padding:3rem;">
-      <h2 style="color:var(--rose);margin-bottom:1rem;">⚠️ Watchlist Loading Error</h2>
-      <p style="color:var(--gray);margin-bottom:1.5rem;">We're having trouble loading your watchlist. Please try again.</p>
+      <h2 style="color:var(--rose);margin-bottom:1rem;">⚠️ Wishlist Loading Error</h2>
+      <p style="color:var(--gray);margin-bottom:1.5rem;">We're having trouble loading your wishlist. Please try again.</p>
       <button class="btn-primary" onclick="renderWishlist()">Retry</button>
       <button class="btn-outline" onclick="navigate('/products')" style="margin-left:0.5rem;">Shop Now</button>
     </div></div>`;
   }
 }
 
-async function removeFromWatchlist(productId, btn) {
+async function removeFromWishlist(productId, btn) {
   try {
     const r = await api('/api/wishlist/toggle', { method: 'POST', body: { productId } });
     if (!r.added) {
-      toast('Removed from watchlist', 'info');
+      toast('Removed from wishlist', 'info');
       renderWishlist(); // Refresh the page
     }
   } catch (e) {
-    console.error('Remove from watchlist error:', e);
-    toast('Failed to remove from watchlist', 'error');
+    console.error('Remove from wishlist error:', e);
+    toast('Failed to remove from wishlist', 'error');
   }
 }
 
@@ -997,7 +1013,7 @@ async function renderCheckout() {
             ${items.map(i=>`<div class="co-item"><img src="${i.product.images[0]}" alt="${i.product.name}"/><div class="co-item-info"><div class="co-item-name">${i.product.name}</div><div class="co-item-meta">${i.variant?.label ? `${i.variant.label} • ` : ''}Qty: ${i.quantity}</div></div><div class="co-item-price">${formatCurrency(i.product.price*i.quantity)}</div></div>`).join('')}
           </div>
           <div class="summary-row"><span>Subtotal</span><span>${formatCurrency(subtotal)}</span></div>
-          <div class="summary-row"><span>GST (3%)</span><span>${formatCurrency(gst)}</span></div>
+          <div class="summary-row"><span>Taxes</span><span>${formatCurrency(gst)}</span></div>
           <div class="summary-row"><span>Shipping</span><span style="color:${shipping===0?'#22c55e':'inherit'}">${shipping===0?'FREE':formatCurrency(shipping)}</span></div>
           ${discount?`<div class="summary-row" style="color:#22c55e;"><span>Discount (${couponData.code})</span><span>-${formatCurrency(discount)}</span></div>`:''}
           <div class="summary-row"><span class="summary-total">Grand Total</span><span class="summary-total">${formatCurrency(grand)}</span></div>
@@ -1162,7 +1178,7 @@ async function renderCheckoutNow(productId) {
               </div>
             </div>
             <div class="summary-row"><span>Subtotal</span><span>${formatCurrency(subtotal)}</span></div>
-            <div class="summary-row"><span>GST (${p.gstRate||3}%)</span><span>${formatCurrency(gst)}</span></div>
+            <div class="summary-row"><span>Taxes</span><span>${formatCurrency(gst)}</span></div>
             <div class="summary-row"><span>Shipping</span><span style="color:${shipping===0?'#22c55e':'inherit'}">${shipping===0?'FREE':formatCurrency(shipping)}</span></div>
             <div class="summary-row"><span class="summary-total">Grand Total</span><span class="summary-total">${formatCurrency(grand)}</span></div>
             <button class="btn-gold full-width" style="margin-top:1rem;" onclick="placeOrderNow('${productId}',1)"><i class="fas fa-check-circle"></i> Place Order</button>

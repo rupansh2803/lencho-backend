@@ -1500,8 +1500,8 @@ async function toggleWishlist(productId, btn) {
   const willAdd = !btn.classList.contains('active');
   btn.classList.toggle('active');
   
-  if (willAdd) toast('Added to watchlist ❤️', 'success');
-  else toast('Removed from watchlist', 'info');
+  if (willAdd) toast('Added to wishlist ❤️', 'success');
+  else toast('Removed from wishlist', 'info');
   
   // Background: Sync with server
   try {
@@ -1816,7 +1816,7 @@ function productCardHTML(p) {
   const product = normalizeClientProduct(p);
   const detailPath = productRoutePath(product);
   const secondaryImg = product.images[1] || product.images[0];
-  const stockStatus = p.stock < 5 && p.stock > 0 ? '⚡ Only ' + p.stock + ' left!' : '';
+  const stockStatus = p.stock < 5 && p.stock > 0 ? '⚡ Only few left' : '';
   const isBestSeller = p.popular ? '⭐ Best Seller' : '';
   const isFeatured = p.featured ? '✨ Featured' : '';
   const badge = isBestSeller || isFeatured || stockStatus || (p.discount > 30 ? '🔥 Hot Deal' : '');
@@ -1831,7 +1831,7 @@ function productCardHTML(p) {
       
       ${badge ? `<span style="position:absolute;bottom:12px;left:12px;background:var(--gold);color:var(--dark);padding:6px 12px;border-radius:8px;font-weight:600;font-size:.75rem;z-index:2;">${badge}</span>` : ''}
       
-      <button class="product-wish" onclick="event.stopPropagation(); toggleWishlist('${p.id}',this)" title="Add to Watchlist" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.95);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;transition:transform .2s;font-size:.9rem;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'"><i class="fas fa-heart" style="color:#ddd;"></i></button>
+      <button class="product-wish" onclick="event.stopPropagation(); toggleWishlist('${p.id}',this)" title="Add to Wishlist" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.95);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;transition:transform .2s;font-size:.9rem;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'"><i class="fas fa-heart" style="color:#ddd;"></i></button>
     </div>
     
     <div class="product-body" style="padding:1rem 1rem 1.2rem;">
@@ -1885,17 +1885,44 @@ function shuffleArray(items) {
   return copy;
 }
 
-function renderFallbackCollectionCards(container) {
-  const fallbackCollections = shuffleArray([
+function fallbackHomeCollections() {
+  return [
     { name: 'Earrings', slug: 'earrings', image: '/images/earrings.png' },
     { name: 'Necklace Sets', slug: 'necklace', image: '/images/necklace.png' },
     { name: 'Rings', slug: 'rings', image: '/images/p1.png' },
     { name: 'Bridal Sets', slug: 'sets', image: '/images/showcase.png' },
     { name: 'Bangles', slug: 'bangles', image: '/images/p4.png' },
     { name: 'Bracelets', slug: 'bracelets', image: '/images/p1.png' },
-  ]);
+  ];
+}
 
-  container.innerHTML = fallbackCollections.slice(0, 3).map((c, i) => `
+function normalizeHomeCollectionCard(collection = {}) {
+  const rawSlug = collection.slug || collection.category || collection.name || '';
+  const slug = String(rawSlug).trim().toLowerCase().replace(/\s+/g, '-');
+  const name = collection.name || productCategoryLabel(slug || collection.category || 'Collection');
+  return {
+    ...collection,
+    name,
+    slug,
+    image: collection.image || collection.bannerImage || collection.images?.[0] || '/images/hero.png'
+  };
+}
+
+function mergeHomeCollections(collections = []) {
+  const base = (Array.isArray(collections) ? collections : [])
+    .filter(Boolean)
+    .map(normalizeHomeCollectionCard)
+    .filter(collection => collection.slug);
+  const seen = new Set(base.map(collection => collection.slug));
+  const fallback = shuffleArray(fallbackHomeCollections())
+    .filter(collection => !seen.has(collection.slug))
+    .map(normalizeHomeCollectionCard);
+  return [...base, ...fallback].slice(0, 4);
+}
+
+function renderHomeCollectionCards(container, collections = []) {
+  const cards = mergeHomeCollections(collections);
+  container.innerHTML = cards.map((c, i) => `
     <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
       <img class="cat-img" src="${safeImageUrl(c.image, c.slug)}" alt="${c.name}" ${imageFallbackAttr(c.slug)}/>
       <div class="cat-overlay"></div>
@@ -1905,6 +1932,9 @@ function renderFallbackCollectionCards(container) {
   initScrollReveal();
 }
 
+function renderFallbackCollectionCards(container) {
+  renderHomeCollectionCards(container, []);
+}
 function renderFallbackFeaturedCards(container) {
   const fallbackFeatured = shuffleArray([
     { title: 'Rose Glow Earrings', slug: 'earrings', image: '/images/earrings.png' },
@@ -2022,8 +2052,8 @@ async function renderHome(options = {}) {
       <p class="hero-p-sub" style="max-width:700px; margin: 0 auto 1.5rem; color:#fff; font-size:1.15rem; line-height:1.7; font-weight:600; text-shadow: 0 4px 16px rgba(0,0,0,0.9);">${g('heroDescription', 'Premium artificial jewellery for every occasion. Look expensive, spend smart with clear pricing and fast support.')}</p>
       
       <div class="hero-btns" style="display:flex; justify-content:center; gap:1rem; flex-wrap:wrap; margin-bottom:2rem;">
-        <button class="btn-gold" style="padding:18px 42px; font-size:1rem; font-weight:700;box-shadow:0 8px 25px rgba(201,149,76,.4);" onclick="navigate('/products')">${g('heroButton1Text', '🛍️ Shop Now & Save')}</button>
-        <button class="btn-outline" style="padding:18px 42px; font-size:1rem; color:#fff; border-color:rgba(255,255,255,.7); border-width:2px;" onclick="navigate('/products?category=earrings')">${g('heroButton2Text', 'View Collections')}</button>
+<button class="btn-gold" style="padding:18px 42px; font-size:1rem; font-weight:700;box-shadow:0 8px 25px rgba(201,149,76,.4);" onclick="navigate('/products')"><i class="fas fa-gem"></i> ${g('heroButton1Text', 'Shop Jewellery')}</button>
+<button class="btn-outline" style="padding:18px 42px; font-size:1rem; color:#fff; border-color:rgba(255,255,255,.7); border-width:2px;" onclick="navigate('/woollen')"><i class="fas fa-mitten"></i> ${g('heroButton2Text', 'Explore Woollen')}</button>
       </div>
     </div>
   </section>
@@ -2061,7 +2091,7 @@ async function renderHome(options = {}) {
     <div class="trust-item"><i class="fas fa-truck-fast"></i> <span><strong>Free</strong> Delivery</span></div>
     <div class="trust-item"><i class="fas fa-wallet"></i> <span><strong>Cash on</strong> Delivery</span></div>
     <div class="trust-item"><i class="fas fa-rotate-left"></i> <span><strong>7-Day</strong> Returns</span></div>
-    <div class="trust-item"><i class="fas fa-shield-check"></i> <span><strong>100%</strong> Authentic</span></div>
+    <div class="trust-item"><i class="fas fa-shield-check"></i> <span><strong>Secure</strong> Payment</span></div>
   </div>` : ''}
 
   ${false && isOn('showPromo') ? `<section class="promo-limited-banner">
@@ -2096,6 +2126,19 @@ async function renderHome(options = {}) {
     <div class="home-view-more-row"><button class="btn-outline" onclick="navigate('/products?sort=best-selling')">View All Best Sellers <i class="fas fa-arrow-right"></i></button></div>
   </section>` : ''}
 
+
+  <section class="home-new-arrivals-section">
+    <div class="section-header reveal">
+      <div class="section-eyebrow">Fresh Drop</div>
+      <h2 class="section-title">New Arrivals</h2>
+      <div class="divider"></div>
+      <p class="section-desc">Latest jewellery and gift-ready styles, shown in a clean 4-card row.</p>
+    </div>
+    <div class="products-grid" id="new-arrivals-grid">
+      <div style="grid-column:1/-1;text-align:center;color:var(--gray);">Loading new arrivals...</div>
+    </div>
+    <div class="home-view-more-row"><button class="btn-outline" onclick="navigate('/products?sort=newest')">View New Arrivals <i class="fas fa-arrow-right"></i></button></div>
+  </section>
   ${isOn('showCollections') ? `<section class="categories home-collections-section" style="padding:3rem 5%;${g('homeCollectionsBg') ? `background:${g('homeCollectionsBg')};` : ''}">
     <div class="section-header reveal">
       <div class="section-eyebrow">Shop by Category</div>
@@ -2108,6 +2151,17 @@ async function renderHome(options = {}) {
     <div class="home-view-more-row"><button class="btn-outline" onclick="navigate('/products')">View More Collections <i class="fas fa-arrow-right"></i></button></div>
   </section>` : ''}
 
+  <section class="categories home-woollen-collection-section">
+    <div class="section-header reveal">
+      <div class="section-eyebrow">Handmade Woollen</div>
+      <h2 class="section-title">Woollen Collection</h2>
+      <div class="divider"></div>
+    </div>
+    <div class="categories-grid home-woollen-collection-grid" id="home-woollen-collection-grid">
+      <div style="grid-column:1/-1;text-align:center;color:var(--gray);">Loading woollen collection...</div>
+    </div>
+    <div class="home-view-more-row"><button class="btn-outline" onclick="navigate('/woollen')">Explore Woollen <i class="fas fa-arrow-right"></i></button></div>
+  </section>
   ${isOn('showPromo') ? `<section class="home-promo-compact">
     <div class="home-promo-copy reveal-left">
       <div class="section-eyebrow">Limited Drop</div>
@@ -2137,7 +2191,9 @@ async function renderHome(options = {}) {
   
   // Load content sections in parallel (non-blocking)
   if (isOn('showCollections')) loadHomeCategories().catch(e => console.log('Cat load error:', e));
+  loadHomeWoollenCollection().catch(e => console.log('Woollen collection load error:', e));
   if (isOn('showFeaturedProducts')) loadFeaturedProducts().catch(e => console.log('Product load error:', e));
+  loadNewArrivals().catch(e => console.log('New arrivals load error:', e));
   if (isOn('showTestimonials')) loadTestimonials().catch(e => console.log('Testi load error:', e));
   if (isOn('showPromo')) startOfferTimer();
   
@@ -2210,14 +2266,7 @@ async function loadHomeCategories() {
       renderFallbackCollectionCards(container);
       return;
     }
-    container.innerHTML = shuffleArray(categories).slice(0, 3).map((c, i) => `
-      <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
-        <img class="cat-img" src="${c.image}" alt="${c.name}" onerror="this.src='/images/hero.png'"/>
-        <div class="cat-overlay"></div>
-        <div class="cat-content"><div class="cat-name">${c.name}</div><button class="cat-btn">Shop Now</button></div>
-      </div>
-    `).join('');
-    initScrollReveal();
+    renderHomeCollectionCards(container, shuffleArray(categories));
   } catch (e) {
     const products = await withTimeout(api('/api/products?storeType=main'), 2500);
     if (Array.isArray(products) && products.length > 0) {
@@ -2232,18 +2281,67 @@ async function loadHomeCategories() {
       });
       const categories = [...byCategory.values()];
       if (categories.length > 0) {
-        container.innerHTML = shuffleArray(categories).slice(0, 3).map((c, i) => `
-          <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
-            <img class="cat-img" src="${c.image}" alt="${c.name}" onerror="this.src='/images/hero.png'"/>
-            <div class="cat-overlay"></div>
-            <div class="cat-content"><div class="cat-name">${c.name}</div><button class="cat-btn">Shop Now</button></div>
-          </div>
-        `).join('');
-        initScrollReveal();
+        renderHomeCollectionCards(container, shuffleArray(categories));
         return;
       }
     }
     renderFallbackCollectionCards(container);
+  }
+}
+
+/* Home woollen collection */
+async function loadHomeWoollenCollection() {
+  const container = document.getElementById('home-woollen-collection-grid');
+  if (!container) return;
+  const fallback = [
+    { name: 'Crochet Accessories', slug: 'accessories', image: '/images/woollen_hero.jpg', description: 'Hair clips, bows, and everyday woollen pieces' },
+    { name: 'Baby Gifts', slug: 'baby-gifts', image: '/images/woollen_hero.png', description: 'Soft handmade gifts and baby pieces' },
+    { name: 'Scrunchies', slug: 'scrunchies', image: '/images/woollen_pattern_bg.png', description: 'Soft yarn scrunchies in seasonal colours' },
+    { name: 'Woollen Decor', slug: 'decor', image: '/images/woollen_hero.jpg', description: 'Flowers, tiny decor, and gift-ready pieces' }
+  ];
+
+  try {
+    const cats = await withTimeout(api('/api/categories?storeType=woollen'), 2500);
+    let cards = Array.isArray(cats) ? cats.map(normalizeHomeCollectionCard) : [];
+
+    if (!cards.length) {
+      const products = await withTimeout(api('/api/products?storeType=woollen&sort=featured'), 2500);
+      const byCategory = new Map();
+      if (Array.isArray(products)) {
+        products.forEach(product => {
+          if (!product || !product.category || byCategory.has(product.category)) return;
+          byCategory.set(product.category, normalizeHomeCollectionCard({
+            name: product.category.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
+            slug: product.category,
+            image: product.images?.[0] || product.image || '/images/woollen_hero.jpg'
+          }));
+        });
+      }
+      cards = [...byCategory.values()];
+    }
+
+    const seen = new Set(cards.map(card => card.slug));
+    const merged = [...cards, ...fallback.filter(card => !seen.has(card.slug)).map(normalizeHomeCollectionCard)].slice(0, 4);
+    container.innerHTML = merged.map((card, i) => {
+      const target = cards.some(real => real.slug === card.slug) ? `/woollen/category/${card.slug}` : '/woollen';
+      return `
+        <div class="cat-card reveal woollen-home-card" style="animation-delay:${i * 0.05}s" onclick="navigate('${target}')">
+          <img class="cat-img" src="${safeImageUrl(card.image, card.slug, '/images/woollen_hero.jpg')}" alt="${card.name}" onerror="this.src='/images/woollen_hero.jpg'"/>
+          <div class="cat-overlay"></div>
+          <div class="cat-content"><div class="cat-name">${card.name}</div><button class="cat-btn">Explore Woollen</button></div>
+        </div>
+      `;
+    }).join('');
+    initScrollReveal();
+  } catch (e) {
+    container.innerHTML = fallback.map((card, i) => `
+      <div class="cat-card reveal woollen-home-card" style="animation-delay:${i * 0.05}s" onclick="navigate('/woollen')">
+        <img class="cat-img" src="${safeImageUrl(card.image, card.slug, '/images/woollen_hero.jpg')}" alt="${card.name}" onerror="this.src='/images/woollen_hero.jpg'"/>
+        <div class="cat-overlay"></div>
+        <div class="cat-content"><div class="cat-name">${card.name}</div><button class="cat-btn">Explore Woollen</button></div>
+      </div>
+    `).join('');
+    initScrollReveal();
   }
 }
 
@@ -2428,6 +2526,32 @@ async function loadFeaturedProducts() {
   }
 }
 
+async function loadNewArrivals() {
+  const grid = document.getElementById('new-arrivals-grid');
+  if (!grid) return;
+  const renderFallback = async () => {
+    const fallback = await withTimeout(api('/api/products?storeType=main'), 2500);
+    const list = Array.isArray(fallback) ? fallback.slice(0, 4) : [];
+    grid.innerHTML = list.length
+      ? list.map(productCardHTML).join('')
+      : '<div class="empty-state"><h3>New arrivals coming soon</h3><p>Add products from admin to fill this section.</p></div>';
+    initScrollReveal();
+  };
+
+  try {
+    const r = await withTimeout(api('/api/products?storeType=main&sort=newest'), 2500);
+    const list = Array.isArray(r) ? r.slice(0, 4) : [];
+    if (list.length) {
+      grid.innerHTML = list.map(productCardHTML).join('');
+      initScrollReveal();
+    } else {
+      await renderFallback();
+    }
+  } catch (e) {
+    console.error('New arrivals error:', e);
+    await renderFallback();
+  }
+}
 function woollenThemeStyle(collection, index = 0) {
   const themes = [
     ['#ffe4ef', '#9b4065', '#fff7fb'],
@@ -2474,7 +2598,8 @@ async function renderWoollen() {
     api('/api/products?storeType=woollen&sort=trending', { timeoutMs: 3000 })
   ]);
   const collections = Array.isArray(collectionsRaw) ? collectionsRaw : [];
-  const featured = Array.isArray(featuredRaw) && featuredRaw.length ? featuredRaw : (Array.isArray(allRaw) ? allRaw.slice(0, 8) : []);
+  const featuredSource = Array.isArray(featuredRaw) && featuredRaw.length ? featuredRaw : (Array.isArray(allRaw) ? allRaw : []);
+  const featured = featuredSource.slice(0, 4);
   const configuredWoollenBanner = settings.woollenHeroBanner && settings.woollenHeroBanner !== '/images/premium_hero.png'
     ? (settings.woollenHeroBanner === '/images/woollen_hero.png' ? '/images/woollen_hero.jpg' : settings.woollenHeroBanner)
     : '/images/woollen_hero.jpg';
@@ -2509,7 +2634,7 @@ async function renderWoollen() {
         <button class="btn-outline" onclick="navigate('/woollen/products')">View All</button>
       </div>
       <div class="woollen-collections-grid">
-        ${collections.map((c, i) => `
+        ${collections.slice(0, 4).map((c, i) => `
           <button class="woollen-collection-card" style="${woollenThemeStyle(c, i)};padding:0;overflow:hidden;text-align:left;" onclick="navigate('/woollen/category/${c.slug}')">
             <div style="aspect-ratio:1/1.15;overflow:hidden;background:#fff;"><img src="${safeImageUrl(c.bannerImage || c.image, c.slug, heroBanner)}" alt="${c.name}" style="width:100%;height:100%;object-fit:contain;object-position:center;display:block;"/></div>
             <div style="padding:1.1rem 1rem 1.15rem;display:flex;flex-direction:column;gap:.35rem;">
@@ -2645,6 +2770,59 @@ function buildWoollenFilterQuery(update = {}) {
 }
 
 // ── PRODUCTS PAGE ─────────────────────────────────────────
+function productOptionValues(products = [], keys = []) {
+  const values = new Map();
+  products.forEach(product => {
+    keys.forEach(key => {
+      const raw = product?.[key];
+      if (!raw) return;
+      String(raw).split(/[;,/]/).map(item => item.trim()).filter(Boolean).forEach(item => {
+        const normalized = item.toLowerCase();
+        if (!values.has(normalized)) values.set(normalized, item);
+      });
+    });
+    if (keys.includes('color') && Array.isArray(product?.variants)) {
+      product.variants.forEach(variant => {
+        const label = String(variant?.label || '').trim();
+        if (label && !values.has(label.toLowerCase())) values.set(label.toLowerCase(), label);
+      });
+    }
+  });
+  return Array.from(values.values()).sort((a, b) => a.localeCompare(b));
+}
+
+function productFilterSelectHtml(paramName, label, selectedValue, options = [], basePath = '/products') {
+  const opts = options.map(value => `<option value="${escapeHtml(value)}" ${value === selectedValue ? 'selected' : ''}>${escapeHtml(productCategoryLabel(value))}</option>`).join('');
+  return `
+    <div class="advanced-filter-block">
+      <label>${escapeHtml(label)}</label>
+      <select onchange="navigate('${basePath}' + buildProductsFilterQuery({${paramName}:this.value}))">
+        <option value="">All ${escapeHtml(label)}</option>
+        ${opts}
+      </select>
+    </div>`;
+}
+
+function filterProductsForDisplay(products = [], filters = {}) {
+  const matchesText = (product, keys, selected) => {
+    if (!selected) return true;
+    const needle = selected.toLowerCase();
+    const haystack = keys.map(key => product?.[key]).filter(Boolean).join(' ').toLowerCase();
+    const variantText = Array.isArray(product?.variants) ? product.variants.map(v => v?.label || '').join(' ').toLowerCase() : '';
+    return haystack.includes(needle) || variantText.includes(needle);
+  };
+
+  return products.filter(product => {
+    const price = Number(product?.price) || 0;
+    if (filters.price === 'under-500' && price >= 500) return false;
+    if (filters.price === '500-999' && (price < 500 || price > 999)) return false;
+    if (filters.price === '1000-1999' && (price < 1000 || price > 1999)) return false;
+    if (filters.price === '2000-plus' && price < 2000) return false;
+    if (!matchesText(product, ['baseMaterial', 'material', 'plating', 'stoneType', 'type'], filters.material)) return false;
+    if (!matchesText(product, ['color'], filters.color)) return false;
+    return true;
+  });
+}
 function buildProductsFilterQuery(update = {}) {
   const params = new URLSearchParams(location.search);
   Object.entries(update).forEach(([key, value]) => {
@@ -2712,6 +2890,9 @@ async function renderProducts(params, options = {}) {
   const category = params.get('category') || '';
   const sort = params.get('sort') || '';
   const stock = params.get('stock') || '';
+  const price = params.get('price') || '';
+  const material = params.get('material') || '';
+  const color = params.get('color') || '';
   const basePath = options.basePath || '/products';
   const app = document.getElementById('app');
   const query = new URLSearchParams();
@@ -2728,6 +2909,22 @@ async function renderProducts(params, options = {}) {
         <h3>Categories</h3>
         <div class="category-filter-list">
           <button class="category-filter active">Loading...</button>
+        </div>
+        <div class="products-advanced-filters">
+          <h3>Filters</h3>
+          <div class="advanced-filter-block">
+            <label>Price</label>
+            <select onchange="navigate('${basePath}' + buildProductsFilterQuery({price:this.value}))">
+              <option value="" ${!price ? 'selected' : ''}>All Prices</option>
+              <option value="under-500" ${price === 'under-500' ? 'selected' : ''}>Under ₹500</option>
+              <option value="500-999" ${price === '500-999' ? 'selected' : ''}>₹500 - ₹999</option>
+              <option value="1000-1999" ${price === '1000-1999' ? 'selected' : ''}>₹1000 - ₹1999</option>
+              <option value="2000-plus" ${price === '2000-plus' ? 'selected' : ''}>₹2000+</option>
+            </select>
+          </div>
+          <div id="material-filter-block"></div>
+          <div id="color-filter-block"></div>
+          <button class="filter-clear-btn" type="button" onclick="navigate('${basePath}')">Clear Filters</button>
         </div>
       </aside>
       <section class="products-main">
@@ -2772,7 +2969,10 @@ async function renderProducts(params, options = {}) {
       : [];
   }
 
-  const categories = getProductCategoryOptions(categoriesRaw, products);
+  const filterSource = products.slice();
+  products = filterProductsForDisplay(products, { price, material, color });
+
+  const categories = getProductCategoryOptions(categoriesRaw, filterSource.length ? filterSource : products);
   const list = document.querySelector('.category-filter-list');
   if (list) {
     list.innerHTML = categories.map(c => `
@@ -2782,11 +2982,22 @@ async function renderProducts(params, options = {}) {
     `).join('');
   }
 
+  const materialBlock = document.getElementById('material-filter-block');
+  if (materialBlock) {
+    const materialOptions = productOptionValues(filterSource, ['baseMaterial', 'material', 'plating', 'stoneType', 'type']);
+    materialBlock.innerHTML = productFilterSelectHtml('material', 'Material', material, materialOptions, basePath);
+  }
+
+  const colorBlock = document.getElementById('color-filter-block');
+  if (colorBlock) {
+    const colorOptions = productOptionValues(filterSource, ['color']);
+    colorBlock.innerHTML = productFilterSelectHtml('color', 'Color', color, colorOptions, basePath);
+  }
   const grid = document.getElementById('products-grid');
   if (grid) {
     grid.innerHTML = products.length
       ? products.map(productCardHTML).join('')
-      : '<div class="empty-state"><div class="empty-icon">💎</div><h3>No products found</h3><p>Try another category or stock filter.</p></div>';
+      : '<div class="empty-state"><div class="empty-icon">💎</div><h3>No products found</h3><p>Try another category, stock, price, material, or color filter.</p></div>';
   }
   initScrollReveal();
 }

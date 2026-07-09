@@ -551,17 +551,23 @@ async function adminInquiries() {
     <div class="admin-table-wrap">
       <table>
         <thead><tr><th>Details</th><th>Message</th><th>Status</th><th>Received At</th><th>Actions</th></tr></thead>
-        <tbody>${filtered.map(iq => `
+        <tbody>${filtered.map(iq => {
+          const safeName = adminEscapeHtml(iq.name || 'Customer');
+          const safeEmail = adminEscapeHtml(iq.email || '');
+          const safePhone = adminEscapeHtml(iq.phone || 'No Phone');
+          const safeMessage = adminEscapeHtml(iq.message || '');
+          const replyUrl = adminInquiryReplyUrl(iq);
+          return `
           <tr>
             <td style="min-width:180px;">
-              <div style="font-weight:700;">${iq.name}</div>
-              <div style="font-size:.7rem;color:var(--gray);">${iq.email}</div>
-              <div style="font-size:.7rem;color:var(--rose-dark);font-weight:600;">${iq.phone || 'No Phone'}</div>
+              <div style="font-weight:700;">${safeName}</div>
+              <div style="font-size:.7rem;color:var(--gray);">${safeEmail || '-'}</div>
+              <div style="font-size:.7rem;color:var(--rose-dark);font-weight:600;">${safePhone}</div>
             </td>
-            <td><div style="font-size:.85rem;max-width:400px;line-height:1.4;">${iq.message}</div></td>
+            <td><div style="font-size:.85rem;max-width:400px;line-height:1.4;">${safeMessage}</div></td>
             <td>
               <span class="order-status-badge status-${iq.status === 'replied' ? 'delivered' : 'pending'}" style="font-size:.7rem;">
-                ${iq.status === 'replied' ? '✓ Solved' : '⏱ Pending'}
+                ${iq.status === 'replied' ? 'Solved' : 'Pending'}
               </span>
             </td>
             <td style="white-space:nowrap;font-size:.75rem;">${new Date(iq.createdAt).toLocaleString()}</td>
@@ -570,14 +576,40 @@ async function adminInquiries() {
                 <i class="fas fa-${iq.status === 'replied' ? 'undo' : 'check'}"></i>
               </button>
               <button class="btn-sm btn-danger" onclick="deleteInquiry('${iq._id}')"><i class="fas fa-trash"></i></button>
-              <a href="mailto:${iq.email}" class="btn-sm btn-primary" style="text-decoration:none;"><i class="fas fa-reply"></i> Reply</a>
+              <a href="${adminEscapeAttr(replyUrl)}" target="_blank" rel="noopener" class="btn-sm btn-primary" style="text-decoration:none;"><i class="fas fa-reply"></i> Reply</a>
             </td>
           </tr>
-        `).join('')}</tbody>
+        `;}).join('')}</tbody>
       </table>
     </div>`;
 }
 
+function adminInquiryReplyUrl(inquiry = {}) {
+  const email = String(inquiry.email || '').trim();
+  if (!email) return '#';
+  const name = String(inquiry.name || 'Customer').trim() || 'Customer';
+  const phone = String(inquiry.phone || '').trim();
+  const message = String(inquiry.message || '').trim();
+  const subject = `Re: Lencho inquiry from ${name}`;
+  const body = [
+    `Hi ${name},`,
+    '',
+    'Thank you for contacting Lencho.',
+    '',
+    message ? `Your message: ${message}` : '',
+    phone ? `Phone: ${phone}` : '',
+    '',
+    'Regards,',
+    'Lencho Team'
+  ].filter(line => line !== '').join('\n');
+  const url = new URL('https://mail.google.com/mail/');
+  url.searchParams.set('view', 'cm');
+  url.searchParams.set('fs', '1');
+  url.searchParams.set('to', email);
+  url.searchParams.set('su', subject);
+  url.searchParams.set('body', body);
+  return url.toString();
+}
 function filterInquiries(status) {
   localStorage.setItem('inquiry-filter', status);
   adminInquiries();
