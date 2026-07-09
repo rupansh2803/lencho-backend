@@ -8408,3 +8408,91 @@ select:focus,
     grid-column: 1 / -1;
   }
 }
+/* Lencho larger section 3-card correction */
+.home-bestseller-section,
+.home-new-arrivals-section,
+.home-collections-section,
+.home-woollen-collection-section,
+.woollen-band,
+.woollen-featured-band {
+  padding: clamp(4.75rem, 7vw, 7rem) 5% clamp(5.5rem, 8vw, 7.5rem) !important;
+  min-height: 640px;
+}
+
+.home-bestseller-section .section-header,
+.home-new-arrivals-section .section-header,
+.home-collections-section .section-header,
+.home-woollen-collection-section .section-header,
+.woollen-band .woollen-section-head {
+  margin-bottom: clamp(2.6rem, 4vw, 3.6rem) !important;
+}
+
+.products-grid,
+.categories-grid,
+.woollen-collections-grid {
+  grid-template-columns: repeat(3, minmax(280px, 1fr)) !important;
+  gap: clamp(1.8rem, 3vw, 2.4rem) !important;
+  max-width: 1720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.product-card .product-img-wrap {
+  min-height: clamp(340px, 28vw, 430px) !important;
+  aspect-ratio: 1 / 1.08 !important;
+}
+
+.home-collections-section .cat-card,
+.home-woollen-collection-section .cat-card {
+  aspect-ratio: 16 / 10 !important;
+  min-height: clamp(330px, 25vw, 420px) !important;
+  border-radius: 22px !important;
+}
+
+.home-collections-section .cat-name,
+.home-woollen-collection-section .cat-name {
+  font-size: clamp(2rem, 2.5vw, 2.75rem) !important;
+}
+
+.home-view-more-row {
+  margin-top: clamp(2.8rem, 4vw, 4.2rem) !important;
+}
+
+.products-grid > .empty-state {
+  grid-column: 1 / -1 !important;
+  justify-self: center;
+  max-width: 620px;
+  min-height: 420px;
+  width: min(100%, 620px);
+}
+
+@media (max-width: 1180px) {
+  .products-grid,
+  .categories-grid,
+  .woollen-collections-grid {
+    grid-template-columns: repeat(2, minmax(240px, 1fr)) !important;
+  }
+
+  .home-bestseller-section,
+  .home-new-arrivals-section,
+  .home-collections-section,
+  .home-woollen-collection-section,
+  .woollen-band,
+  .woollen-featured-band {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .products-grid,
+  .categories-grid,
+  .woollen-collections-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .product-card .product-img-wrap,
+  .home-collections-section .cat-card,
+  .home-woollen-collection-section .cat-card {
+    min-height: 300px !important;
+  }
+}

@@ -1917,9 +1917,29 @@ function mergeHomeCollections(collections = []) {
   const fallback = shuffleArray(fallbackHomeCollections())
     .filter(collection => !seen.has(collection.slug))
     .map(normalizeHomeCollectionCard);
-  return [...base, ...fallback].slice(0, 4);
+  return [...base, ...fallback].slice(0, 3);
 }
 
+function categoriesWithProducts(categories = [], products = [], storeType = 'main') {
+  const productCategories = new Map();
+  (Array.isArray(products) ? products : []).forEach(product => {
+    if (!product || (product.storeType || 'main') !== storeType || !product.category) return;
+    const slug = String(product.category).trim().toLowerCase();
+    if (!slug || productCategories.has(slug)) return;
+    productCategories.set(slug, {
+      name: product.category.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
+      slug,
+      image: product.images?.[0] || product.image || '/images/hero.png'
+    });
+  });
+
+  const productBacked = (Array.isArray(categories) ? categories : [])
+    .map(normalizeHomeCollectionCard)
+    .filter(category => productCategories.has(category.slug))
+    .map(category => ({ ...category, image: category.image || productCategories.get(category.slug)?.image }));
+
+  return productBacked.length ? productBacked : Array.from(productCategories.values());
+}
 function renderHomeCollectionCards(container, collections = []) {
   const cards = mergeHomeCollections(collections);
   container.innerHTML = cards.map((c, i) => `
@@ -2241,26 +2261,14 @@ async function loadHomeCategories() {
   const container = document.getElementById('home-categories-grid');
   if (!container) return;
   try {
-    const cats = await withTimeout(api('/api/categories'), 2500);
-    let categories = Array.isArray(cats)
+    const [cats, products] = await Promise.all([
+      withTimeout(api('/api/categories'), 2500),
+      withTimeout(api('/api/products?storeType=main'), 2500)
+    ]);
+    const rawCategories = Array.isArray(cats)
       ? cats.filter(c => (c?.storeType || 'main') === 'main')
       : [];
-
-    if (categories.length === 0) {
-      const products = await withTimeout(api('/api/products?storeType=main'), 2500);
-      const byCategory = new Map();
-      if (Array.isArray(products)) {
-        products.forEach(product => {
-          if (!product || product.storeType === 'woollen' || !product.category || byCategory.has(product.category)) return;
-          byCategory.set(product.category, {
-            name: product.category.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
-            slug: product.category,
-            image: product.images?.[0] || '/images/hero.png'
-          });
-        });
-      }
-      categories = [...byCategory.values()];
-    }
+    const categories = categoriesWithProducts(rawCategories, products, 'main');
 
     if (categories.length === 0) {
       renderFallbackCollectionCards(container);
@@ -2269,21 +2277,10 @@ async function loadHomeCategories() {
     renderHomeCollectionCards(container, shuffleArray(categories));
   } catch (e) {
     const products = await withTimeout(api('/api/products?storeType=main'), 2500);
-    if (Array.isArray(products) && products.length > 0) {
-      const byCategory = new Map();
-      products.forEach(product => {
-        if (!product || product.storeType === 'woollen' || !product.category || byCategory.has(product.category)) return;
-        byCategory.set(product.category, {
-          name: product.category.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
-          slug: product.category,
-          image: product.images?.[0] || '/images/hero.png'
-        });
-      });
-      const categories = [...byCategory.values()];
-      if (categories.length > 0) {
-        renderHomeCollectionCards(container, shuffleArray(categories));
-        return;
-      }
+    const categories = categoriesWithProducts([], products, 'main');
+    if (categories.length > 0) {
+      renderHomeCollectionCards(container, shuffleArray(categories));
+      return;
     }
     renderFallbackCollectionCards(container);
   }
@@ -2321,7 +2318,7 @@ async function loadHomeWoollenCollection() {
     }
 
     const seen = new Set(cards.map(card => card.slug));
-    const merged = [...cards, ...fallback.filter(card => !seen.has(card.slug)).map(normalizeHomeCollectionCard)].slice(0, 4);
+    const merged = [...cards, ...fallback.filter(card => !seen.has(card.slug)).map(normalizeHomeCollectionCard)].slice(0, 3);
     container.innerHTML = merged.map((card, i) => {
       const target = cards.some(real => real.slug === card.slug) ? `/woollen/category/${card.slug}` : '/woollen';
       return `
@@ -2334,7 +2331,7 @@ async function loadHomeWoollenCollection() {
     }).join('');
     initScrollReveal();
   } catch (e) {
-    container.innerHTML = fallback.map((card, i) => `
+    container.innerHTML = fallback.slice(0, 3).map((card, i) => `
       <div class="cat-card reveal woollen-home-card" style="animation-delay:${i * 0.05}s" onclick="navigate('/woollen')">
         <img class="cat-img" src="${safeImageUrl(card.image, card.slug, '/images/woollen_hero.jpg')}" alt="${card.name}" onerror="this.src='/images/woollen_hero.jpg'"/>
         <div class="cat-overlay"></div>
@@ -2496,7 +2493,7 @@ async function loadFeaturedProducts() {
   const renderFallbackProducts = async (message) => {
     const fallback = await withTimeout(api('/api/products?storeType=main'), 2500);
     if (Array.isArray(fallback) && fallback.length > 0) {
-      grid.innerHTML = shuffleArray(fallback).slice(0, 4).map(productCardHTML).join('');
+      grid.innerHTML = shuffleArray(fallback).slice(0, 3).map(productCardHTML).join('');
       initScrollReveal();
       return;
     }
@@ -2506,12 +2503,12 @@ async function loadFeaturedProducts() {
   try {
     const r = await withTimeout(api('/api/products?storeType=main&popular=true&sort=best-selling'), 2500);
     if (r && Array.isArray(r) && r.length > 0) {
-      grid.innerHTML = shuffleArray(r).slice(0, 4).map(productCardHTML).join('');
+      grid.innerHTML = shuffleArray(r).slice(0, 3).map(productCardHTML).join('');
       initScrollReveal();
     } else if (Array.isArray(r) && r.length === 0) {
       const ranked = await withTimeout(api('/api/products?storeType=main&sort=best-selling'), 2500);
       if (Array.isArray(ranked) && ranked.length > 0) {
-        grid.innerHTML = ranked.slice(0, 4).map(productCardHTML).join('');
+        grid.innerHTML = ranked.slice(0, 3).map(productCardHTML).join('');
         initScrollReveal();
       } else {
         await renderFallbackProducts('');
@@ -2531,7 +2528,7 @@ async function loadNewArrivals() {
   if (!grid) return;
   const renderFallback = async () => {
     const fallback = await withTimeout(api('/api/products?storeType=main'), 2500);
-    const list = Array.isArray(fallback) ? fallback.slice(0, 4) : [];
+    const list = Array.isArray(fallback) ? fallback.slice(0, 3) : [];
     grid.innerHTML = list.length
       ? list.map(productCardHTML).join('')
       : '<div class="empty-state"><h3>New arrivals coming soon</h3><p>Add products from admin to fill this section.</p></div>';
@@ -2540,7 +2537,7 @@ async function loadNewArrivals() {
 
   try {
     const r = await withTimeout(api('/api/products?storeType=main&sort=newest'), 2500);
-    const list = Array.isArray(r) ? r.slice(0, 4) : [];
+    const list = Array.isArray(r) ? r.slice(0, 3) : [];
     if (list.length) {
       grid.innerHTML = list.map(productCardHTML).join('');
       initScrollReveal();
@@ -2599,7 +2596,7 @@ async function renderWoollen() {
   ]);
   const collections = Array.isArray(collectionsRaw) ? collectionsRaw : [];
   const featuredSource = Array.isArray(featuredRaw) && featuredRaw.length ? featuredRaw : (Array.isArray(allRaw) ? allRaw : []);
-  const featured = featuredSource.slice(0, 4);
+  const featured = featuredSource.slice(0, 3);
   const configuredWoollenBanner = settings.woollenHeroBanner && settings.woollenHeroBanner !== '/images/premium_hero.png'
     ? (settings.woollenHeroBanner === '/images/woollen_hero.png' ? '/images/woollen_hero.jpg' : settings.woollenHeroBanner)
     : '/images/woollen_hero.jpg';
@@ -2634,7 +2631,7 @@ async function renderWoollen() {
         <button class="btn-outline" onclick="navigate('/woollen/products')">View All</button>
       </div>
       <div class="woollen-collections-grid">
-        ${collections.slice(0, 4).map((c, i) => `
+        ${collections.slice(0, 3).map((c, i) => `
           <button class="woollen-collection-card" style="${woollenThemeStyle(c, i)};padding:0;overflow:hidden;text-align:left;" onclick="navigate('/woollen/category/${c.slug}')">
             <div style="aspect-ratio:1/1.15;overflow:hidden;background:#fff;"><img src="${safeImageUrl(c.bannerImage || c.image, c.slug, heroBanner)}" alt="${c.name}" style="width:100%;height:100%;object-fit:contain;object-position:center;display:block;"/></div>
             <div style="padding:1.1rem 1rem 1.15rem;display:flex;flex-direction:column;gap:.35rem;">

@@ -1144,7 +1144,7 @@ async function incrementWebsiteVisitorCount(req) {
     try {
       await Settings.findOneAndUpdate(
         { key: 'siteVisitorCount' },
-        { $inc: { value: 1 }, $setOnInsert: { label: 'Website Visitor Count' } },
+        { $inc: { value: 1 }, $setOnInsert: { value: getFallbackVisitorStats().totalVisitors, label: 'Website Visitor Count' } },
         { upsert: true, new: true }
       );
       return;
@@ -1167,7 +1167,7 @@ async function incrementStoreVisitorCount(req) {
     try {
       await Settings.findOneAndUpdate(
         { key: 'storeVisitorCount' },
-        { $inc: { value: 1 }, $setOnInsert: { label: 'Store Visitor Count' } },
+        { $inc: { value: 1 }, $setOnInsert: { value: getFallbackVisitorStats().storeVisitors, label: 'Store Visitor Count' } },
         { upsert: true, new: true }
       );
       return;
@@ -4433,6 +4433,10 @@ app.post('/api/coupon/validate', (req, res) => {
 });
 
 // ─── ADMIN ROUTES ─────────────────────────────────────────────
+function safeAdminAmount(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+}
 app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   try {
     if (useDB) {
@@ -4444,15 +4448,16 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
         Settings.findOne({ key: 'storeVisitorCount' }).lean()
       ]);
       const today = new Date().toDateString();
+      const fallbackVisitors = getFallbackVisitorStats();
       const todayOrders = orders.filter(o => new Date(o.createdAt).toDateString() === today);
       const statusCounts = orders.reduce((acc, o) => { acc[o.status] = (acc[o.status] || 0) + 1; return acc; }, {});
       return res.json({
-        totalOrders: orders.length, totalRevenue: orders.reduce((s, o) => s + o.grandTotal, 0),
-        todayOrders: todayOrders.length, todayRevenue: todayOrders.reduce((s, o) => s + o.grandTotal, 0),
+        totalOrders: orders.length, totalRevenue: orders.reduce((s, o) => s + safeAdminAmount(o.grandTotal), 0),
+        todayOrders: todayOrders.length, todayRevenue: todayOrders.reduce((s, o) => s + safeAdminAmount(o.grandTotal), 0),
         totalUsers: users.length, totalProducts: products.length,
-        totalGstCollected: orders.reduce((s, o) => s + (o.gstTotal || 0), 0),
-        totalVisitors: Number(visitorCounter?.value) || 0,
-        storeVisitors: Number(storeVisitorCounter?.value) || 0,
+        totalGstCollected: orders.reduce((s, o) => s + safeAdminAmount(o.gstTotal), 0),
+        totalVisitors: Math.max(Number(visitorCounter?.value) || 0, fallbackVisitors.totalVisitors),
+        storeVisitors: Math.max(Number(storeVisitorCounter?.value) || 0, fallbackVisitors.storeVisitors),
         statusCounts, recentOrders: orders.slice(-5).reverse()
       });
     }
@@ -4460,7 +4465,7 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
     const today = new Date().toDateString(), todayOrders = orders.filter(o => new Date(o.createdAt).toDateString() === today);
     const statusCounts = orders.reduce((acc, o) => { acc[o.status] = (acc[o.status] || 0) + 1; return acc; }, {});
     const visitorStats = getFallbackVisitorStats();
-    res.json({ totalOrders: orders.length, totalRevenue: orders.reduce((s, o) => s + o.grandTotal, 0), todayOrders: todayOrders.length, todayRevenue: todayOrders.reduce((s, o) => s + o.grandTotal, 0), totalUsers: users.length, totalProducts: products.length, totalGstCollected: orders.reduce((s, o) => s + (o.gstTotal || 0), 0), totalVisitors: visitorStats.totalVisitors, storeVisitors: visitorStats.storeVisitors, statusCounts, recentOrders: orders.slice(-5).reverse() });
+    res.json({ totalOrders: orders.length, totalRevenue: orders.reduce((s, o) => s + safeAdminAmount(o.grandTotal), 0), todayOrders: todayOrders.length, todayRevenue: todayOrders.reduce((s, o) => s + safeAdminAmount(o.grandTotal), 0), totalUsers: users.length, totalProducts: products.length, totalGstCollected: orders.reduce((s, o) => s + safeAdminAmount(o.gstTotal), 0), totalVisitors: visitorStats.totalVisitors, storeVisitors: visitorStats.storeVisitors, statusCounts, recentOrders: orders.slice(-5).reverse() });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -5089,9 +5094,10 @@ app.get('/api/admin/visitor-stats', requireAdmin, async (req, res) => {
         Settings.findOne({ key: 'siteVisitorCount' }).lean(),
         Settings.findOne({ key: 'storeVisitorCount' }).lean()
       ]);
+      const fallbackVisitors = getFallbackVisitorStats();
       return res.json({
-        totalVisitors: Number(total?.value) || 0,
-        storeVisitors: Number(store?.value) || 0
+        totalVisitors: Math.max(Number(total?.value) || 0, fallbackVisitors.totalVisitors),
+        storeVisitors: Math.max(Number(store?.value) || 0, fallbackVisitors.storeVisitors)
       });
     }
     const stats = getFallbackVisitorStats();

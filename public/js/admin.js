@@ -459,6 +459,27 @@ function adminTab(tab) {
   if (tab === 'account') adminSecuritySettings();
 }
 
+function adminSafeNumber(value, fallback = 0) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function adminSafeStats(stats = {}) {
+  const safe = stats && !stats.error ? stats : {};
+  return {
+    totalRevenue: adminSafeNumber(safe.totalRevenue),
+    totalOrders: adminSafeNumber(safe.totalOrders),
+    todayOrders: adminSafeNumber(safe.todayOrders),
+    todayRevenue: adminSafeNumber(safe.todayRevenue),
+    totalUsers: adminSafeNumber(safe.totalUsers),
+    totalProducts: adminSafeNumber(safe.totalProducts),
+    totalGstCollected: adminSafeNumber(safe.totalGstCollected),
+    totalVisitors: adminSafeNumber(safe.totalVisitors),
+    storeVisitors: adminSafeNumber(safe.storeVisitors),
+    statusCounts: safe.statusCounts || {},
+    recentOrders: Array.isArray(safe.recentOrders) ? safe.recentOrders : []
+  };
+}
 function formatAdminVisitorCount(value) {
   const count = Number(value) || 0;
   if (count >= 10000000) {
@@ -478,8 +499,9 @@ async function loadAdminVisitorCounter() {
   if (!websiteBox && !storeBox) return;
 
   const stats = await api('/api/admin/stats');
-  const websiteVisits = stats && !stats.error ? formatAdminVisitorCount(stats.totalVisitors) : '--';
-  const storeVisits = stats && !stats.error ? formatAdminVisitorCount(stats.storeVisitors || 0) : '--';
+  const safeStats = adminSafeStats(stats);
+  const websiteVisits = formatAdminVisitorCount(safeStats.totalVisitors);
+  const storeVisits = formatAdminVisitorCount(safeStats.storeVisitors);
   
   if (websiteBox) {
     const websiteVisitorElem = document.getElementById('admin-website-visitors');
@@ -629,7 +651,7 @@ async function deleteInquiry(id) {
 }
 
 async function adminDashboard() {
-  const s = await api('/api/admin/stats');
+  const s = adminSafeStats(await api('/api/admin/stats'));
   const formatVisitorCount = (value) => {
     const count = Number(value) || 0;
     if (count >= 10000000) {
