@@ -8496,3 +8496,169 @@ select:focus,
     min-height: 300px !important;
   }
 }
+/* Lencho final homepage bulk and large sections */
+.home-bulk-order-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr);
+  gap: clamp(1.5rem, 3vw, 3rem);
+  align-items: center;
+  min-height: 430px;
+  padding: clamp(4.75rem, 7vw, 7rem) 5%;
+  background: linear-gradient(135deg, #fff7fa 0%, #f3fbf6 55%, #fffdf8 100%);
+  border-top: 1px solid rgba(31, 31, 56, .06);
+  border-bottom: 1px solid rgba(31, 31, 56, .06);
+}
+
+.home-bulk-copy {
+  max-width: 880px;
+}
+
+.home-bulk-copy .section-eyebrow,
+.home-bulk-copy .section-title {
+  text-align: left;
+}
+
+.home-bulk-copy .section-title {
+  margin-bottom: 1rem;
+}
+
+.home-bulk-copy p {
+  color: #62606c;
+  font-size: clamp(1rem, 1.35vw, 1.18rem);
+  line-height: 1.8;
+  max-width: 760px;
+}
+
+.home-bulk-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .85rem;
+  margin-top: 1.6rem;
+}
+
+.home-bulk-points span {
+  align-items: center;
+  background: rgba(255, 255, 255, .82);
+  border: 1px solid rgba(31, 31, 56, .1);
+  border-radius: 999px;
+  color: #425f52;
+  display: inline-flex;
+  font-weight: 800;
+  gap: .55rem;
+  padding: .72rem 1rem;
+}
+
+.home-bulk-points i {
+  color: var(--rose);
+}
+
+.home-bulk-action {
+  background: rgba(255, 255, 255, .92);
+  border: 1px solid rgba(201, 106, 138, .22);
+  border-radius: 22px;
+  box-shadow: 0 24px 54px rgba(31, 31, 56, .1);
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1.35rem, 2.4vw, 2rem);
+}
+
+.home-bulk-action .btn-primary,
+.home-bulk-action .btn-outline {
+  min-height: 58px;
+  width: 100%;
+}
+
+.home-bestseller-section,
+.home-new-arrivals-section,
+.home-collections-section,
+.home-woollen-collection-section {
+  min-height: 760px !important;
+  padding: clamp(5.5rem, 8vw, 8rem) 5% clamp(6.5rem, 9vw, 8.5rem) !important;
+}
+
+.home-bestseller-section .section-header,
+.home-new-arrivals-section .section-header,
+.home-collections-section .section-header,
+.home-woollen-collection-section .section-header {
+  margin-bottom: clamp(3rem, 4.6vw, 4.5rem) !important;
+}
+
+.home-bestseller-section .products-grid,
+.home-new-arrivals-section .products-grid,
+.home-collections-section .categories-grid,
+.home-woollen-collection-section .woollen-collections-grid {
+  grid-template-columns: repeat(3, minmax(320px, 1fr)) !important;
+  gap: clamp(2rem, 3vw, 2.75rem) !important;
+  max-width: 1760px;
+}
+
+.home-bestseller-section .product-card,
+.home-new-arrivals-section .product-card {
+  min-height: 680px !important;
+}
+
+.home-bestseller-section .product-card .product-img-wrap,
+.home-new-arrivals-section .product-card .product-img-wrap {
+  min-height: clamp(390px, 30vw, 500px) !important;
+}
+
+.home-collections-section .cat-card,
+.home-woollen-collection-section .cat-card {
+  min-height: clamp(390px, 29vw, 500px) !important;
+}
+
+.home-collections-section .cat-btn,
+.home-woollen-collection-section .cat-btn {
+  min-width: 190px;
+  min-height: 54px;
+}
+
+.home-collections-section .cat-card:hover,
+.home-woollen-collection-section .cat-card:hover,
+.home-bestseller-section .product-card:hover,
+.home-new-arrivals-section .product-card:hover {
+  transform: translateY(-10px);
+}
+
+@media (max-width: 1180px) {
+  .home-bulk-order-section {
+    grid-template-columns: 1fr;
+  }
+
+  .home-bestseller-section,
+  .home-new-arrivals-section,
+  .home-collections-section,
+  .home-woollen-collection-section {
+    min-height: auto !important;
+  }
+
+  .home-bestseller-section .products-grid,
+  .home-new-arrivals-section .products-grid,
+  .home-collections-section .categories-grid,
+  .home-woollen-collection-section .woollen-collections-grid {
+    grid-template-columns: repeat(2, minmax(260px, 1fr)) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .home-bulk-order-section {
+    padding: 4rem 5%;
+  }
+
+  .home-bulk-copy .section-eyebrow,
+  .home-bulk-copy .section-title,
+  .home-bulk-copy p {
+    text-align: center;
+  }
+
+  .home-bulk-points {
+    justify-content: center;
+  }
+
+  .home-bestseller-section .products-grid,
+  .home-new-arrivals-section .products-grid,
+  .home-collections-section .categories-grid,
+  .home-woollen-collection-section .woollen-collections-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

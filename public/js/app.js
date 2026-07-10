@@ -523,6 +523,22 @@ async function navigate(path, pushState = true) {
 window.addEventListener('popstate', () => navigate(location.pathname + location.search, false));
 
 // ── API HELPER ────────────────────────────────────────────
+function normalizedWhatsappNumber(value = '') {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.length === 10) return `91${digits}`;
+  return digits;
+}
+
+function openBulkOrderWhatsApp(source = 'home') {
+  const settings = readCachedPublicSettings();
+  const rawNumber = settings.bulkOrderWhatsappNumber || settings.whatsappNumber || settings.aiHandoffWhatsappNumber || settings.storePhone || settings.footerPhone || '+91 7404217625';
+  const number = normalizedWhatsappNumber(rawNumber);
+  const text = encodeURIComponent('Hi Lencho, I want to place a bulk order. Please share catalogue, price, MOQ, customization options, and delivery time.');
+  const url = number ? `https://wa.me/${number}?text=${text}` : `https://wa.me/917404217625?text=${text}`;
+  window.open(url, '_blank', 'noopener,noreferrer');
+  try { localStorage.setItem('lencho_last_bulk_order_source', source); } catch {}
+}
 async function api(url, opts = {}) {
   const timeoutMs = Number(opts.timeoutMs || 6000);
   const controller = new AbortController();
@@ -1940,8 +1956,14 @@ function categoriesWithProducts(categories = [], products = [], storeType = 'mai
 
   return productBacked.length ? productBacked : Array.from(productCategories.values());
 }
-function renderHomeCollectionCards(container, collections = []) {
-  const cards = mergeHomeCollections(collections);
+function renderHomeCollectionCards(container, collections = [], options = {}) {
+  const normalized = (Array.isArray(collections) ? collections : [])
+    .filter(Boolean)
+    .map(normalizeHomeCollectionCard)
+    .filter(collection => collection.slug);
+  const cards = normalized.length && options.fillFallback === false
+    ? normalized.slice(0, 3)
+    : mergeHomeCollections(normalized).slice(0, 3);
   container.innerHTML = cards.map((c, i) => `
     <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
       <img class="cat-img" src="${safeImageUrl(c.image, c.slug)}" alt="${c.name}" ${imageFallbackAttr(c.slug)}/>
@@ -2135,6 +2157,23 @@ async function renderHome(options = {}) {
     </div>
   </section>` : ''}
 
+    <section class="home-bulk-order-section reveal">
+    <div class="home-bulk-copy">
+      <div class="section-eyebrow">Bulk Orders</div>
+      <h2 class="section-title">Need jewellery or woollen pieces in bulk?</h2>
+      <p>For bridal gifting, reseller packs, return gifts, custom colour requests, or event orders, send the requirement on WhatsApp and get catalogue, pricing, and delivery details quickly.</p>
+      <div class="home-bulk-points" aria-label="Bulk order options">
+        <span><i class="fas fa-gift"></i> Bridal & return gifts</span>
+        <span><i class="fas fa-boxes-stacked"></i> Reseller quantity</span>
+        <span><i class="fas fa-palette"></i> Custom colours</span>
+      </div>
+    </div>
+    <div class="home-bulk-action">
+      <button class="btn-primary" onclick="openBulkOrderWhatsApp('home-bulk-section')"><i class="fab fa-whatsapp"></i> Order in Bulk on WhatsApp</button>
+      <button class="btn-outline" onclick="navigate('/contact')">Contact Support</button>
+    </div>
+  </section>
+
   ${isOn('showFeaturedProducts') ? `<!-- BEST SELLERS -->
   <section class="home-bestseller-section" style="background:${g('homeFeaturedBg', 'var(--beige)')};">
     <div class="section-header reveal">
@@ -2152,7 +2191,7 @@ async function renderHome(options = {}) {
       <div class="section-eyebrow">Fresh Drop</div>
       <h2 class="section-title">New Arrivals</h2>
       <div class="divider"></div>
-      <p class="section-desc">Latest jewellery and gift-ready styles, shown in a clean 4-card row.</p>
+      <p class="section-desc">Latest jewellery and gift-ready styles in a clean 3-card premium row.</p>
     </div>
     <div class="products-grid" id="new-arrivals-grid">
       <div style="grid-column:1/-1;text-align:center;color:var(--gray);">Loading new arrivals...</div>
@@ -2274,12 +2313,12 @@ async function loadHomeCategories() {
       renderFallbackCollectionCards(container);
       return;
     }
-    renderHomeCollectionCards(container, shuffleArray(categories));
+    renderHomeCollectionCards(container, shuffleArray(categories), { fillFallback: false });
   } catch (e) {
     const products = await withTimeout(api('/api/products?storeType=main'), 2500);
     const categories = categoriesWithProducts([], products, 'main');
     if (categories.length > 0) {
-      renderHomeCollectionCards(container, shuffleArray(categories));
+      renderHomeCollectionCards(container, shuffleArray(categories), { fillFallback: false });
       return;
     }
     renderFallbackCollectionCards(container);
@@ -2293,34 +2332,13 @@ async function loadHomeWoollenCollection() {
   const fallback = [
     { name: 'Crochet Accessories', slug: 'accessories', image: '/images/woollen_hero.jpg', description: 'Hair clips, bows, and everyday woollen pieces' },
     { name: 'Baby Gifts', slug: 'baby-gifts', image: '/images/woollen_hero.png', description: 'Soft handmade gifts and baby pieces' },
-    { name: 'Scrunchies', slug: 'scrunchies', image: '/images/woollen_pattern_bg.png', description: 'Soft yarn scrunchies in seasonal colours' },
-    { name: 'Woollen Decor', slug: 'decor', image: '/images/woollen_hero.jpg', description: 'Flowers, tiny decor, and gift-ready pieces' }
-  ];
+    { name: 'Scrunchies', slug: 'scrunchies', image: '/images/woollen_pattern_bg.png', description: 'Soft yarn scrunchies in seasonal colours' }
+  ].map(normalizeHomeCollectionCard);
 
-  try {
-    const cats = await withTimeout(api('/api/categories?storeType=woollen'), 2500);
-    let cards = Array.isArray(cats) ? cats.map(normalizeHomeCollectionCard) : [];
-
-    if (!cards.length) {
-      const products = await withTimeout(api('/api/products?storeType=woollen&sort=featured'), 2500);
-      const byCategory = new Map();
-      if (Array.isArray(products)) {
-        products.forEach(product => {
-          if (!product || !product.category || byCategory.has(product.category)) return;
-          byCategory.set(product.category, normalizeHomeCollectionCard({
-            name: product.category.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
-            slug: product.category,
-            image: product.images?.[0] || product.image || '/images/woollen_hero.jpg'
-          }));
-        });
-      }
-      cards = [...byCategory.values()];
-    }
-
-    const seen = new Set(cards.map(card => card.slug));
-    const merged = [...cards, ...fallback.filter(card => !seen.has(card.slug)).map(normalizeHomeCollectionCard)].slice(0, 3);
-    container.innerHTML = merged.map((card, i) => {
-      const target = cards.some(real => real.slug === card.slug) ? `/woollen/category/${card.slug}` : '/woollen';
+  const renderCards = (cards, realSlugs = new Set()) => {
+    const finalCards = (cards && cards.length ? cards : fallback).slice(0, 3);
+    container.innerHTML = finalCards.map((card, i) => {
+      const target = realSlugs.has(card.slug) ? `/woollen/category/${card.slug}` : '/woollen';
       return `
         <div class="cat-card reveal woollen-home-card" style="animation-delay:${i * 0.05}s" onclick="navigate('${target}')">
           <img class="cat-img" src="${safeImageUrl(card.image, card.slug, '/images/woollen_hero.jpg')}" alt="${card.name}" onerror="this.src='/images/woollen_hero.jpg'"/>
@@ -2330,19 +2348,24 @@ async function loadHomeWoollenCollection() {
       `;
     }).join('');
     initScrollReveal();
+  };
+
+  try {
+    const [cats, products] = await Promise.all([
+      withTimeout(api('/api/categories?storeType=woollen'), 2500),
+      withTimeout(api('/api/products?storeType=woollen&sort=featured'), 2500)
+    ]);
+    const realCards = categoriesWithProducts(Array.isArray(cats) ? cats : [], products, 'woollen');
+    const realSlugs = new Set(realCards.map(card => card.slug));
+    const seen = new Set(realSlugs);
+    const merged = [...realCards, ...fallback.filter(card => !seen.has(card.slug))].slice(0, 3);
+    renderCards(merged, realSlugs);
   } catch (e) {
-    container.innerHTML = fallback.slice(0, 3).map((card, i) => `
-      <div class="cat-card reveal woollen-home-card" style="animation-delay:${i * 0.05}s" onclick="navigate('/woollen')">
-        <img class="cat-img" src="${safeImageUrl(card.image, card.slug, '/images/woollen_hero.jpg')}" alt="${card.name}" onerror="this.src='/images/woollen_hero.jpg'"/>
-        <div class="cat-overlay"></div>
-        <div class="cat-content"><div class="cat-name">${card.name}</div><button class="cat-btn">Explore Woollen</button></div>
-      </div>
-    `).join('');
-    initScrollReveal();
+    renderCards(fallback, new Set());
   }
 }
 
-/* ── TRACK ORDER PAGE ─────────────────────────────────────── */
+/* TRACK ORDER PAGE */
 function renderTrack() {
   document.getElementById('app').innerHTML = `
   <div class="track-page reveal animate-pop-in">
