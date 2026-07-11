@@ -2162,23 +2162,6 @@ async function renderHome(options = {}) {
     </div>
   </section>` : ''}
 
-    <section class="home-bulk-order-section reveal">
-    <div class="home-bulk-copy">
-      <div class="section-eyebrow">Bulk Orders</div>
-      <h2 class="section-title">Need jewellery or woollen pieces in bulk?</h2>
-      <p>For bridal gifting, reseller packs, return gifts, custom colour requests, or event orders, send the requirement on WhatsApp and get catalogue, pricing, and delivery details quickly.</p>
-      <div class="home-bulk-points" aria-label="Bulk order options">
-        <span><i class="fas fa-gift"></i> Bridal & return gifts</span>
-        <span><i class="fas fa-boxes-stacked"></i> Reseller quantity</span>
-        <span><i class="fas fa-palette"></i> Custom colours</span>
-      </div>
-    </div>
-    <div class="home-bulk-action">
-      <button class="btn-primary" onclick="openBulkOrderWhatsApp('home-bulk-section')"><i class="fab fa-whatsapp"></i> Order in Bulk on WhatsApp</button>
-      <button class="btn-outline" onclick="navigate('/contact')">Contact Support</button>
-    </div>
-  </section>
-
   ${isOn('showFeaturedProducts') ? `<!-- BEST SELLERS -->
   <section class="home-bestseller-section" style="background:${g('homeFeaturedBg', 'var(--beige)')};">
     <div class="section-header reveal">
@@ -2632,10 +2615,6 @@ async function renderWoollen() {
 
   app.innerHTML = `
   <div class="woollen-store" style="--woollen-button:${settings.woollenButtonColor || '#6b7b59'};--woollen-hover:${settings.woollenHoverColor || '#8d9c74'};">
-    <div class="woollen-nav" style="background:${settings.woollenHeaderBg || '#f8f3ea'};color:${settings.woollenHeaderText || '#2f3729'};justify-content:${settings.woollenLogoPosition === 'center' ? 'center' : settings.woollenLogoPosition === 'right' ? 'flex-end' : 'flex-start'};">
-      <strong>${settings.woollenHeaderTitle || 'Lencho Woollen'}</strong>
-      <button style="background:${settings.woollenButtonColor || '#6b7b59'};" onclick="navigate('/woollen/products')">${settings.woollenHeroButtonText || 'Explore Collections'}</button>
-    </div>
     <section class="woollen-hero">
       <div class="woollen-hero-bg"><img src="${heroBanner}" alt="${settings.woollenHeroTitle || 'Handmade Woollen Collection'}" loading="eager"/></div>
       <div class="woollen-hero-overlay"></div>
@@ -2681,14 +2660,6 @@ async function renderWoollen() {
       </div>
       <div class="products-grid">${featured.length ? featured.map(productCardHTML).join('') : '<div class="empty-state"><h3>No woollen products yet</h3><p>Add woollen products from admin.</p></div>'}</div>
     </section>
-    <footer class="woollen-footer" style="background:${settings.woollenFooterColor || '#2f3729'};color:${settings.woollenFooterTextColor || '#f8f3ea'};">
-      ${settings.woollenFooterImage ? `<img src="${safeImageUrl(settings.woollenFooterImage)}" alt="Woollen footer" loading="lazy"/>` : ''}
-      <div>
-        <strong>${settings.woollenHeaderTitle || 'Lencho Woollen'}</strong>
-        <p>${settings.woollenFooterContent || 'Handmade with care by Lencho.'}</p>
-        <span>${settings.woollenSocialIcons || 'instagram,whatsapp'}</span>
-      </div>
-    </footer>
   </div>`;
   initScrollReveal();
 }

@@ -1231,7 +1231,7 @@ async function incrementWebsiteVisitorCount(req) {
     try {
       await Settings.findOneAndUpdate(
         { key: 'siteVisitorCount' },
-        { $inc: { value: 1 }, $setOnInsert: { value: getFallbackVisitorStats().totalVisitors, label: 'Website Visitor Count' } },
+        { $inc: { value: 1 }, $setOnInsert: { label: 'Website Visitor Count' } },
         { upsert: true, new: true }
       );
       return;
@@ -1254,7 +1254,7 @@ async function incrementStoreVisitorCount(req) {
     try {
       await Settings.findOneAndUpdate(
         { key: 'storeVisitorCount' },
-        { $inc: { value: 1 }, $setOnInsert: { value: getFallbackVisitorStats().storeVisitors, label: 'Store Visitor Count' } },
+        { $inc: { value: 1 }, $setOnInsert: { label: 'Store Visitor Count' } },
         { upsert: true, new: true }
       );
       return;
@@ -1382,6 +1382,8 @@ async function seedSettings() {
       { key: 'storeName', value: 'Lencho', label: 'Store Name' },
       { key: 'storeEmail', value: 'hello@lencho.in', label: 'Store Email' },
       { key: 'storePhone', value: '+91 9876543210', label: 'Store Phone' },
+      { key: 'siteVisitorCount', value: 0, label: 'Website Visitor Count' },
+      { key: 'storeVisitorCount', value: 0, label: 'Store Visitor Count' },
       { key: 'gstin', value: '27XXXXX1234X1ZX', label: 'GSTIN Number' },
       { key: 'showTestimonials', value: true, label: 'Show Testimonials Section' },
       { key: 'saleEndDate', value: new Date(Date.now() + 86400000).toISOString(), label: 'Sale End Date (ISO)' },
@@ -1460,6 +1462,8 @@ async function seedSettings() {
       { key: 'showPromo', value: true, label: 'Show Promo/Timer Section' },
       { key: 'showTrustHub', value: true, label: 'Show Trust Hub Strip' },
       { key: 'showOfferBanner', value: true, label: 'Show Offer Banner' },
+      { key: 'siteVisitorCount', value: 0, label: 'Website Visitor Count' },
+      { key: 'storeVisitorCount', value: 0, label: 'Store Visitor Count' },
       { key: 'footerAddress', value: '197 Sarakpur, Barara, Ambala, Haryana', label: 'Footer Address' },
       { key: 'footerPhone', value: '+91 7404217625', label: 'Footer Phone' },
       { key: 'footerEmail', value: 'lencho.official01@gmail.com', label: 'Footer Email' },
@@ -4674,6 +4678,11 @@ function safeAdminAmount(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : 0;
 }
+
+function safeVisitorCount(value) {
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? Math.floor(num) : 0;
+}
 app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   try {
     if (useDB) {
@@ -4692,7 +4701,6 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
       ]);
       const summary = orderSummary[0] || {};
       const today = todaySummary[0] || {};
-      const fallbackVisitors = getFallbackVisitorStats();
       const statusCounts = statusRows.reduce((acc, row) => {
         acc[row._id || 'placed'] = Number(row.count) || 0;
         return acc;
@@ -4705,8 +4713,8 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
         totalUsers,
         totalProducts,
         totalGstCollected: safeAdminAmount(summary.totalGstCollected),
-        totalVisitors: Math.max(Number(visitorCounter?.value) || 0, fallbackVisitors.totalVisitors),
-        storeVisitors: Math.max(Number(storeVisitorCounter?.value) || 0, fallbackVisitors.storeVisitors),
+        totalVisitors: safeVisitorCount(visitorCounter?.value),
+        storeVisitors: safeVisitorCount(storeVisitorCounter?.value),
         statusCounts,
         recentOrders: recentOrders.map(o => ({ ...o, id: o.id || o._id }))
       });
@@ -5344,10 +5352,9 @@ app.get('/api/admin/visitor-stats', requireAdmin, async (req, res) => {
         Settings.findOne({ key: 'siteVisitorCount' }).lean(),
         Settings.findOne({ key: 'storeVisitorCount' }).lean()
       ]);
-      const fallbackVisitors = getFallbackVisitorStats();
       return res.json({
-        totalVisitors: Math.max(Number(total?.value) || 0, fallbackVisitors.totalVisitors),
-        storeVisitors: Math.max(Number(store?.value) || 0, fallbackVisitors.storeVisitors)
+        totalVisitors: safeVisitorCount(total?.value),
+        storeVisitors: safeVisitorCount(store?.value)
       });
     }
     const stats = getFallbackVisitorStats();
@@ -5362,18 +5369,24 @@ app.put('/api/admin/visitor-count', requireAdmin, async (req, res) => {
   try {
     const { totalVisitors, storeVisitors } = req.body;
     if (useDB) {
+      const [currentTotal, currentStore] = await Promise.all([
+        Settings.findOne({ key: 'siteVisitorCount' }).lean(),
+        Settings.findOne({ key: 'storeVisitorCount' }).lean()
+      ]);
       const updates = [];
       if (totalVisitors !== undefined) {
+        const nextTotal = Math.max(safeVisitorCount(totalVisitors), safeVisitorCount(currentTotal?.value));
         updates.push(Settings.findOneAndUpdate(
           { key: 'siteVisitorCount' },
-          { value: Number(totalVisitors) || 0, label: 'Website Visitor Count' },
+          { value: nextTotal, label: 'Website Visitor Count' },
           { upsert: true, new: true }
         ));
       }
       if (storeVisitors !== undefined) {
+        const nextStore = Math.max(safeVisitorCount(storeVisitors), safeVisitorCount(currentStore?.value));
         updates.push(Settings.findOneAndUpdate(
           { key: 'storeVisitorCount' },
-          { value: Number(storeVisitors) || 0, label: 'Store Visitor Count' },
+          { value: nextStore, label: 'Store Visitor Count' },
           { upsert: true, new: true }
         ));
       }
@@ -5386,8 +5399,8 @@ app.put('/api/admin/visitor-count', requireAdmin, async (req, res) => {
         success: true,
         message: 'Visitor count updated',
         stats: {
-          totalVisitors: Number(total?.value) || 0,
-          storeVisitors: Number(store?.value) || 0
+          totalVisitors: safeVisitorCount(total?.value),
+          storeVisitors: safeVisitorCount(store?.value)
         }
       });
     }
