@@ -32,7 +32,8 @@ const {
   LoginEvent,
   MarketingSubscriber,
   MarketingCampaign,
-  MarketingEmailLog
+  MarketingEmailLog,
+  SiteSession
 } = require('./models');
 
 function cleanEnvValue(value) {
@@ -526,6 +527,16 @@ const DEFAULT_FALLBACK_SETTINGS = {
   footerAddress: '197 Sarakpur, Barara, Ambala, Haryana',
   footerPhone: '+91 7404217625',
   footerEmail: 'lencho.official01@gmail.com',
+  bulkOrderWhatsappNumber: '917404217625',
+  publicCatalogCacheSeconds: 300,
+  publicCatalogEdgeCacheSeconds: 900,
+  publicSettingsCacheSeconds: 300,
+  publicProductListLimit: 240,
+  performanceMode: 'scale',
+  enableEdgeCaching: true,
+  seoRobotsPolicy: 'index,follow',
+  seoJsonLdEnabled: true,
+  seoSitemapPriority: '0.8',
   seoTitleDefault: 'Lencho - Premium Artificial Jewellery',
   seoDescriptionDefault: 'Shop premium artificial jewellery at Lencho. Trending earrings, necklaces, toe rings and more at great prices.',
   seoCanonicalBaseUrl: SITE_URL,
@@ -562,6 +573,80 @@ const DEFAULT_FALLBACK_SETTINGS = {
 };
 
 const app = express();
+const runtimeSettingsCache = { data: null, ts: 0 };
+const publicApiResponseCache = new Map();
+const RUNTIME_SETTINGS_CACHE_TTL_MS = Math.max(5, Number(process.env.RUNTIME_SETTINGS_CACHE_SECONDS) || 30) * 1000;
+const PUBLIC_API_CACHE_MAX_ENTRIES = Math.max(50, Number(process.env.PUBLIC_API_CACHE_MAX_ENTRIES) || 500);
+
+function clearPublicApiCache(scope = 'all') {
+  if (scope === 'settings') {
+    for (const key of publicApiResponseCache.keys()) {
+      if (key.includes('/api/settings')) publicApiResponseCache.delete(key);
+    }
+    return;
+  }
+  publicApiResponseCache.clear();
+}
+
+function invalidateRuntimeCaches(scope = 'all') {
+  runtimeSettingsCache.data = null;
+  runtimeSettingsCache.ts = 0;
+  clearPublicApiCache(scope);
+}
+
+function parseCacheSeconds(value, fallback, max = 3600) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.max(0, Math.min(max, Math.round(num)));
+}
+
+function setPublicCacheHeaders(res, browserSeconds = 60, edgeSeconds = browserSeconds) {
+  const maxAge = Math.max(0, Number(browserSeconds) || 0);
+  const sMaxAge = Math.max(maxAge, Number(edgeSeconds) || maxAge);
+  if (maxAge <= 0) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    return;
+  }
+  res.set('Cache-Control', `public, max-age=${maxAge}, s-maxage=${sMaxAge}, stale-while-revalidate=${Math.min(86400, sMaxAge * 2)}`);
+  res.set('CDN-Cache-Control', `public, max-age=${sMaxAge}`);
+  res.set('Vary', 'Accept-Encoding');
+}
+
+function publicApiCacheKey(req) {
+  const params = new URLSearchParams(req.query || {});
+  params.delete('_');
+  params.delete('ts');
+  params.sort();
+  return `${req.method}:${req.path}?${params.toString()}`;
+}
+
+function getPublicApiCache(req) {
+  const key = publicApiCacheKey(req);
+  const entry = publicApiResponseCache.get(key);
+  if (!entry || Date.now() > entry.expiresAt) {
+    if (entry) publicApiResponseCache.delete(key);
+    return null;
+  }
+  return entry.payload;
+}
+
+function setPublicApiCache(req, payload, seconds) {
+  const ttlMs = Math.max(0, Number(seconds) || 0) * 1000;
+  if (!ttlMs || payload?.error) return;
+  if (publicApiResponseCache.size >= PUBLIC_API_CACHE_MAX_ENTRIES) {
+    const firstKey = publicApiResponseCache.keys().next().value;
+    if (firstKey) publicApiResponseCache.delete(firstKey);
+  }
+  publicApiResponseCache.set(publicApiCacheKey(req), { payload, expiresAt: Date.now() + ttlMs });
+}
+
+function isPublicCacheableRequest(req) {
+  if (req.method !== 'GET') return false;
+  if (req.path.includes('/admin')) return false;
+  if (req.headers.authorization) return false;
+  if (req.session?.role === 'admin') return false;
+  return true;
+}
 
 // CORS Configuration for Production
 const allowedOrigins = [
@@ -664,6 +749,7 @@ async function initDB() {
     useDB = true;
     console.log('MongoDB Atlas connected. Permanent storage enabled.');
     await ensureInitialAdminIfRequested();
+    await seedSettings();
     warmupSmtpTransporter().catch(() => {});
     console.log('🚀 System Bootstrapped Successfully');
   } catch (err) {
@@ -731,7 +817,7 @@ const CATEGORY_FALLBACK_IMAGE_MAP = {
 
 const PUBLIC_SETTINGS_KEYS = [
   'globalDiscount', 'freeShippingMin', 'shippingCharge', 'deliveryDays', 'shippingNote',
-  'whatsappNumber', 'gstRate', 'gstin', 'hsn', 'storeName', 'storeEmail', 'storePhone', 'storeAddress',
+  'whatsappNumber', 'bulkOrderWhatsappNumber', 'gstRate', 'gstin', 'hsn', 'storeName', 'storeEmail', 'storePhone', 'storeAddress',
   'legalBusinessName', 'legalBusinessAddress', 'legalSupportEmail', 'legalSupportPhone', 'grievanceOfficerName', 'grievanceOfficerEmail', 'refundTimeline',
   'heroTitle', 'heroSubtitle', 'heroDescription', 'heroImage', 'heroMediaType', 'heroVideoUrl',
   'heroBadge', 'heroButton1Text', 'heroButton2Text',
@@ -741,6 +827,7 @@ const PUBLIC_SETTINGS_KEYS = [
   'themeRose', 'themeRoseDark', 'themeRoseLight', 'themeGold', 'themeGoldLight', 'themeBeige', 'themeDark', 'themeRadius',
   'homeCollectionsBg', 'homeFeaturedBg', 'homeTestimonialsBg',
   'seoTitleDefault', 'seoDescriptionDefault', 'seoCanonicalBaseUrl', 'seoOgImageUrl', 'seoTwitterImageUrl',
+  'publicCatalogCacheSeconds', 'publicCatalogEdgeCacheSeconds', 'publicSettingsCacheSeconds', 'publicProductListLimit', 'performanceMode', 'enableEdgeCaching', 'seoRobotsPolicy', 'seoJsonLdEnabled', 'seoSitemapPriority',
   'socialInstagramUrl', 'socialFacebookUrl', 'socialYoutubeUrl', 'socialWhatsappUrl',
   'schemaPhone', 'schemaEmail', 'schemaAddress',
   'aiChatEnabled', 'aiChatWelcome', 'aiHandoffWhatsappNumber',
@@ -1500,28 +1587,85 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
   immutable: true
 }));
 
-// Cache slow-changing API responses only. Catalog must refresh immediately after admin edits.
+// Public API cache headers. Admin writes invalidate in-memory cache; CDN can safely absorb traffic spikes.
 app.use((req, res, next) => {
-  if (req.method === 'GET' && /^\/api\/(products|categories)\b/.test(req.path)) {
-    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-  } else if (req.method === 'GET' && !req.path.includes('/admin/')) {
-    res.set('Cache-Control', 'public, max-age=300');  // 5 minute cache
+  if (req.method === 'GET' && req.path.startsWith('/api/')) {
+    if (/^\/api\/(products|categories|recommendations|settings(\/public)?)\b/.test(req.path)) {
+      res.set('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600');
+      res.set('Vary', 'Accept-Encoding');
+    } else {
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    }
   }
   next();
 });
 app.set('trust proxy', 1);
 app.disable('x-powered-by');  // Hide express version
 
-app.use(session({
+function createMongoSessionStore() {
+  const Store = session.Store;
+  const defaultMaxAgeMs = 7 * 24 * 60 * 60 * 1000;
+  return new (class MongoSessionStore extends Store {
+    isReady() {
+      return Boolean(MONGODB_URI && SiteSession && mongoose.connection.readyState === 1);
+    }
+
+    get(sid, callback) {
+      if (!this.isReady()) return callback(null, null);
+      SiteSession.findById(sid).lean()
+        .then(doc => {
+          if (!doc || !doc.expiresAt || doc.expiresAt <= new Date()) return callback(null, null);
+          return callback(null, doc.session || null);
+        })
+        .catch(callback);
+    }
+
+    set(sid, sess, callback = () => {}) {
+      if (!this.isReady()) return callback(null);
+      const cookie = sess?.cookie || {};
+      const maxAge = Number(cookie.maxAge) || defaultMaxAgeMs;
+      const expiresAt = cookie.expires ? new Date(cookie.expires) : new Date(Date.now() + maxAge);
+      SiteSession.findByIdAndUpdate(
+        sid,
+        { _id: sid, session: sess, expiresAt },
+        { upsert: true, setDefaultsOnInsert: true }
+      ).then(() => callback(null)).catch(callback);
+    }
+
+    touch(sid, sess, callback = () => {}) {
+      if (!this.isReady()) return callback(null);
+      const cookie = sess?.cookie || {};
+      const maxAge = Number(cookie.maxAge) || defaultMaxAgeMs;
+      const expiresAt = cookie.expires ? new Date(cookie.expires) : new Date(Date.now() + maxAge);
+      SiteSession.updateOne({ _id: sid }, { $set: { expiresAt } })
+        .then(() => callback(null))
+        .catch(callback);
+    }
+
+    destroy(sid, callback = () => {}) {
+      if (!this.isReady()) return callback(null);
+      SiteSession.deleteOne({ _id: sid }).then(() => callback(null)).catch(callback);
+    }
+  })();
+}
+
+const sessionOptions = {
   secret: SESSION_SECRET_RESOLVED,
-  resave: false, saveUninitialized: false,
+  resave: false,
+  saveUninitialized: false,
   cookie: {
     maxAge: 7 * 24 * 60 * 60 * 1000,
     httpOnly: true,
     sameSite: 'lax',
     secure: isProduction
   }
-}));
+};
+
+if (MONGODB_URI) {
+  sessionOptions.store = createMongoSessionStore();
+}
+
+app.use(session(sessionOptions));
 
 function saveSessionAsync(req) {
   return new Promise((resolve, reject) => {
@@ -1582,14 +1726,36 @@ async function getMeaningfulSetting(key, fallback) {
   return val;
 }
 
-async function getAllSettingsObject() {
-  if (!useDB) return getFallbackSettingsObject();
-  const rows = await Settings.find({}).lean();
-  return { ...DEFAULT_FALLBACK_SETTINGS, ...settingsToObject(rows) };
+async function getAllSettingsObject(options = {}) {
+  const force = Boolean(options.force);
+  const now = Date.now();
+  if (!force && runtimeSettingsCache.data && (now - runtimeSettingsCache.ts) < RUNTIME_SETTINGS_CACHE_TTL_MS) {
+    return runtimeSettingsCache.data;
+  }
+  const data = !useDB
+    ? getFallbackSettingsObject()
+    : { ...DEFAULT_FALLBACK_SETTINGS, ...settingsToObject(await Settings.find({}).lean()) };
+  runtimeSettingsCache.data = data;
+  runtimeSettingsCache.ts = now;
+  return data;
 }
 
-async function getPublicSettingsObject() {
-  return getPublicSettingsPayload(await getAllSettingsObject());
+async function getPublicSettingsObject(options = {}) {
+  return getPublicSettingsPayload(await getAllSettingsObject(options));
+}
+
+async function getPublicCachePolicy() {
+  const settings = await getAllSettingsObject();
+  const freshMode = String(settings.performanceMode || 'scale') === 'fresh';
+  const catalogSeconds = parseCacheSeconds(settings.publicCatalogCacheSeconds, freshMode ? 60 : 300, 3600);
+  const edgeSeconds = parseCacheSeconds(settings.publicCatalogEdgeCacheSeconds, freshMode ? 120 : 900, 86400);
+  return {
+    catalogSeconds: freshMode ? Math.min(catalogSeconds, 60) : catalogSeconds,
+    edgeSeconds: freshMode ? Math.min(edgeSeconds, 120) : edgeSeconds,
+    settingsSeconds: parseCacheSeconds(settings.publicSettingsCacheSeconds, freshMode ? 60 : 300, 3600),
+    productListLimit: Math.max(24, Math.min(500, Number(settings.publicProductListLimit) || 240)),
+    edgeEnabled: settings.enableEdgeCaching !== false && settings.enableEdgeCaching !== 'false'
+  };
 }
 
 function extractSettingsUpdates(payload) {
@@ -1991,7 +2157,15 @@ async function generateAiChatResponse(payload = {}) {
 
 app.get('/api/settings/public', async (req, res) => {
   try {
-    res.json(await getPublicSettingsObject());
+    const policy = await getPublicCachePolicy();
+    setPublicCacheHeaders(res, Math.min(300, policy.settingsSeconds), policy.edgeEnabled ? policy.settingsSeconds : Math.min(300, policy.settingsSeconds));
+    if (isPublicCacheableRequest(req)) {
+      const cached = getPublicApiCache(req);
+      if (cached) return res.json(cached);
+    }
+    const payload = await getPublicSettingsObject();
+    if (isPublicCacheableRequest(req)) setPublicApiCache(req, payload, policy.settingsSeconds);
+    res.json(payload);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2028,11 +2202,13 @@ app.put('/api/admin/settings', requireAdmin, async (req, res) => {
         if (s && s.key) nextSettings[s.key] = s.value;
       }
       saveFallbackSettingsObject(nextSettings);
+      invalidateRuntimeCaches('settings');
       return res.json({ success: true });
     }
     for (const s of updates) {
       await Settings.findOneAndUpdate({ key: s.key }, { value: s.value }, { upsert: true });
     }
+    invalidateRuntimeCaches('settings');
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2047,11 +2223,13 @@ app.post('/api/admin/settings', requireAdmin, async (req, res) => {
         if (s && s.key) nextSettings[s.key] = s.value;
       }
       saveFallbackSettingsObject(nextSettings);
+      invalidateRuntimeCaches('settings');
       return res.json({ success: true });
     }
     for (const s of updates) {
       await Settings.findOneAndUpdate({ key: s.key }, { value: s.value }, { upsert: true });
     }
+    invalidateRuntimeCaches('settings');
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3762,27 +3940,39 @@ app.delete('/api/admin/users/:id', async (req, res) => {
 // ─── CATEGORY (COLLECTION) API ────────────────────────────────
 app.get('/api/categories', async (req, res) => {
   try {
+    const policy = await getPublicCachePolicy();
+    setPublicCacheHeaders(res, Math.min(300, policy.catalogSeconds), policy.edgeEnabled ? policy.edgeSeconds : policy.catalogSeconds);
+    if (isPublicCacheableRequest(req)) {
+      const cached = getPublicApiCache(req);
+      if (cached) return res.json(cached);
+    }
+
     const { storeType } = req.query;
+    let payload;
     if (useDB) {
       const query = storeType ? { storeType } : {};
-      const cats = await Category.find(query).sort('displayOrder').lean();
-      if (cats && cats.length > 0) return res.json(cats.map(normalizeCategoryRecord).filter(Boolean));
-
-      const products = await Product.find(query).lean();
-      const productCats = products.map(p => ({
-        id: p._id?.toString() || p.id,
-        name: p.name,
-        category: p.category,
-        images: p.images || []
-      }));
-      return res.json(getJsonCategoriesFromProducts(productCats).map(normalizeCategoryRecord).filter(Boolean));
+      const cats = await Category.find(query).sort({ displayOrder: 1, createdAt: 1 }).lean();
+      if (cats && cats.length > 0) {
+        payload = cats.map(normalizeCategoryRecord).filter(Boolean);
+      } else {
+        const products = await Product.find(query).select('name category images storeType').lean();
+        const productCats = products.map(p => ({
+          id: p._id?.toString() || p.id,
+          name: p.name,
+          category: p.category,
+          images: p.images || []
+        }));
+        payload = getJsonCategoriesFromProducts(productCats).map(normalizeCategoryRecord).filter(Boolean);
+      }
+    } else {
+      payload = getJsonCategories();
+      if (storeType) payload = payload.filter(c => c.storeType === storeType);
     }
-    let cats = getJsonCategories();
-    if (storeType) cats = cats.filter(c => c.storeType === storeType);
-    return res.json(cats);
+
+    if (isPublicCacheableRequest(req)) setPublicApiCache(req, payload, policy.catalogSeconds);
+    return res.json(payload);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.post('/api/admin/categories', requireAdmin, async (req, res) => {
   try {
     const { name, image, bannerImage, icon, theme, storeType, description, displayOrder } = req.body;
@@ -3795,9 +3985,11 @@ app.post('/api/admin/categories', requireAdmin, async (req, res) => {
       const cat = { id: uuidv4(), ...payload, createdAt: new Date().toISOString() };
       cats.push(cat);
       writeJson(FILES.categories, cats);
+      clearPublicApiCache('catalog');
       return res.json({ success: true, category: normalizeCategoryRecord(cat) });
     }
     const cat = await Category.create(payload);
+    clearPublicApiCache('catalog');
     res.json({ success: true, category: cat });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3813,9 +4005,11 @@ app.put('/api/admin/categories/:id', requireAdmin, async (req, res) => {
       if (updates.storeType !== 'woollen') updates.storeType = 'main';
       cats[idx] = { ...cats[idx], ...updates, updatedAt: new Date().toISOString() };
       writeJson(FILES.categories, cats);
+      clearPublicApiCache('catalog');
       return res.json({ success: true, category: normalizeCategoryRecord(cats[idx]) });
     }
     const cat = await Category.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    clearPublicApiCache('catalog');
     res.json({ success: true, category: cat });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3826,20 +4020,30 @@ app.delete('/api/admin/categories/:id', requireAdmin, async (req, res) => {
       const cats = readJson(FILES.categories);
       const next = cats.filter(c => c.id !== req.params.id && c._id !== req.params.id && c.slug !== req.params.id);
       writeJson(FILES.categories, next);
+      clearPublicApiCache('catalog');
       return res.json({ success: true });
     }
     await Category.findByIdAndDelete(req.params.id);
+    clearPublicApiCache('catalog');
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/recommendations', async (req, res) => {
   try {
+    const policy = await getPublicCachePolicy();
+    setPublicCacheHeaders(res, Math.min(120, policy.catalogSeconds), policy.edgeEnabled ? policy.edgeSeconds : policy.catalogSeconds);
+    if (isPublicCacheableRequest(req)) {
+      const cached = getPublicApiCache(req);
+      if (cached) return res.json(cached);
+    }
+
     const items = await buildRecommendations({
       placement: req.query.placement,
       productId: req.query.productId,
       category: req.query.category
     });
+    if (isPublicCacheableRequest(req)) setPublicApiCache(req, items, policy.catalogSeconds);
     res.json(items);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3847,10 +4051,20 @@ app.get('/api/recommendations', async (req, res) => {
 // ─── PRODUCTS ─────────────────────────────────────────────────
 app.get('/api/products', async (req, res) => {
   try {
-    await incrementStoreVisitorCount(req);
+    incrementStoreVisitorCount(req).catch(e => console.error('Store visitor counter error:', e.message));
+    const policy = await getPublicCachePolicy();
+    setPublicCacheHeaders(res, Math.min(120, policy.catalogSeconds), policy.edgeEnabled ? policy.edgeSeconds : policy.catalogSeconds);
+    if (isPublicCacheableRequest(req)) {
+      const cached = getPublicApiCache(req);
+      if (cached) return res.json(cached);
+    }
+
     const { category, featured, popular, trending, newArrival, sale, search, sku, sort, stock, status, storeType } = req.query;
     const auth = getAuthContext(req);
     const effectiveStatus = status || (auth.role === 'admin' ? '' : 'published');
+    const requestedLimit = Number(req.query.limit);
+    const limit = auth.role === 'admin' ? 0 : Math.min(policy.productListLimit, Math.max(1, requestedLimit || policy.productListLimit));
+
     if (useDB) {
       let query = {};
       if (category) query.category = category;
@@ -3869,11 +4083,11 @@ app.get('/api/products', async (req, res) => {
           query.$or.push({ name: { $regex: search, $options: 'i' } });
           query.$or.push({ description: { $regex: search, $options: 'i' } });
           query.$or.push({ sku: { $regex: search, $options: 'i' } });
+          query.$or.push({ searchKeywords: { $regex: search, $options: 'i' } });
         }
-        if (sku) {
-          query.$or.push({ sku: { $regex: sku, $options: 'i' } });
-        }
+        if (sku) query.$or.push({ sku: { $regex: sku, $options: 'i' } });
       }
+
       let q = Product.find(query);
       if (sort === 'price-asc') q = q.sort({ price: 1 });
       else if (sort === 'price-desc') q = q.sort({ price: -1 });
@@ -3884,9 +4098,12 @@ app.get('/api/products', async (req, res) => {
       else if (sort === 'trending') q = q.sort({ trending: -1, rating: -1 });
       else if (sort === 'rating') q = q.sort({ rating: -1 });
       else q = q.sort({ createdAt: -1 });
-      const products = await q.lean();
-      return res.json(products.map(normalizeProductRecord).filter(Boolean));
+      if (limit > 0) q = q.limit(limit);
+      const payload = (await q.lean()).map(normalizeProductRecord).filter(Boolean);
+      if (isPublicCacheableRequest(req)) setPublicApiCache(req, payload, policy.catalogSeconds);
+      return res.json(payload);
     }
+
     let products = getJsonCatalogProducts();
     if (category) products = products.filter(p => p.category === category);
     if (storeType) products = products.filter(p => (p.storeType || 'main') === storeType);
@@ -3898,7 +4115,7 @@ app.get('/api/products', async (req, res) => {
     if (sale === 'true') products = products.filter(p => p.sale);
     if (stock === 'in') products = products.filter(p => Number(p.stock) > 0);
     if (stock === 'out') products = products.filter(p => Number(p.stock) <= 0);
-    if (search) products = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || String(p.description || '').toLowerCase().includes(search.toLowerCase()) || String(p.sku || '').toLowerCase().includes(search.toLowerCase()));
+    if (search) products = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || String(p.description || '').toLowerCase().includes(search.toLowerCase()) || String(p.sku || '').toLowerCase().includes(search.toLowerCase()) || String(p.searchKeywords || '').toLowerCase().includes(search.toLowerCase()));
     if (sku) products = products.filter(p => String(p.sku || '').toLowerCase().includes(String(sku).toLowerCase()));
     if (sort === 'price-asc') products.sort((a, b) => a.price - b.price);
     if (sort === 'price-desc') products.sort((a, b) => b.price - a.price);
@@ -3907,26 +4124,37 @@ app.get('/api/products', async (req, res) => {
     if (sort === 'best-selling') products.sort((a, b) => Number(b.popular) - Number(a.popular) || (b.rating || 0) - (a.rating || 0));
     if (sort === 'featured') products.sort((a, b) => Number(b.featured) - Number(a.featured));
     if (sort === 'trending') products.sort((a, b) => Number(b.trending) - Number(a.trending) || (b.rating || 0) - (a.rating || 0));
-    res.json(products);
+    const payload = limit > 0 ? products.slice(0, limit) : products;
+    if (isPublicCacheableRequest(req)) setPublicApiCache(req, payload, policy.catalogSeconds);
+    res.json(payload);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.get('/api/products/:id', async (req, res) => {
   try {
+    const policy = await getPublicCachePolicy();
+    setPublicCacheHeaders(res, Math.min(300, policy.catalogSeconds), policy.edgeEnabled ? policy.edgeSeconds : policy.catalogSeconds);
+    if (isPublicCacheableRequest(req)) {
+      const cached = getPublicApiCache(req);
+      if (cached) return res.json(cached);
+    }
+
+    let payload;
     if (useDB) {
       const id = String(req.params.id || '').trim();
       let p = /^[a-f\d]{24}$/i.test(id) ? await Product.findById(id).lean() : null;
       if (!p) p = await Product.findOne({ legacyId: id }).lean();
       if (!p) return res.status(404).json({ error: 'Product not found' });
-      return res.json(normalizeProductRecord(p));
+      payload = normalizeProductRecord(p);
+    } else {
+      const products = getJsonCatalogProducts();
+      payload = products.find(p => p.id === req.params.id);
+      if (!payload) return res.status(404).json({ error: 'Product not found' });
     }
-    const products = getJsonCatalogProducts();
-    const p = products.find(p => p.id === req.params.id);
-    if (!p) return res.status(404).json({ error: 'Product not found' });
-    res.json(p);
+
+    if (isPublicCacheableRequest(req)) setPublicApiCache(req, payload, policy.catalogSeconds);
+    res.json(payload);
   } catch { res.status(404).json({ error: 'Product not found' }); }
 });
-
 app.post('/api/products', requireAdmin, upload.array('images', 5), async (req, res) => {
   try {
     const payload = await buildProductPayload(req);
@@ -3934,12 +4162,14 @@ app.post('/api/products', requireAdmin, upload.array('images', 5), async (req, r
     if (validationError) return res.status(400).json({ error: validationError });
     if (useDB) {
       const p = await Product.create(payload);
+      clearPublicApiCache('catalog');
       return res.json({ success: true, message: 'Product added successfully', product: normalizeProductRecord({ ...p.toObject(), id: p._id.toString() }) });
     }
     const products = readJson(FILES.products);
     const p = { id: uuidv4(), ...payload, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     products.push(p);
     writeJson(FILES.products, products);
+    clearPublicApiCache('catalog');
     res.json({ success: true, message: 'Product added successfully', product: normalizeProductRecord(p) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3969,6 +4199,7 @@ app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req
         }));
       }
       const next = { ...p.toObject(), id: p._id.toString() };
+      clearPublicApiCache('catalog');
       return res.json({ success: true, message: 'Product updated successfully', product: normalizeProductRecord(next) });
     }
     const products = readJson(FILES.products);
@@ -3991,6 +4222,7 @@ app.put('/api/products/:id', requireAdmin, upload.array('images', 5), async (req
     }
     products[idx] = { ...products[idx], ...updates, updatedAt: new Date().toISOString() };
     writeJson(FILES.products, products);
+    clearPublicApiCache('catalog');
     res.json({ success: true, message: 'Product updated successfully', product: normalizeProductRecord(products[idx]) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -4010,6 +4242,7 @@ app.post('/api/admin/products/bulk', requireAdmin, async (req, res) => {
         const nextProducts = readJson(FILES.products).filter(item => !ids.includes(String(item.id || item._id)));
         writeJson(FILES.products, nextProducts);
       }
+      clearPublicApiCache('catalog');
       return res.json({ success: true, message: 'Products deleted successfully', count: ids.length });
     }
 
@@ -4028,12 +4261,14 @@ app.post('/api/admin/products/bulk', requireAdmin, async (req, res) => {
 
     if (useDB) {
       await Product.updateMany({ _id: { $in: ids } }, { $set: updates });
+      clearPublicApiCache('catalog');
       return res.json({ success: true, message: 'Bulk action completed successfully', count: ids.length, updates });
     }
     const nextProducts = readJson(FILES.products).map(item => ids.includes(String(item.id || item._id))
       ? { ...item, ...updates, updatedAt: new Date().toISOString() }
       : item);
     writeJson(FILES.products, nextProducts);
+    clearPublicApiCache('catalog');
     res.json({ success: true, message: 'Bulk action completed successfully', count: ids.length, updates });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -4056,6 +4291,7 @@ app.delete('/api/products/:id', requireAdmin, async (req, res) => {
           } catch (e) {}
         });
       }
+      clearPublicApiCache('catalog');
       return res.json({ success: true });
     }
     const products = readJson(FILES.products);
@@ -4073,6 +4309,7 @@ app.delete('/api/products/:id', requireAdmin, async (req, res) => {
         });
       }
       writeJson(FILES.products, products);
+      clearPublicApiCache('catalog');
     }
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -4440,25 +4677,38 @@ function safeAdminAmount(value) {
 app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   try {
     if (useDB) {
-      const [orders, users, products, visitorCounter, storeVisitorCounter] = await Promise.all([
-        Order.find().lean(),
-        User.find({ role: 'user' }).lean(),
-        Product.find().lean(),
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const [orderSummary, todaySummary, totalOrders, totalUsers, totalProducts, statusRows, recentOrders, visitorCounter, storeVisitorCounter] = await Promise.all([
+        Order.aggregate([{ $group: { _id: null, totalRevenue: { $sum: { $ifNull: ['$grandTotal', 0] } }, totalGstCollected: { $sum: { $ifNull: ['$gstTotal', 0] } } } }]),
+        Order.aggregate([{ $match: { createdAt: { $gte: todayStart } } }, { $group: { _id: null, todayOrders: { $sum: 1 }, todayRevenue: { $sum: { $ifNull: ['$grandTotal', 0] } } } }]),
+        Order.countDocuments(),
+        User.countDocuments({ role: 'user' }),
+        Product.countDocuments(),
+        Order.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
+        Order.find().sort({ createdAt: -1 }).limit(5).lean(),
         Settings.findOne({ key: 'siteVisitorCount' }).lean(),
         Settings.findOne({ key: 'storeVisitorCount' }).lean()
       ]);
-      const today = new Date().toDateString();
+      const summary = orderSummary[0] || {};
+      const today = todaySummary[0] || {};
       const fallbackVisitors = getFallbackVisitorStats();
-      const todayOrders = orders.filter(o => new Date(o.createdAt).toDateString() === today);
-      const statusCounts = orders.reduce((acc, o) => { acc[o.status] = (acc[o.status] || 0) + 1; return acc; }, {});
+      const statusCounts = statusRows.reduce((acc, row) => {
+        acc[row._id || 'placed'] = Number(row.count) || 0;
+        return acc;
+      }, {});
       return res.json({
-        totalOrders: orders.length, totalRevenue: orders.reduce((s, o) => s + safeAdminAmount(o.grandTotal), 0),
-        todayOrders: todayOrders.length, todayRevenue: todayOrders.reduce((s, o) => s + safeAdminAmount(o.grandTotal), 0),
-        totalUsers: users.length, totalProducts: products.length,
-        totalGstCollected: orders.reduce((s, o) => s + safeAdminAmount(o.gstTotal), 0),
+        totalOrders,
+        totalRevenue: safeAdminAmount(summary.totalRevenue),
+        todayOrders: safeAdminAmount(today.todayOrders),
+        todayRevenue: safeAdminAmount(today.todayRevenue),
+        totalUsers,
+        totalProducts,
+        totalGstCollected: safeAdminAmount(summary.totalGstCollected),
         totalVisitors: Math.max(Number(visitorCounter?.value) || 0, fallbackVisitors.totalVisitors),
         storeVisitors: Math.max(Number(storeVisitorCounter?.value) || 0, fallbackVisitors.storeVisitors),
-        statusCounts, recentOrders: orders.slice(-5).reverse()
+        statusCounts,
+        recentOrders: recentOrders.map(o => ({ ...o, id: o.id || o._id }))
       });
     }
     const orders = readJson(FILES.orders), users = readJson(FILES.users).filter(u => u.role !== 'admin'), products = readJson(FILES.products);
@@ -4469,7 +4719,7 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ─── INQUIRY ROUTES ───────────────────────────────────────────
+// INQUIRY ROUTES
 app.post('/api/contact', async (req, res) => {
   try {
     const { name, email, phone, message } = req.body;
@@ -5292,11 +5542,7 @@ const sendIndex = async (req, res) => {
     return res.redirect(302, target);
   }
 
-  try {
-    await incrementWebsiteVisitorCount(req);
-  } catch (e) {
-    console.error('Visitor counter error:', e.message);
-  }
+  incrementWebsiteVisitorCount(req).catch(e => console.error('Visitor counter error:', e.message));
   // Serve legacy public index.html
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 };

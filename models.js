@@ -104,6 +104,17 @@ const productSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // ── ORDER ─────────────────────────────────────────────────────
+
+// Lencho scale indexes: keep public catalog and admin dashboard fast as data grows.
+productSchema.index({ status: 1, storeType: 1, category: 1, createdAt: -1 });
+productSchema.index({ status: 1, storeType: 1, featured: -1, createdAt: -1 });
+productSchema.index({ status: 1, storeType: 1, popular: -1, rating: -1 });
+productSchema.index({ status: 1, storeType: 1, trending: -1, rating: -1 });
+productSchema.index({ status: 1, storeType: 1, newArrival: -1, createdAt: -1 });
+productSchema.index({ status: 1, storeType: 1, sale: -1, createdAt: -1 });
+productSchema.index({ sku: 1 });
+productSchema.index({ name: 'text', description: 'text', searchKeywords: 'text', sku: 'text' }, { default_language: 'none' });
+
 const orderSchema = new mongoose.Schema({
   id:         { type: String, unique: true },
   userId:     { type: String, required: false, default: null },
@@ -147,6 +158,8 @@ const orderSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 orderSchema.index({ userId: 1 });
+orderSchema.index({ createdAt: -1 });
+orderSchema.index({ status: 1, createdAt: -1 });
 
 // ── CART ──────────────────────────────────────────────────────
 const cartSchema = new mongoose.Schema({
@@ -207,6 +220,10 @@ const categorySchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // ── INQUIRY (CONTACT FORM) ────────────────────────────────────
+
+categorySchema.index({ storeType: 1, displayOrder: 1, createdAt: 1 });
+categorySchema.index({ slug: 1, storeType: 1 });
+
 const inquirySchema = new mongoose.Schema({
   name:    { type: String, required: true },
   email:   { type: String, required: true },
@@ -275,6 +292,13 @@ const marketingEmailLogSchema = new mongoose.Schema({
 
 marketingEmailLogSchema.index({ campaignId: 1, createdAt: -1 });
 
+
+const siteSessionSchema = new mongoose.Schema({
+  _id: { type: String, required: true },
+  session: { type: mongoose.Schema.Types.Mixed, required: true },
+  expiresAt: { type: Date, required: true, index: { expires: 0 } },
+}, { timestamps: true });
+
 module.exports = {
   User:     mongoose.model('User',     userSchema),
   Category: mongoose.model('Category', categorySchema),
@@ -290,4 +314,5 @@ module.exports = {
   MarketingSubscriber: mongoose.model('MarketingSubscriber', marketingSubscriberSchema),
   MarketingCampaign: mongoose.model('MarketingCampaign', marketingCampaignSchema),
   MarketingEmailLog: mongoose.model('MarketingEmailLog', marketingEmailLogSchema),
+  SiteSession: mongoose.model('SiteSession', siteSessionSchema),
 };

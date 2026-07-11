@@ -412,6 +412,7 @@ async function applyRouteSeo(context = {}, settingsInput = null) {
   document.title = title;
   upsertNamedMeta('description', description);
   upsertNamedMeta('keywords', keywords);
+  upsertNamedMeta('robots', settings.seoRobotsPolicy || 'index,follow');
   upsertPropertyMeta('og:title', title);
   upsertPropertyMeta('og:description', description);
   upsertPropertyMeta('og:url', currentUrl);
@@ -420,7 +421,11 @@ async function applyRouteSeo(context = {}, settingsInput = null) {
   upsertNamedMeta('twitter:description', description);
   upsertNamedMeta('twitter:image', `${baseUrl}${twitterImage.startsWith('/') ? twitterImage : `/${twitterImage}`}`);
   upsertLink('canonical', currentUrl);
-  upsertJsonLd('dynamic-seo-jsonld', schema);
+  if (settings.seoJsonLdEnabled === false || settings.seoJsonLdEnabled === 'false') {
+    document.getElementById('dynamic-seo-jsonld')?.remove();
+  } else {
+    upsertJsonLd('dynamic-seo-jsonld', schema);
+  }
   syncFooterDetails(settings);
 }
 

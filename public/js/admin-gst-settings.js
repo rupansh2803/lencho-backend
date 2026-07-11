@@ -311,6 +311,10 @@ async function adminStoreSettings() {
         <input type="tel" id="s-whatsapp" value="${s.whatsappNumber || ''}" placeholder="919999999999"/>
       </div>
       <div class="form-group">
+        <label>Bulk Order WhatsApp Number</label>
+        <input type="tel" id="s-bulk-whatsapp" value="${s.bulkOrderWhatsappNumber || s.whatsappNumber || ''}" placeholder="917404217625"/>
+      </div>
+      <div class="form-group">
         <label>Store Address</label>
         <textarea id="s-address" placeholder="197 Sarakpur, Barara, Ambala" style="resize:vertical;height:80px;">${s.storeAddress || ''}</textarea>
       </div>
@@ -326,6 +330,26 @@ async function adminStoreSettings() {
     </button>
   </div>
 
+  <!-- PERFORMANCE / SEO CONTROL -->
+  <div class="admin-form" style="margin-top:2rem;">
+    <h3>Performance & SEO Control</h3>
+    <p style="color:var(--gray);font-size:.85rem;margin-bottom:1.25rem;">Public catalog APIs can be cached by browser/CDN, while admin edits clear cache automatically.</p>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:1rem;">
+      <div class="form-group"><label>Default SEO Title</label><input id="s-seo-title" value="${s.seoTitleDefault || ''}" placeholder="Lencho - Premium Artificial Jewellery"/></div>
+      <div class="form-group"><label>Canonical Base URL</label><input id="s-seo-canonical" value="${s.seoCanonicalBaseUrl || ''}" placeholder="https://lencho.in"/></div>
+      <div class="form-group" style="grid-column:1/-1;"><label>Default SEO Description</label><textarea id="s-seo-desc" rows="2" placeholder="Short search description">${s.seoDescriptionDefault || ''}</textarea></div>
+      <div class="form-group"><label>Open Graph Image URL</label><input id="s-seo-og" value="${s.seoOgImageUrl || ''}" placeholder="/images/premium_hero.png"/></div>
+      <div class="form-group"><label>Twitter Image URL</label><input id="s-seo-twitter" value="${s.seoTwitterImageUrl || ''}" placeholder="/images/premium_hero.png"/></div>
+      <div class="form-group"><label>Browser Catalog Cache (seconds)</label><input type="number" id="s-cache-catalog" min="0" max="3600" value="${s.publicCatalogCacheSeconds ?? 300}"/></div>
+      <div class="form-group"><label>CDN/Edge Cache (seconds)</label><input type="number" id="s-cache-edge" min="0" max="86400" value="${s.publicCatalogEdgeCacheSeconds ?? 900}"/></div>
+      <div class="form-group"><label>Public Product List Limit</label><input type="number" id="s-product-limit" min="24" max="500" value="${s.publicProductListLimit ?? 240}"/></div>
+      <div class="form-group"><label>Performance Mode</label><select id="s-performance-mode"><option value="scale" ${(s.performanceMode || 'scale') === 'scale' ? 'selected' : ''}>Scale / High Traffic</option><option value="fresh" ${s.performanceMode === 'fresh' ? 'selected' : ''}>Fresh Data Priority</option></select></div>
+      <div class="form-group"><label>Edge Caching</label><select id="s-edge-enabled"><option value="true" ${String(s.enableEdgeCaching ?? true) !== 'false' ? 'selected' : ''}>Enabled</option><option value="false" ${String(s.enableEdgeCaching) === 'false' ? 'selected' : ''}>Disabled</option></select></div>
+      <div class="form-group"><label>Robots Policy</label><select id="s-robots-policy"><option value="index,follow" ${(s.seoRobotsPolicy || 'index,follow') === 'index,follow' ? 'selected' : ''}>Index, Follow</option><option value="noindex,nofollow" ${s.seoRobotsPolicy === 'noindex,nofollow' ? 'selected' : ''}>Noindex, Nofollow</option></select></div>
+      <div class="form-group"><label>Structured SEO Schema</label><select id="s-jsonld-enabled"><option value="true" ${String(s.seoJsonLdEnabled ?? true) !== 'false' ? 'selected' : ''}>Enabled</option><option value="false" ${String(s.seoJsonLdEnabled) === 'false' ? 'selected' : ''}>Disabled</option></select></div>
+    </div>
+    <button class="btn-primary" onclick="savePerformanceSeoSettings()"><i class="fas fa-rocket"></i> Save Performance & SEO</button>
+  </div>
   <!-- EMAIL / SMTP SECURITY SETTINGS -->
   <div class="admin-form" style="margin-top:2rem;">
     <h3>📧 Email & Security (OTP System)</h3>
@@ -446,6 +470,7 @@ async function saveStoreSettings() {
     storeEmail: document.getElementById('s-email')?.value || '',
     storePhone: document.getElementById('s-phone')?.value || '',
     whatsappNumber: document.getElementById('s-whatsapp')?.value || '',
+    bulkOrderWhatsappNumber: document.getElementById('s-bulk-whatsapp')?.value || document.getElementById('s-whatsapp')?.value || '',
     storeAddress: document.getElementById('s-address')?.value || '',
     facebookLink: document.getElementById('s-fb')?.value || '',
     instagramLink: document.getElementById('s-insta')?.value || '',
@@ -457,6 +482,25 @@ async function saveStoreSettings() {
   else toast('✅ Store & Social settings saved successfully!', 'success');
 }
 
+async function savePerformanceSeoSettings() {
+  const data = {
+    seoTitleDefault: document.getElementById('s-seo-title')?.value || '',
+    seoDescriptionDefault: document.getElementById('s-seo-desc')?.value || '',
+    seoCanonicalBaseUrl: document.getElementById('s-seo-canonical')?.value || '',
+    seoOgImageUrl: document.getElementById('s-seo-og')?.value || '',
+    seoTwitterImageUrl: document.getElementById('s-seo-twitter')?.value || '',
+    publicCatalogCacheSeconds: parseInt(document.getElementById('s-cache-catalog')?.value, 10) || 0,
+    publicCatalogEdgeCacheSeconds: parseInt(document.getElementById('s-cache-edge')?.value, 10) || 0,
+    publicProductListLimit: parseInt(document.getElementById('s-product-limit')?.value, 10) || 240,
+    performanceMode: document.getElementById('s-performance-mode')?.value || 'scale',
+    enableEdgeCaching: document.getElementById('s-edge-enabled')?.value !== 'false',
+    seoRobotsPolicy: document.getElementById('s-robots-policy')?.value || 'index,follow',
+    seoJsonLdEnabled: document.getElementById('s-jsonld-enabled')?.value !== 'false'
+  };
+  const r = await api('/api/admin/settings', { method: 'POST', body: data });
+  if (r.error) toast('Error saving performance/SEO: ' + r.error, 'error');
+  else toast('Performance and SEO settings saved. Public cache will refresh.', 'success');
+}
 async function saveSaleSettings() {
   const val = document.getElementById('s-sale-end')?.value;
   if(!val) return toast('Please select a date', 'warning');
