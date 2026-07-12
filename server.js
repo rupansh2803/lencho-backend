@@ -1836,7 +1836,7 @@ async function uploadMediaFiles(files, folder) {
   }
 
   if (isProduction) {
-    console.warn('[media] Cloudinary is not configured in production. Falling back to local uploads.');
+    throw new Error('Permanent image storage is not configured. Add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET before uploading products in production.');
   }
   return Promise.all(list.map(file => saveLocalMediaFile(file, sanitizeUploadFolder(folder))));
 }

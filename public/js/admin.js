@@ -2861,6 +2861,8 @@ let adminProductManagerState = {
   uploadingCount: 0
 };
 
+const ADMIN_PRODUCT_TEMPLATE_STORAGE_KEY = 'lencho_admin_product_templates_v1';
+
 function getAdminStoreLabel(storeType = 'main') {
   return storeType === 'woollen' ? 'Woollen' : 'Jewellery';
 }
@@ -2990,6 +2992,92 @@ function copyAdminProductDetailFields(source = {}) {
   detail.searchKeywords = source.searchKeywords || '';
   detail.returnPolicyText = source.returnPolicyText || '';
   return detail;
+}
+
+function getAdminProductTemplates() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ADMIN_PRODUCT_TEMPLATE_STORAGE_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function getAdminLastProductTemplate(storeType = adminProductManagerState.storeType) {
+  const templates = getAdminProductTemplates();
+  const template = templates[storeType || 'main'];
+  return template?.payload ? template : null;
+}
+
+function saveAdminLastProductTemplate(payload = {}, product = {}) {
+  try {
+    const storeType = payload.storeType || adminProductManagerState.storeType || 'main';
+    const templates = getAdminProductTemplates();
+    templates[storeType] = {
+      productName: product.name || payload.name || 'Last product',
+      savedAt: new Date().toISOString(),
+      payload: createAdminDraftFromPayload(payload)
+    };
+    localStorage.setItem(ADMIN_PRODUCT_TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
+  } catch (error) {
+    console.warn('Unable to save product template:', error.message);
+  }
+}
+
+function clearAdminLastProductTemplate() {
+  const storeType = adminProductManagerState.storeType || 'main';
+  const templates = getAdminProductTemplates();
+  delete templates[storeType];
+  localStorage.setItem(ADMIN_PRODUCT_TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
+  toast('Last product suggestion cleared', 'success');
+  renderAdminProductManager();
+}
+
+function applyAdminLastProductTemplate() {
+  const template = getAdminLastProductTemplate();
+  if (!template?.payload) return toast('No saved product suggestion found', 'error');
+  adminProductManagerState.editingProduct = {
+    ...template.payload,
+    storeType: adminProductManagerState.storeType,
+    status: template.payload.status || 'published',
+    name: '',
+    sku: '',
+    images: []
+  };
+  toast('Last product details applied. Add name, SKU and images.', 'success');
+  renderAdminProductManager();
+  setTimeout(() => document.getElementById('p-name')?.focus(), 60);
+}
+
+function renderAdminProductTemplateSuggestion(isEdit = false) {
+  if (isEdit) return '';
+  const template = getAdminLastProductTemplate();
+  if (!template?.payload) return '';
+  const payload = template.payload;
+  const savedDate = template.savedAt ? formatDate(template.savedAt) : '';
+  const chips = [
+    adminProductManagerSlugLabel(payload.category || ''),
+    payload.price ? `₹${payload.price}` : '',
+    payload.mrp ? `MRP ₹${payload.mrp}` : '',
+    payload.baseMaterial || payload.type || '',
+    payload.gstRate ? `GST ${payload.gstRate}%` : '',
+    payload.hsn ? `HSN ${payload.hsn}` : ''
+  ].filter(Boolean).slice(0, 6);
+  return `
+    <div style="border:1px solid rgba(201,106,138,.28);background:#fff7fb;border-radius:14px;padding:1rem;margin-bottom:1rem;display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;">
+      <div>
+        <div style="font-weight:800;color:var(--dark);margin-bottom:.25rem;"><i class="fas fa-wand-magic-sparkles"></i> Last product suggestion</div>
+        <div style="font-size:.85rem;color:var(--gray);">Saved from "${adminProductManagerEscape(template.productName || 'last product')}"${savedDate ? ` on ${savedDate}` : ''}. Use common price, GST, specs, policy and category for the next product.</div>
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.65rem;">
+          ${chips.map(chip => `<span style="font-size:.75rem;font-weight:700;background:#fff;border:1px solid rgba(201,106,138,.2);border-radius:999px;padding:.28rem .55rem;color:var(--rose-dark);">${adminProductManagerEscape(chip)}</span>`).join('')}
+        </div>
+      </div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+        <button class="btn-primary btn-sm" type="button" onclick="applyAdminLastProductTemplate()">Use Last Details</button>
+        <button class="btn-outline btn-sm" type="button" onclick="clearAdminLastProductTemplate()">Clear</button>
+      </div>
+    </div>
+  `;
 }
 
 function snapshotAdminProductManagerDraft() {
@@ -3217,6 +3305,8 @@ function renderAdminProductManager(preserveDraft = false) {
           Keep form values
         </label>
       </div>
+
+      ${renderAdminProductTemplateSuggestion(isEdit)}
 
       <div class="form-grid">
         <div class="form-group"><label>Product Name *</label><input id="p-name" value="${adminProductManagerEscape(product?.name || '')}" placeholder="e.g. Rose Gold Hoop Earrings"/></div>
@@ -3549,6 +3639,7 @@ async function submitAdminProduct(id = '') {
   else adminProductManagerState.products.unshift(nextProduct);
   adminProductManagerState.page = 1;
   toast(response.message || (id ? 'Product updated successfully' : 'Product added successfully'), 'success');
+  saveAdminLastProductTemplate(payload, nextProduct);
 
   if (id) {
     adminProductManagerState.editingProduct = { ...nextProduct };
