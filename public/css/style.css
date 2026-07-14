@@ -9905,7 +9905,8 @@ body.woollen-theme #site-header .wishlist-badge {
 }
 
 .woollen-flow,
-.woollen-flow-dot {
+.woollen-flow-dot,
+.woollen-yarn-flower {
   position: absolute;
   display: block;
   pointer-events: none;
@@ -9974,6 +9975,65 @@ body.woollen-theme #site-header .wishlist-badge {
   animation: woollenDot 8.5s ease-in-out infinite reverse;
 }
 
+.woollen-yarn-flower {
+  --flower-scale: 1;
+  width: clamp(42px, 5vw, 78px);
+  aspect-ratio: 1;
+  border-radius: 999px;
+  opacity: .58;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(177, 84, 116, .9) 0 11%, transparent 12%),
+    radial-gradient(ellipse at 50% 12%, rgba(255, 232, 239, .94) 0 18%, transparent 19%),
+    radial-gradient(ellipse at 82% 35%, rgba(255, 222, 197, .88) 0 18%, transparent 19%),
+    radial-gradient(ellipse at 70% 82%, rgba(244, 190, 207, .9) 0 18%, transparent 19%),
+    radial-gradient(ellipse at 30% 82%, rgba(255, 239, 219, .9) 0 18%, transparent 19%),
+    radial-gradient(ellipse at 18% 35%, rgba(244, 190, 207, .92) 0 18%, transparent 19%);
+  filter: drop-shadow(0 18px 24px rgba(173, 95, 123, .14));
+  animation: woollenFlowerFloat 13s ease-in-out infinite;
+}
+
+.woollen-yarn-flower::after {
+  content: '';
+  position: absolute;
+  inset: 17%;
+  border: 1px dashed rgba(111, 79, 85, .22);
+  border-radius: inherit;
+}
+
+.flower-one {
+  top: 25%;
+  right: 9%;
+}
+
+.flower-two {
+  --flower-scale: .72;
+  left: 11%;
+  bottom: 19%;
+  animation-duration: 16s;
+  animation-direction: reverse;
+  opacity: .44;
+}
+
+.woollen-flow-layer.subtle .woollen-yarn-flower {
+  top: 12%;
+  right: 8%;
+  opacity: .32;
+}
+
+.woollen-flow-layer.page-flow .woollen-yarn-flower {
+  opacity: .26;
+}
+
+.woollen-flow-layer.page-flow .flower-one {
+  top: 9%;
+  right: 7%;
+}
+
+.woollen-flow-layer.page-flow .flower-two {
+  left: 5%;
+  bottom: 7%;
+}
+
 @keyframes woollenFloatTR {
   0%, 100% { transform: translate3d(0, 0, 0) rotate(-24deg); }
   50% { transform: translate3d(-18px, 18px, 0) rotate(-17deg); }
@@ -9992,6 +10052,11 @@ body.woollen-theme #site-header .wishlist-badge {
 @keyframes woollenDot {
   0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: .55; }
   50% { transform: translate3d(16px, -18px, 0) scale(1.25); opacity: .9; }
+}
+
+@keyframes woollenFlowerFloat {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg) scale(var(--flower-scale)); }
+  50% { transform: translate3d(-14px, 18px, 0) rotate(18deg) scale(var(--flower-scale)); }
 }
 
 .product-detail-market > *:not(.woollen-flow-layer),
@@ -10070,6 +10135,20 @@ body.woollen-theme #site-header .wishlist-badge {
     width: 84px;
     height: 28px;
     opacity: .55;
+  }
+
+  .woollen-yarn-flower {
+    width: 42px;
+    opacity: .34;
+  }
+
+  .flower-one {
+    top: 18%;
+    right: 5%;
+  }
+
+  .flower-two {
+    display: none;
   }
 
   .flow-top-right {

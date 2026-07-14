@@ -1146,13 +1146,23 @@ function validateProductPayload(payload) {
   if (payload.hasVariants) {
     if (!payload.variantType) return 'Variant type is required';
     if (!payload.variants?.length) return 'Add at least one variant row';
-    const invalidVariant = payload.variants.find(variant => !variant.label || !variant.images?.length || !(Number(variant.price) > 0));
-    if (invalidVariant) return 'Each variant needs name, image and price';
+    const invalidVariant = payload.variants.find(variant => !variant.label || !(Number(variant.price) > 0));
+    if (invalidVariant) return 'Each variant needs name and price';
   } else {
     if (!(Number(payload.price) > 0)) return 'Selling price is required';
     if (!(Number(payload.mrp) > 0)) return 'MRP is required';
   }
   return '';
+}
+
+function makeCategorySlug(name = '') {
+  return String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^\w-]+/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
 }
 
 function normalizeProductRecord(product) {
@@ -4172,9 +4182,11 @@ app.get('/api/categories', async (req, res) => {
 app.post('/api/admin/categories', requireAdmin, async (req, res) => {
   try {
     const { name, image, bannerImage, icon, theme, storeType, description, displayOrder } = req.body;
-    if (!name) return res.status(400).json({ error: 'Collection name is required' });
-    const slug = name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
-    const payload = { name, slug, image, bannerImage, icon, theme, storeType: storeType === 'woollen' ? 'woollen' : 'main', description, displayOrder };
+    const cleanName = String(name || '').trim();
+    if (!cleanName) return res.status(400).json({ error: 'Collection name is required' });
+    const slug = makeCategorySlug(cleanName);
+    if (!slug) return res.status(400).json({ error: 'Collection name must include letters or numbers' });
+    const payload = { name: cleanName, slug, image, bannerImage, icon, theme, storeType: storeType === 'woollen' ? 'woollen' : 'main', description, displayOrder };
     if (!useDB) {
       const cats = readJson(FILES.categories);
       if (cats.some(c => c.slug === slug && (c.storeType || 'main') === payload.storeType)) return res.status(400).json({ error: 'Collection already exists in this store' });
@@ -4186,7 +4198,7 @@ app.post('/api/admin/categories', requireAdmin, async (req, res) => {
     }
     const cat = await Category.create(payload);
     clearPublicApiCache('catalog');
-    res.json({ success: true, category: cat });
+    res.json({ success: true, category: normalizeCategoryRecord(cat.toObject?.() || cat) });
   } catch (e) {
     if (e?.code === 11000) return res.status(400).json({ error: 'Collection already exists in this store' });
     res.status(500).json({ error: e.message });
@@ -4200,18 +4212,59 @@ app.put('/api/admin/categories/:id', requireAdmin, async (req, res) => {
       const idx = cats.findIndex(c => c.id === req.params.id || c._id === req.params.id || c.slug === req.params.id);
       if (idx === -1) return res.status(404).json({ error: 'Collection not found' });
       const updates = { ...req.body };
-      if (updates.name) updates.slug = updates.name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
-      if (updates.storeType !== 'woollen') updates.storeType = 'main';
+      const previousSlug = cats[idx].slug || makeCategorySlug(cats[idx].name);
+      if (updates.name !== undefined) {
+        updates.name = String(updates.name || '').trim();
+        if (!updates.name) return res.status(400).json({ error: 'Collection name is required' });
+        updates.slug = makeCategorySlug(updates.name);
+        if (!updates.slug) return res.status(400).json({ error: 'Collection name must include letters or numbers' });
+      }
+      if (updates.storeType === undefined) updates.storeType = cats[idx].storeType || 'main';
+      else if (updates.storeType !== 'woollen') updates.storeType = 'main';
+      if (updates.slug && cats.some((category, categoryIndex) => (
+        categoryIndex !== idx &&
+        category.slug === updates.slug &&
+        (category.storeType === 'woollen' ? 'woollen' : 'main') === updates.storeType
+      ))) {
+        return res.status(400).json({ error: 'Collection already exists in this store' });
+      }
+      if (updates.slug && updates.slug !== previousSlug) {
+        const products = readJson(FILES.products);
+        const currentStore = cats[idx].storeType === 'woollen' ? 'woollen' : 'main';
+        const nextProducts = products.map(product => (
+          String(product.category || '') === previousSlug && (product.storeType === 'woollen' ? 'woollen' : 'main') === currentStore
+            ? { ...product, category: updates.slug, updatedAt: new Date().toISOString() }
+            : product
+        ));
+        writeJson(FILES.products, nextProducts);
+      }
       cats[idx] = { ...cats[idx], ...updates, updatedAt: new Date().toISOString() };
       writeJson(FILES.categories, cats);
       clearPublicApiCache('catalog');
       return res.json({ success: true, category: normalizeCategoryRecord(cats[idx]) });
     }
+    const existingCategory = await Category.findById(req.params.id).lean();
+    if (!existingCategory) return res.status(404).json({ error: 'Collection not found' });
+    const previousSlug = existingCategory.slug || makeCategorySlug(existingCategory.name);
     const updates = { ...req.body };
-    if (updates.storeType !== 'woollen') updates.storeType = 'main';
-    const cat = await Category.findByIdAndUpdate(req.params.id, updates, { new: true });
+    if (updates.name !== undefined) {
+      updates.name = String(updates.name || '').trim();
+      if (!updates.name) return res.status(400).json({ error: 'Collection name is required' });
+      updates.slug = makeCategorySlug(updates.name);
+      if (!updates.slug) return res.status(400).json({ error: 'Collection name must include letters or numbers' });
+    }
+    if (updates.storeType === undefined) updates.storeType = existingCategory.storeType || 'main';
+    else if (updates.storeType !== 'woollen') updates.storeType = 'main';
+    const cat = await Category.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
+    if (!cat) return res.status(404).json({ error: 'Collection not found' });
+    if (updates.slug && updates.slug !== previousSlug) {
+      await Product.updateMany(
+        { category: previousSlug, storeType: existingCategory.storeType || 'main' },
+        { $set: { category: updates.slug } }
+      );
+    }
     clearPublicApiCache('catalog');
-    res.json({ success: true, category: cat });
+    res.json({ success: true, category: normalizeCategoryRecord(cat.toObject?.() || cat) });
   } catch (e) {
     if (e?.code === 11000) return res.status(400).json({ error: 'Collection already exists in this store' });
     res.status(500).json({ error: e.message });
@@ -4222,11 +4275,23 @@ app.delete('/api/admin/categories/:id', requireAdmin, async (req, res) => {
   try {
     if (!useDB) {
       const cats = readJson(FILES.categories);
+      const target = cats.find(c => c.id === req.params.id || c._id === req.params.id || c.slug === req.params.id);
+      if (!target) return res.status(404).json({ error: 'Collection not found' });
+      const targetStore = target.storeType === 'woollen' ? 'woollen' : 'main';
+      const targetSlug = target.slug || makeCategorySlug(target.name);
+      const productCount = readJson(FILES.products)
+        .filter(product => String(product.category || '') === targetSlug && (product.storeType === 'woollen' ? 'woollen' : 'main') === targetStore)
+        .length;
+      if (productCount > 0) return res.status(400).json({ error: `Move or delete ${productCount} product(s) before deleting this collection` });
       const next = cats.filter(c => c.id !== req.params.id && c._id !== req.params.id && c.slug !== req.params.id);
       writeJson(FILES.categories, next);
       clearPublicApiCache('catalog');
       return res.json({ success: true });
     }
+    const target = await Category.findById(req.params.id).lean();
+    if (!target) return res.status(404).json({ error: 'Collection not found' });
+    const productCount = await Product.countDocuments({ category: target.slug, storeType: target.storeType || 'main' });
+    if (productCount > 0) return res.status(400).json({ error: `Move or delete ${productCount} product(s) before deleting this collection` });
     await Category.findByIdAndDelete(req.params.id);
     clearPublicApiCache('catalog');
     res.json({ success: true });

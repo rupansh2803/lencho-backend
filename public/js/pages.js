@@ -378,6 +378,7 @@ async function renderProductDetail(id) {
     <div class="woollen-flow-layer page-flow" aria-hidden="true">
       <span class="woollen-flow flow-top-right"></span>
       <span class="woollen-flow flow-bottom-left"></span>
+      <span class="woollen-yarn-flower flower-two"></span>
       <span class="woollen-flow-dot flow-dot-two"></span>
     </div>
     <button class="back-link" type="button" onclick="navigate('${detailPath}')"><i class="fas fa-arrow-left"></i> Back to shop</button>

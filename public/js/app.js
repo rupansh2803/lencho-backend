@@ -2237,6 +2237,8 @@ async function renderHome(options = {}) {
       <span class="woollen-flow flow-top-right"></span>
       <span class="woollen-flow flow-mid-left"></span>
       <span class="woollen-flow flow-bottom-left"></span>
+      <span class="woollen-yarn-flower flower-one"></span>
+      <span class="woollen-yarn-flower flower-two"></span>
       <span class="woollen-flow-dot flow-dot-one"></span>
       <span class="woollen-flow-dot flow-dot-two"></span>
     </div>
@@ -2261,6 +2263,7 @@ async function renderHome(options = {}) {
     <div class="woollen-flow-layer subtle" aria-hidden="true">
       <span class="woollen-flow flow-top-right"></span>
       <span class="woollen-flow flow-bottom-left"></span>
+      <span class="woollen-yarn-flower flower-one"></span>
     </div>
     <div class="home-woollen-copy reveal-left">
       <div class="section-eyebrow">Handmade Woollen Store</div>
@@ -2768,6 +2771,8 @@ async function renderWoollen() {
         <span class="woollen-flow flow-top-right"></span>
         <span class="woollen-flow flow-mid-left"></span>
         <span class="woollen-flow flow-bottom-left"></span>
+        <span class="woollen-yarn-flower flower-one"></span>
+        <span class="woollen-yarn-flower flower-two"></span>
         <span class="woollen-flow-dot flow-dot-one"></span>
         <span class="woollen-flow-dot flow-dot-two"></span>
       </div>
@@ -2862,6 +2867,7 @@ async function renderWoollenProducts(params) {
     <div class="woollen-flow-layer page-flow" aria-hidden="true">
       <span class="woollen-flow flow-top-right"></span>
       <span class="woollen-flow flow-bottom-left"></span>
+      <span class="woollen-yarn-flower flower-one"></span>
       <span class="woollen-flow-dot flow-dot-one"></span>
     </div>
     <div class="admin-header" style="align-items:flex-end;">
@@ -2894,6 +2900,7 @@ async function renderWoollenProducts(params) {
     <div class="woollen-flow-layer page-flow" aria-hidden="true">
       <span class="woollen-flow flow-top-right"></span>
       <span class="woollen-flow flow-bottom-left"></span>
+      <span class="woollen-yarn-flower flower-one"></span>
       <span class="woollen-flow-dot flow-dot-one"></span>
     </div>
     <div class="admin-header" style="align-items:flex-end;">
