@@ -1072,7 +1072,7 @@ async function saveNewProduct() { await submitAdminProduct(); }
 async function adminEditProduct(id) { const p = await api('/api/products/' + id); if (p.error) { toast(p.error, 'error'); return; } adminAddProduct(p); }
 async function saveEditProduct(id) { await submitAdminProduct(id); }
 
-function toggleAdminVariantSection() { const hasVariants = document.getElementById('p-has-variants')?.value === 'true'; if (adminProductFormState) adminProductFormState.hasVariants = hasVariants; const section = document.getElementById('admin-variant-section'); if (section) section.style.display = hasVariants ? 'block' : 'none'; }
+function toggleAdminVariantSection() { const hasVariants = document.getElementById('p-has-variants')?.value === 'true'; if (adminProductFormState) adminProductFormState.hasVariants = hasVariants; const section = document.getElementById('admin-variant-section'); if (section) section.style.display = hasVariants ? 'block' : 'none'; syncAdminProductFormState(); }
 function refreshAdminProductCategoryOptions(preferredCategory = '') {
   if (!adminProductFormState?.allCategories?.length) return;
   const select = document.getElementById('p-cat');
@@ -1087,15 +1087,23 @@ function refreshAdminProductCategoryOptions(preferredCategory = '') {
     select.selectedIndex = 0;
   }
 }
-function renderAdminProductImages() { const grid = document.getElementById('admin-product-image-grid'); if (!grid || !adminProductFormState) return; const category = document.getElementById('p-cat')?.value || ''; grid.innerHTML = adminProductFormState.images.length ? adminProductFormState.images.map((image, index) => `<div style="border:1px solid var(--border);border-radius:14px;padding:.6rem;background:#fff;"><div style="position:relative;aspect-ratio:1;overflow:hidden;border-radius:12px;background:#faf7f9;"><img src="${safeImageUrl(image, category)}" style="width:100%;height:100%;object-fit:cover;" />${index === 0 ? '<span style="position:absolute;left:8px;top:8px;background:rgba(22,163,74,.92);color:#fff;padding:4px 8px;border-radius:999px;font-size:.72rem;font-weight:700;">Main</span>' : ''}</div><div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.55rem;"><button type="button" class="btn-outline btn-sm" onclick="moveAdminProductImage(${index}, -1)" ${index === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn-outline btn-sm" onclick="moveAdminProductImage(${index}, 1)" ${index === adminProductFormState.images.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="btn-outline btn-sm" onclick="removeAdminProductImage(${index})" style="color:#dc2626;border-color:#fecaca;">Remove</button></div></div>`).join('') : `<div style="padding:1rem;border:2px dashed var(--border);border-radius:16px;color:var(--gray);text-align:center;">Upload product images to preview them here.</div>`; }
+function renderAdminProductImages() {
+  const grid = document.getElementById('admin-product-image-grid');
+  if (!grid || !adminProductFormState) return;
+  const category = document.getElementById('p-cat')?.value || '';
+  grid.innerHTML = adminProductFormState.images.length
+    ? adminProductFormState.images.map((image, index) => `<div style="border:1px solid var(--border);border-radius:14px;padding:.6rem;background:#fff;"><div style="position:relative;aspect-ratio:1;overflow:hidden;border-radius:12px;background:#faf7f9;"><img src="${safeImageUrl(image, category)}" style="width:100%;height:100%;object-fit:cover;" />${index === 0 ? '<span style="position:absolute;left:8px;top:8px;background:rgba(22,163,74,.92);color:#fff;padding:4px 8px;border-radius:999px;font-size:.72rem;font-weight:700;">Main</span>' : ''}</div><div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.55rem;"><button type="button" class="btn-outline btn-sm" onclick="moveAdminProductImage(${index}, -1)" ${index === 0 ? 'disabled' : ''}>Up</button><button type="button" class="btn-outline btn-sm" onclick="moveAdminProductImage(${index}, 1)" ${index === adminProductFormState.images.length - 1 ? 'disabled' : ''}>Down</button><button type="button" class="btn-outline btn-sm" onclick="removeAdminProductImage(${index})" style="color:#dc2626;border-color:#fecaca;">Remove</button></div></div>`).join('')
+    : `<div style="padding:1rem;border:2px dashed var(--border);border-radius:16px;color:var(--gray);text-align:center;">No image selected.</div>`;
+  syncAdminProductFormState();
+}
 async function handleAdminProductImageInput(event) { const files = Array.from(event.target.files || []); if (!files.length || !adminProductFormState) return; const category = document.getElementById('p-cat')?.value || 'general'; try { for (const file of files) adminProductFormState.images.push(await uploadAdminMediaFile(file, `products/${category}`)); renderAdminProductImages(); toast('Images uploaded successfully', 'success'); } catch (error) { toast(error.message || 'Image upload failed', 'error'); } finally { event.target.value = ''; } }
-function removeAdminProductImage(index) { if (!adminProductFormState) return; adminProductFormState.images.splice(index, 1); renderAdminProductImages(); }
-function moveAdminProductImage(index, delta) { if (!adminProductFormState) return; const nextIndex = index + delta; if (nextIndex < 0 || nextIndex >= adminProductFormState.images.length) return; const [image] = adminProductFormState.images.splice(index, 1); adminProductFormState.images.splice(nextIndex, 0, image); renderAdminProductImages(); }
+function removeAdminProductImage(index) { if (!adminProductFormState) return; adminProductFormState.images.splice(index, 1); renderAdminProductImages(); syncAdminProductFormState(); }
+function moveAdminProductImage(index, delta) { if (!adminProductFormState) return; const nextIndex = index + delta; if (nextIndex < 0 || nextIndex >= adminProductFormState.images.length) return; const [image] = adminProductFormState.images.splice(index, 1); adminProductFormState.images.splice(nextIndex, 0, image); renderAdminProductImages(); syncAdminProductFormState(); }
 function renderAdminVariantRows() { if (!adminProductFormState) return; adminProductFormState.variantType = document.getElementById('p-variant-type')?.value || adminProductFormState.variantType || 'color'; const container = document.getElementById('admin-variant-rows'); if (!container) return; if (adminProductFormState.hasVariants && !adminProductFormState.variants.length) adminProductFormState.variants.push(createEmptyVariantRow(adminProductFormState.variantType)); const title = adminProductFormState.variantType.charAt(0).toUpperCase() + adminProductFormState.variantType.slice(1); container.innerHTML = adminProductFormState.variants.map((variant, index) => `<div style="border:1px solid var(--border);border-radius:14px;padding:1rem;margin-bottom:.85rem;background:#fffafc;"><div class="form-grid"><div class="form-group"><label>${title} Name</label><input value="${variant.label || ''}" onchange="handleAdminVariantFieldChange(${index}, 'label', this.value)" placeholder="e.g. Rose Gold"/></div>${adminProductFormState.variantType === 'color' ? `<div class="form-group"><label>Color Hex</label><input type="color" value="${variant.colorHex || '#d88ea6'}" onchange="handleAdminVariantFieldChange(${index}, 'colorHex', this.value)"/></div>` : ''}<div class="form-group"><label>Price</label><input type="number" value="${variant.price ?? ''}" onchange="handleAdminVariantFieldChange(${index}, 'price', this.value)"/></div><div class="form-group"><label>MRP</label><input type="number" value="${variant.mrp ?? ''}" onchange="handleAdminVariantFieldChange(${index}, 'mrp', this.value)"/></div><div class="form-group"><label>Stock</label><input type="number" value="${variant.stock ?? ''}" onchange="handleAdminVariantFieldChange(${index}, 'stock', this.value)"/></div><div class="form-group"><label>SKU</label><input value="${variant.sku || ''}" onchange="handleAdminVariantFieldChange(${index}, 'sku', this.value)"/></div></div><div class="form-group"><label>Variant Images</label><input type="file" accept="image/*" multiple onchange="handleAdminVariantImageInput(event, ${index})"/><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-top:.75rem;">${(variant.images || []).map((image, imageIndex) => `<div style="position:relative;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#fff;"><img src="${safeImageUrl(image, document.getElementById('p-cat')?.value || '')}" style="width:100%;aspect-ratio:1;object-fit:cover;" /><button type="button" onclick="handleAdminVariantFieldChange(${index}, 'removeImage', ${imageIndex})" style="position:absolute;right:6px;top:6px;border:none;background:rgba(255,255,255,.94);border-radius:999px;padding:4px 7px;cursor:pointer;">×</button></div>`).join('')}</div></div><button type="button" class="btn-outline btn-sm" onclick="removeAdminVariantRow(${index})" style="color:#dc2626;border-color:#fecaca;">Remove Variant</button></div>`).join(''); }
-function addAdminVariantRow() { if (!adminProductFormState) return; adminProductFormState.variants.push(createEmptyVariantRow(adminProductFormState.variantType || 'color')); renderAdminVariantRows(); }
-function removeAdminVariantRow(index) { if (!adminProductFormState) return; adminProductFormState.variants.splice(index, 1); renderAdminVariantRows(); }
-function handleAdminVariantFieldChange(index, field, value) { if (!adminProductFormState?.variants?.[index]) return; if (field === 'removeImage') adminProductFormState.variants[index].images.splice(value, 1); else { adminProductFormState.variants[index][field] = value; if (field === 'label') adminProductFormState.variants[index].value = value; } renderAdminVariantRows(); }
-async function handleAdminVariantImageInput(event, index) { const files = Array.from(event.target.files || []); if (!files.length || !adminProductFormState?.variants?.[index]) return; const category = document.getElementById('p-cat')?.value || 'general'; try { for (const file of files) adminProductFormState.variants[index].images.push(await uploadAdminMediaFile(file, `products/${category}/variants`)); renderAdminVariantRows(); toast('Variant images uploaded', 'success'); } catch (error) { toast(error.message || 'Variant image upload failed', 'error'); } finally { event.target.value = ''; } }
+function addAdminVariantRow() { if (!adminProductFormState) return; adminProductFormState.variants.push(createEmptyVariantRow(adminProductFormState.variantType || 'color')); renderAdminVariantRows(); syncAdminProductFormState(); }
+function removeAdminVariantRow(index) { if (!adminProductFormState) return; adminProductFormState.variants.splice(index, 1); renderAdminVariantRows(); syncAdminProductFormState(); }
+function handleAdminVariantFieldChange(index, field, value) { if (!adminProductFormState?.variants?.[index]) return; if (field === 'removeImage') adminProductFormState.variants[index].images.splice(value, 1); else { adminProductFormState.variants[index][field] = value; if (field === 'label') adminProductFormState.variants[index].value = value; } renderAdminVariantRows(); syncAdminProductFormState(); }
+async function handleAdminVariantImageInput(event, index) { const files = Array.from(event.target.files || []); if (!files.length || !adminProductFormState?.variants?.[index]) return; const category = document.getElementById('p-cat')?.value || 'general'; try { for (const file of files) adminProductFormState.variants[index].images.push(await uploadAdminMediaFile(file, `products/${category}/variants`)); renderAdminVariantRows(); syncAdminProductFormState(); toast('Variant images uploaded', 'success'); } catch (error) { toast(error.message || 'Variant image upload failed', 'error'); } finally { event.target.value = ''; } }
 function collectAdminProductPayload() { const hasVariants = document.getElementById('p-has-variants')?.value === 'true'; adminProductFormState.hasVariants = hasVariants; adminProductFormState.variantType = document.getElementById('p-variant-type')?.value || adminProductFormState.variantType || 'color'; return { name: document.getElementById('p-name').value.trim(), category: document.getElementById('p-cat').value, storeType: document.getElementById('p-store-type').value, hasVariants, variantType: adminProductFormState.variantType, price: document.getElementById('p-price').value, mrp: document.getElementById('p-mrp').value, discount: document.getElementById('p-discount').value, stock: document.getElementById('p-stock').value, sku: document.getElementById('p-sku').value.trim(), gstRate: document.getElementById('p-gst').value, hsn: document.getElementById('p-hsn').value, description: document.getElementById('p-desc').value.trim(), featured: document.getElementById('p-featured').value, popular: document.getElementById('p-popular').value, trending: document.getElementById('p-trending').value, newArrival: document.getElementById('p-new-arrival').value, sale: document.getElementById('p-sale').value, existingImages: adminProductFormState.images, imageOrder: adminProductFormState.images, variants: hasVariants ? adminProductFormState.variants.map(variant => ({ ...variant, label: String(variant.label || '').trim(), value: String(variant.label || variant.value || '').trim(), price: Number(variant.price) || 0, mrp: Number(variant.mrp) || Number(variant.price) || 0, stock: Number(variant.stock) || 0, sku: String(variant.sku || '').trim(), images: Array.isArray(variant.images) ? variant.images : [] })) : [] }; }
 function validateAdminProductPayload(payload) { if (!payload.name) return 'Product name is required'; if (!payload.category) return 'Collection is required'; if (payload.hasVariants) { if (!payload.variantType) return 'Choose a variant type'; if (!payload.variants.length) return 'Add at least one variant'; const invalid = payload.variants.find(variant => !variant.label || !(Number(variant.price) > 0)); if (invalid) return 'Each variant needs a name and price'; } else { if (!(Number(payload.price) > 0)) return 'Selling price is required'; if (!(Number(payload.mrp) > 0)) return 'MRP is required'; } return ''; }
 async function submitAdminProduct(id = '') { const payload = collectAdminProductPayload(); const validationError = validateAdminProductPayload(payload); if (validationError) return toast(validationError, 'error'); const response = await api(id ? `/api/products/${id}` : '/api/products', { method: id ? 'PUT' : 'POST', body: { ...payload, variants: JSON.stringify(payload.variants), existingImages: JSON.stringify(payload.existingImages), imageOrder: JSON.stringify(payload.imageOrder), removedImages: JSON.stringify([]) } }); if (response.error) return toast(response.error, 'error'); toast(id ? 'Product updated successfully' : 'Product added successfully', 'success'); adminTab('products'); }
@@ -2898,6 +2906,108 @@ function adminProductManagerSlugLabel(slug = '') {
   return String(slug || '').replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
 }
 
+function getAdminProductManagerCounts() {
+  const products = Array.isArray(adminProductManagerState.products) ? adminProductManagerState.products : [];
+  return {
+    collections: adminProductManagerState.categories.length,
+    total: products.length,
+    published: products.filter(product => String(product.status || 'published') === 'published').length,
+    drafts: products.filter(product => String(product.status || '') === 'draft').length,
+    outOfStock: products.filter(product => Number(product.stock || 0) <= 0).length,
+    lowStock: products.filter(product => Number(product.stock || 0) > 0 && Number(product.stock || 0) <= 5).length
+  };
+}
+
+function renderAdminProductManagerHealthPanel() {
+  const counts = getAdminProductManagerCounts();
+  const cards = [
+    ['Collections', counts.collections, 'fas fa-layer-group'],
+    ['Products', counts.total, 'fas fa-box-open'],
+    ['Published', counts.published, 'fas fa-circle-check'],
+    ['Drafts', counts.drafts, 'fas fa-file-lines'],
+    ['Out of Stock', counts.outOfStock, 'fas fa-triangle-exclamation']
+  ];
+  return `
+    <div class="admin-clarity-grid">
+      ${cards.map(([label, value, icon]) => `
+        <div class="admin-clarity-card">
+          <i class="${icon}"></i>
+          <span>${label}</span>
+          <strong>${value}</strong>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderAdminCollectionEmptyState() {
+  if (adminProductManagerState.categories.length) return '';
+  return `
+    <div class="admin-action-note">
+      <div>
+        <strong>No ${getAdminStoreLabel(adminProductManagerState.storeType).toLowerCase()} collection yet</strong>
+        <span>Create a collection first, then add products inside it.</span>
+      </div>
+      <button class="btn-primary" type="button" onclick="showAddCategory('${adminProductManagerState.storeType}')"><i class="fas fa-plus"></i> Create Collection</button>
+    </div>
+  `;
+}
+
+function renderAdminProductFormSummary(product = {}) {
+  const imageCount = Array.isArray(product?.images) ? product.images.length : 0;
+  return `
+    <div class="admin-form-summary" id="admin-product-form-summary">
+      <div class="admin-form-summary-card" data-summary="collection"><span>Collection</span><strong>${product?.category ? adminProductManagerEscape(adminProductManagerSlugLabel(product.category)) : 'Missing'}</strong></div>
+      <div class="admin-form-summary-card" data-summary="price"><span>Price</span><strong>${Number(product?.price || 0) > 0 ? formatCurrency(product.price) : 'Missing'}</strong></div>
+      <div class="admin-form-summary-card" data-summary="stock"><span>Stock</span><strong>${Number(product?.stock || 0)}</strong></div>
+      <div class="admin-form-summary-card" data-summary="images"><span>Images</span><strong>${imageCount}</strong></div>
+      <div class="admin-form-summary-card" data-summary="status"><span>Status</span><strong>${String(product?.status || 'published') === 'draft' ? 'Draft' : 'Published'}</strong></div>
+    </div>
+  `;
+}
+
+function getAdminFormValue(id) {
+  return document.getElementById(id)?.value || '';
+}
+
+function syncAdminProductFormState() {
+  const summary = document.getElementById('admin-product-form-summary');
+  if (!summary) return;
+  const name = getAdminFormValue('p-name').trim();
+  const category = getAdminFormValue('p-cat');
+  const price = Number(getAdminFormValue('p-price'));
+  const mrp = Number(getAdminFormValue('p-mrp'));
+  const stock = Number(getAdminFormValue('p-stock'));
+  const status = getAdminFormValue('p-status') || 'published';
+  const hasVariants = getAdminFormValue('p-has-variants') === 'true';
+  const variantReady = hasVariants && adminProductFormState?.variants?.some(variant => String(variant.label || '').trim() && Number(variant.price) > 0);
+  const imageCount = adminProductFormState?.images?.filter(image => !String(image || '').startsWith('blob:')).length || 0;
+  const setCard = (key, value, state = '') => {
+    const card = summary.querySelector(`[data-summary="${key}"]`);
+    if (!card) return;
+    card.dataset.state = state;
+    const strong = card.querySelector('strong');
+    if (strong) strong.textContent = value;
+  };
+  setCard('collection', category ? adminProductManagerSlugLabel(category) : 'Missing', category ? 'ok' : 'missing');
+  setCard('price', hasVariants ? (variantReady ? 'Variants' : 'Missing') : (price > 0 ? formatCurrency(price) : 'Missing'), hasVariants ? (variantReady ? 'ok' : 'missing') : (price > 0 && mrp > 0 ? 'ok' : 'missing'));
+  setCard('stock', Number.isFinite(stock) ? String(Math.max(0, stock)) : '0', stock > 0 ? 'ok' : 'warn');
+  setCard('images', String(imageCount), imageCount > 0 ? 'ok' : 'warn');
+  setCard('status', status === 'draft' ? 'Draft' : 'Published', status === 'draft' ? 'warn' : 'ok');
+  const submit = document.getElementById('admin-product-submit');
+  if (submit) submit.dataset.ready = name && category && (hasVariants ? variantReady : (price > 0 && mrp > 0)) ? 'true' : 'false';
+}
+
+function bindAdminProductClarityEvents() {
+  ['p-name', 'p-cat', 'p-status', 'p-price', 'p-mrp', 'p-stock', 'p-sku', 'p-desc', 'p-has-variants'].forEach(id => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    input.addEventListener('input', syncAdminProductFormState);
+    input.addEventListener('change', syncAdminProductFormState);
+  });
+  syncAdminProductFormState();
+}
+
 const ADMIN_PRODUCT_DETAIL_FIELDS = [
   { key: 'brand', label: 'Brand', placeholder: 'Lencho' },
   { key: 'modelName', label: 'Model Name', placeholder: 'Adjustable Toe Ring' },
@@ -3286,9 +3396,13 @@ function renderAdminProductManager(preserveDraft = false) {
   const product = adminProductManagerState.editingProduct;
   const isEdit = !!(product && product.id);
   const cats = adminProductManagerState.categories || [];
+  const knownCategory = product?.category && cats.some(category => category.slug === product.category);
+  const currentCategoryOption = product?.category && !knownCategory
+    ? `<option value="${adminProductManagerEscape(product.category)}" selected>Current: ${adminProductManagerEscape(adminProductManagerSlugLabel(product.category))}</option>`
+    : '';
   const catOptions = cats.length
-    ? cats.map(category => `<option value="${category.slug}" ${product?.category === category.slug ? 'selected' : ''}>${adminProductManagerEscape(category.name)}</option>`).join('')
-    : '<option value="others">General</option>';
+    ? `${currentCategoryOption}${cats.map(category => `<option value="${category.slug}" ${product?.category === category.slug ? 'selected' : ''}>${adminProductManagerEscape(category.name)}</option>`).join('')}`
+    : '<option value="">No collection available</option>';
 
   adminProductFormState = {
     allCategories: [...cats],
@@ -3307,7 +3421,7 @@ function renderAdminProductManager(preserveDraft = false) {
     <div class="admin-header" style="align-items:flex-end;">
       <div>
         <h1 class="admin-page-title">${getAdminStoreLabel(adminProductManagerState.storeType)} Product Manager</h1>
-        <p style="color:var(--gray);font-size:.9rem;">Shopify-style add, edit, preview, and manage flow for ${getAdminStoreLabel(adminProductManagerState.storeType).toLowerCase()} products.</p>
+        <p style="color:var(--gray);font-size:.9rem;">Manage ${getAdminStoreLabel(adminProductManagerState.storeType).toLowerCase()} products, stock, images, collections and status in one place.</p>
       </div>
       <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
         <button class="btn-primary" onclick="adminAddProduct()"><i class="fas fa-plus"></i> New Product</button>
@@ -3315,11 +3429,13 @@ function renderAdminProductManager(preserveDraft = false) {
       </div>
     </div>
 
+    ${renderAdminProductManagerHealthPanel()}
+
     <div class="admin-form">
       <div class="admin-header" style="margin-bottom:1rem;align-items:flex-end;">
         <div>
           <h2 class="admin-page-title" style="font-size:1.45rem;">${isEdit ? 'Edit Product' : 'Add Product'}</h2>
-          <p style="color:var(--gray);font-size:.88rem;">Upload multiple images, preview instantly, and keep adding products without leaving the page.</p>
+          <p style="color:var(--gray);font-size:.88rem;">Required fields are checked before save.</p>
         </div>
         <label style="display:flex;align-items:center;gap:.5rem;font-size:.88rem;font-weight:600;">
           <input type="checkbox" ${adminProductManagerState.keepValues ? 'checked' : ''} onchange="toggleAdminProductKeepValues(this.checked)">
@@ -3327,11 +3443,13 @@ function renderAdminProductManager(preserveDraft = false) {
         </label>
       </div>
 
+      ${renderAdminCollectionEmptyState()}
+      ${renderAdminProductFormSummary(product)}
       ${renderAdminProductTemplateSuggestion(isEdit)}
 
       <div class="form-grid">
         <div class="form-group"><label>Product Name *</label><input id="p-name" value="${adminProductManagerEscape(product?.name || '')}" placeholder="${productNamePlaceholder}"/></div>
-        <div class="form-group"><label>Collection *</label><select id="p-cat">${catOptions}</select></div>
+        <div class="form-group"><label>Collection * <button type="button" class="admin-inline-link" onclick="showAddCategory('${adminProductManagerState.storeType}')">New</button></label><select id="p-cat" ${cats.length ? '' : 'disabled'}>${catOptions}</select></div>
         <div class="form-group"><label>Store</label><select id="p-store-type" disabled><option value="main" ${adminProductManagerState.storeType !== 'woollen' ? 'selected' : ''}>Main Jewellery Store</option><option value="woollen" ${adminProductManagerState.storeType === 'woollen' ? 'selected' : ''}>Woollen Store</option></select></div>
         <div class="form-group"><label>Status</label><select id="p-status"><option value="published" ${String(product?.status || 'published') === 'published' ? 'selected' : ''}>Published</option><option value="draft" ${String(product?.status || '') === 'draft' ? 'selected' : ''}>Draft</option></select></div>
         <div class="form-group"><label>Has Variants?</label><select id="p-has-variants" onchange="toggleAdminVariantSection()"><option value="false" ${!adminProductFormState.hasVariants ? 'selected' : ''}>No</option><option value="true" ${adminProductFormState.hasVariants ? 'selected' : ''}>Yes</option></select></div>
@@ -3399,6 +3517,7 @@ function renderAdminProductManager(preserveDraft = false) {
   renderAdminProductImages();
   renderAdminVariantRows();
   bindAdminProductDropzone();
+  bindAdminProductClarityEvents();
 }
 
 function bindAdminProductDropzone() {
