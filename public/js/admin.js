@@ -2299,7 +2299,19 @@ async function adminSiteManager() {
   <div class="admin-form" style="margin-bottom:2rem;">
     <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-toggle-on"></i> Section Visibility</h3>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
-      ${['showOfferBanner:Offer Banner', 'showTrustHub:Trust Hub Strip', 'showFeaturedProducts:Best Seller Section', 'showCollections:Collections Grid', 'showPromo:Promo Section', 'showTestimonials:Testimonials'].map(item => {
+      ${[
+        'showOfferBanner:Offer Banner',
+        'showTrustHub:Trust Hub Strip',
+        'showFeaturedProducts:Best Seller Section',
+        'showCollections:Collections Grid',
+        'showPromo:Promo Section',
+        'showTestimonials:Testimonials',
+        'showProductRatings:Product Detail Ratings',
+        'showProductDeliveryDetails:Product Detail Delivery/Tax Box',
+        'showProductAvailability:Product Detail Availability',
+        'showProductCardRatings:Product Card Ratings',
+        'showProductCardDeliveryBox:Product Card Delivery Mini Box'
+      ].map(item => {
         const [key, label] = item.split(':');
         return `<label style="display:flex;align-items:center;gap:10px;padding:12px;background:#f9f9f9;border-radius:10px;cursor:pointer;border:1px solid var(--border);">
           <input type="checkbox" id="cms-${key}" ${isOn(key) ? 'checked' : ''} style="width:18px;height:18px;accent-color:var(--rose);"/>
@@ -2416,7 +2428,7 @@ async function saveSeoSettings() {
 }
 
 async function saveCmsToggles() {
-  const keys = ['showOfferBanner','showTrustHub','showCollections','showFeaturedProducts','showPromo','showTestimonials'];
+  const keys = ['showOfferBanner','showTrustHub','showCollections','showFeaturedProducts','showPromo','showTestimonials','showProductRatings','showProductDeliveryDetails','showProductAvailability','showProductCardRatings','showProductCardDeliveryBox'];
   for (const k of keys) {
     const el = document.getElementById('cms-' + k);
     await api('/api/admin/settings', { method: 'POST', body: { key: k, value: el.checked } });

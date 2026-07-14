@@ -208,6 +208,13 @@ function saveCachedPublicSettings(settings) {
   return normalized;
 }
 
+function publicFlagEnabled(key, fallback = false) {
+  const settings = readCachedPublicSettings();
+  const value = settings[key];
+  if (value === undefined || value === null || value === '') return Boolean(fallback);
+  return value === true || value === 'true' || value === 1 || value === '1';
+}
+
 function getCategoryImageFallback(category = '') {
   const key = String(category || '').trim().toLowerCase();
   return MEDIA_FALLBACKS[key] || MEDIA_FALLBACKS.default;
@@ -550,7 +557,9 @@ async function api(url, opts = {}) {
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const method = String(opts.method || 'GET').toUpperCase();
-    const cacheable = method === 'GET' && /^\/api\/(testimonials|recommendations|settings(\/public)?)\b/.test(url);
+    const cacheable = method === 'GET'
+      && location.pathname !== '/admin'
+      && /^\/api\/(products|categories|testimonials|recommendations|settings(\/public)?)\b/.test(url);
     if (method !== 'GET') apiGetCache.clear();
 
     if (cacheable) {
@@ -1807,10 +1816,66 @@ document.addEventListener('click', (e) => {
 
 // ── SCROLL REVEAL ─────────────────────────────────────────
 function initScrollReveal() {
+  const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const autoRevealSelectors = [
+    '.trust-hub .trust-item',
+    '.home-woollen-chips span',
+    '.home-woollen-proof > div',
+    '.home-view-more-row',
+    '.testi-grid .testi-card'
+  ];
+  const staggerGroups = [
+    ['.products-grid .product-card.reveal, .wishlist-grid .product-card.reveal', 70, 420],
+    ['.categories-grid .cat-card.reveal, .woollen-collections-grid .woollen-collection-card.reveal', 85, 430],
+    ['.trust-hub .trust-item, .home-woollen-chips span, .home-woollen-proof > div', 75, 320],
+    ['.testi-grid .testi-card', 80, 360]
+  ];
+
+  autoRevealSelectors.forEach(selector => {
+    document.querySelectorAll(selector).forEach(el => el.classList.add('motion-reveal'));
+  });
+
+  staggerGroups.forEach(([selector, step, maxDelay]) => {
+    document.querySelectorAll(selector).forEach((el, index) => {
+      el.style.setProperty('--lencho-stagger', `${Math.min(index * step, maxDelay)}ms`);
+    });
+  });
+
+  const targets = document.querySelectorAll('.reveal,.reveal-left,.reveal-right,.reveal-scale,.motion-reveal');
+  if (motionQuery.matches || !('IntersectionObserver' in window)) {
+    targets.forEach(el => el.classList.add('visible'));
+    return;
+  }
+
   const obs = new IntersectionObserver((entries) => {
     entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
-  }, { threshold: 0.12 });
-  document.querySelectorAll('.reveal,.reveal-left,.reveal-right').forEach(el => obs.observe(el));
+  }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+  targets.forEach(el => obs.observe(el));
+}
+
+function initHeroPointerMotion() {
+  const hero = document.querySelector('.hero-premium');
+  if (!hero || hero.dataset.motionBound === 'true') return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || window.innerWidth < 900) return;
+
+  let frame = 0;
+  const setShift = (x, y) => {
+    hero.style.setProperty('--hero-shift-x', `${x.toFixed(1)}px`);
+    hero.style.setProperty('--hero-shift-y', `${y.toFixed(1)}px`);
+  };
+
+  hero.dataset.motionBound = 'true';
+  hero.addEventListener('pointermove', (event) => {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      const rect = hero.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width - 0.5) * 18;
+      const y = ((event.clientY - rect.top) / rect.height - 0.5) * 12;
+      setShift(x, y);
+      frame = 0;
+    });
+  });
+  hero.addEventListener('pointerleave', () => setShift(0, 0));
 }
 
 // ── STARS HELPER ─────────────────────────────────────────
@@ -1836,6 +1901,10 @@ function productRoutePath(product = {}) {
 function productCardHTML(p) {
   const product = normalizeClientProduct(p);
   const detailPath = productRoutePath(product);
+  const safeDetailPath = escapeInlineJsString(detailPath);
+  const productName = escapeHtml(product.name || p.name || 'Product');
+  const showCardRatings = publicFlagEnabled('showProductCardRatings', false);
+  const showCardDeliveryBox = publicFlagEnabled('showProductCardDeliveryBox', false);
   const secondaryImg = product.images[1] || product.images[0];
   const stockStatus = p.stock < 5 && p.stock > 0 ? '⚡ Only few left' : '';
   const isBestSeller = p.popular ? '⭐ Best Seller' : '';
@@ -1843,10 +1912,10 @@ function productCardHTML(p) {
   const badge = isBestSeller || isFeatured || stockStatus || (p.discount > 30 ? '🔥 Hot Deal' : '');
   
   return `
-  <div class="product-card reveal" style="border-radius:16px !important;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08) !important;transition:transform .3s ease,box-shadow .3s ease !important;background:#fff;border:1px solid rgba(201,106,138,.08);" onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 12px 32px rgba(201,106,138,.15) !important';" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 16px rgba(0,0,0,.08) !important';">
-    <div class="product-img-wrap" onclick="navigate('${detailPath}')" style="position:relative;overflow:hidden;aspect-ratio:1/1.15;cursor:pointer;">
-      <img class="product-img" src="${safeImageUrl(product.images[0], product.category)}" alt="${product.name}" loading="lazy" decoding="async" ${imageFallbackAttr(product.category)} style="width:100%;height:100%;object-fit:contain;object-position:center;background:#fff;transition:opacity .4s ease !important;display:block;"/>
-      <img class="product-img img-hover" src="${safeImageUrl(secondaryImg, product.category)}" alt="${product.name}" loading="lazy" decoding="async" ${imageFallbackAttr(product.category)} style="width:100%;height:100%;object-fit:contain;object-position:center;background:#fff;position:absolute;top:0;left:0;opacity:0;transition:opacity .4s ease !important;display:block;"/>
+  <div class="product-card reveal" role="button" tabindex="0" onclick="navigate('${safeDetailPath}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();navigate('${safeDetailPath}')}" style="border-radius:16px !important;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08) !important;transition:transform .3s ease,box-shadow .3s ease !important;background:#fff;border:1px solid rgba(201,106,138,.08);cursor:pointer;" onmouseover="this.style.transform='translateY(-6px)';this.style.boxShadow='0 12px 32px rgba(201,106,138,.15) !important';" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 16px rgba(0,0,0,.08) !important';">
+    <div class="product-img-wrap" style="position:relative;overflow:hidden;aspect-ratio:1/1.15;cursor:pointer;">
+      <img class="product-img" src="${safeImageUrl(product.images[0], product.category)}" alt="${productName}" loading="lazy" decoding="async" ${imageFallbackAttr(product.category)} style="width:100%;height:100%;object-fit:contain;object-position:center;background:#fff;transition:opacity .4s ease !important;display:block;"/>
+      <img class="product-img img-hover" src="${safeImageUrl(secondaryImg, product.category)}" alt="${productName}" loading="lazy" decoding="async" ${imageFallbackAttr(product.category)} style="width:100%;height:100%;object-fit:contain;object-position:center;background:#fff;position:absolute;top:0;left:0;opacity:0;transition:opacity .4s ease !important;display:block;"/>
       
       ${p.discount ? `<span class="product-badge" style="position:absolute;top:12px;left:12px;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;padding:6px 12px;border-radius:8px;font-weight:700;font-size:.75rem;z-index:2;">✦ ${p.discount}% OFF ✦</span>` : ''}
       
@@ -1856,12 +1925,12 @@ function productCardHTML(p) {
     </div>
     
     <div class="product-body" style="padding:1rem 1rem 1.2rem;">
-      <div class="product-name" onclick="navigate('${detailPath}')" style="font-weight:600;font-size:.95rem;color:var(--dark);cursor:pointer;line-height:1.3;margin-bottom:.5rem;transition:color .2s;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='var(--dark)'">${p.name}</div>
+      <div class="product-name" style="font-weight:800;font-size:1.12rem;color:var(--dark);cursor:pointer;line-height:1.3;margin-bottom:.55rem;transition:color .2s;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='var(--dark)'">${productName}</div>
       
-      <div class="product-rating" style="margin-bottom:.6rem;">
+      ${showCardRatings ? `<div class="product-rating" style="margin-bottom:.6rem;">
         <span class="stars" style="font-size:.85rem;">${renderStars(p.rating || 0)}</span>
         ${p.reviews?.length ? `<span class="rating-count" style="font-size:.75rem;color:var(--gray);margin-left:.5rem;">(${p.reviews.length})</span>` : ''}
-      </div>
+      </div>` : ''}
       
       <div class="product-price" style="margin-bottom:.75rem;">
         <span class="price-current" style="font-size:1.2rem;font-weight:700;color:var(--rose);">₹${Math.round(p.price)}</span>
@@ -1869,7 +1938,7 @@ function productCardHTML(p) {
         ${p.discount ? `<span class="price-off" style="font-size:.75rem;color:var(--gold);margin-left:.5rem;font-weight:600;">Save ${p.discount}%</span>` : ''}
       </div>
       
-      <div style="margin-bottom:0.75rem; padding:0.75rem; background:var(--beige); border-radius:8px; font-size:.8rem; color:var(--gray);">
+      ${showCardDeliveryBox ? `<div class="product-card-delivery-box" style="margin-bottom:0.75rem; padding:0.75rem; background:var(--beige); border-radius:8px; font-size:.8rem; color:var(--gray);">
         <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:4px;">
           <i class="fas fa-truck-fast" style="color:var(--rose);"></i>
           <span><strong>Free</strong> delivery above ₹999</span>
@@ -1878,14 +1947,14 @@ function productCardHTML(p) {
           <i class="fas fa-tag" style="color:var(--gold);"></i>
           <span>Standard delivery in 3-5 days</span>
         </div>
-      </div>
+      </div>` : ''}
       
       <div class="product-actions" style="margin-top:1rem;display:flex;gap:.5rem;flex-direction:column;">
-        <button class="btn-primary btn-sm" onclick="addToCart('${p.id}')" style="flex:1;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;font-weight:600;cursor:pointer;transition:transform .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+        <button class="btn-primary btn-sm" onclick="event.stopPropagation(); addToCart('${p.id}')" style="flex:1;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;font-weight:600;cursor:pointer;transition:transform .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
           <i class="fas fa-shopping-bag"></i> Add to Cart
         </button>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;">
-          <button class="btn-outline btn-sm" onclick="navigate('${detailPath}')" style="padding:10px;border-radius:8px;border:2px solid var(--rose);background:#fff;color:var(--rose);font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.background='var(--rose-light)'" onmouseout="this.style.background='#fff'">
+          <button class="btn-outline btn-sm" onclick="event.stopPropagation(); navigate('${safeDetailPath}')" style="padding:10px;border-radius:8px;border:2px solid var(--rose);background:#fff;color:var(--rose);font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.background='var(--rose-light)'" onmouseout="this.style.background='#fff'">
             <i class="fas fa-eye"></i> View
           </button>
           <button class="btn-gold btn-sm" onclick="event.stopPropagation(); buyNow('${p.id}')" style="padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9954c,#a67a38);color:#fff;font-weight:600;cursor:pointer;transition:transform .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
@@ -2088,6 +2157,7 @@ async function renderHome(options = {}) {
   <section class="hero-premium" style="${heroBackground} justify-content: center; text-align: center; border-radius:0; position:relative;">
     ${heroMediaType === 'video' && heroVideo ? `<video autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;"><source src="${heroVideo}" type="video/mp4"></video>` : ''}
     <div style="position:absolute; inset:0; background:linear-gradient(to bottom, rgba(0,0,0,0.32), rgba(0,0,0,0.7)); z-index:1;"></div>
+    <div id="particles" class="hero-particles" aria-hidden="true"></div>
     
     ${isOn('showOfferBanner') ? `<div style="position:absolute;top:0;left:0;right:0;background:linear-gradient(90deg,rgba(201,149,76,.95) 0%,rgba(242,208,122,.85) 50%,rgba(201,149,76,.95) 100%);padding:12px;z-index:3;color:var(--dark);font-weight:700;font-size:.9rem;letter-spacing:.05em;text-transform:uppercase;text-align:center;">
       ${g('offerBanner', '🎁 LIMITED OFFER: FLAT 50% OFF ON SELECTED ITEMS + FREE DELIVERY!')}
@@ -2234,6 +2304,7 @@ async function renderHome(options = {}) {
   </section>` : ''}`;
 
   createParticles();
+  initHeroPointerMotion();
   initScrollReveal();
   
   // Load content sections in parallel (non-blocking)
@@ -2272,7 +2343,7 @@ async function loadTestimonials() {
       ];
     }
     const testiHTML = t.map(testi => `
-      <div class="testi-card">
+      <div class="testi-card reveal">
         <div class="testi-stars">${'★'.repeat(testi.rating || 5)}</div>
         <p class="testi-text">"${testi.comment}"</p>
         <div class="testi-author">
@@ -2281,6 +2352,7 @@ async function loadTestimonials() {
         </div>
       </div>`).join('');
     container.innerHTML = `<div class="testi-marquee-container"><div class="testi-marquee-inner">${testiHTML}${testiHTML}${testiHTML}</div></div>`;
+    initScrollReveal();
   } catch (e) { container.innerHTML = '<div style="text-align:center;color:var(--gray);">Luxury Social Proof Incoming...</div>'; }
 }
 
@@ -2491,6 +2563,8 @@ async function startOfferTimer() {
 
 function createParticles() {
   const container = document.getElementById('particles'); if (!container) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  container.innerHTML = '';
   for (let i = 0; i < 20; i++) {
     const p = document.createElement('div'); p.className = 'particle';
     p.style.cssText = `left:${Math.random() * 100}%;width:${2 + Math.random() * 4}px;height:${2 + Math.random() * 4}px;animation-duration:${8 + Math.random() * 12}s;animation-delay:${Math.random() * 8}s;opacity:${0.3 + Math.random() * 0.5}`;
@@ -2704,13 +2778,31 @@ async function renderWoollenProducts(params) {
   const stock = params.get('stock') || '';
   const flag = params.get('flag') || '';
   const app = document.getElementById('app');
-  const collections = await api('/api/categories?storeType=woollen', { timeoutMs: 3000 });
+  app.innerHTML = `
+  <div class="page-wrap woollen-products-page">
+    <div class="admin-header" style="align-items:flex-end;">
+      <div>
+        <h1 class="page-title" style="text-align:left;margin-bottom:.4rem;">All Woollen Products</h1>
+        <p style="color:var(--gray);">Loading woollen products...</p>
+      </div>
+      <button class="btn-outline" onclick="navigate('/woollen')">Back to Woollen Store</button>
+    </div>
+    <div class="products-grid" style="min-height:360px;">
+      <div class="skeleton-block" style="min-height:420px;border-radius:16px;"></div>
+      <div class="skeleton-block" style="min-height:420px;border-radius:16px;"></div>
+      <div class="skeleton-block" style="min-height:420px;border-radius:16px;"></div>
+    </div>
+  </div>`;
   const qs = new URLSearchParams({ storeType: 'woollen' });
   if (category) qs.set('category', category);
   if (sort) qs.set('sort', sort);
   if (stock) qs.set('stock', stock);
   if (flag) qs.set(flag, 'true');
-  const products = await api('/api/products?' + qs.toString(), { timeoutMs: 3000 });
+  const [collectionsResp, products] = await Promise.all([
+    api('/api/categories?storeType=woollen', { timeoutMs: 2200 }),
+    api('/api/products?' + qs.toString(), { timeoutMs: 2600 })
+  ]);
+  const collections = Array.isArray(collectionsResp) ? collectionsResp : [];
   const list = Array.isArray(products) ? products : [];
 
   app.innerHTML = `

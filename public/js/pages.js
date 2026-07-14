@@ -367,6 +367,9 @@ async function renderProductDetail(id) {
   const deliveryStart = formatDate(new Date(Date.now() + 3 * 86400000));
   const deliveryEnd = formatDate(new Date(Date.now() + 5 * 86400000));
   const detailPath = p.storeType === 'woollen' ? '/woollen/products' : '/products';
+  const showProductRatings = publicFlagEnabled('showProductRatings', false);
+  const showProductDeliveryDetails = publicFlagEnabled('showProductDeliveryDetails', false);
+  const showProductAvailability = publicFlagEnabled('showProductAvailability', false);
   currentPageContext = { route: `/product/${p.id}`, category: p.category, product: p };
   window.__selectedProductVariant = selectedVariant ? selectedVariant.id : '';
 
@@ -392,17 +395,17 @@ async function renderProductDetail(id) {
         <div class="product-breadcrumb-mini">${productDetailEscape(brandName)} / ${productDetailEscape(productType)}</div>
         <h1 class="product-title">${productDetailEscape(p.name)}</h1>
 
-        <div class="rating-and-reviews">
+        ${showProductRatings ? `<div class="rating-and-reviews">
           <span class="stars">${renderStars(p.rating || 0)}</span>
           ${p.reviews?.length ? `<span class="review-count">${p.reviews.length} ${p.reviews.length === 1 ? 'review' : 'reviews'}</span>` : '<span class="review-count">No reviews yet</span>'}
-        </div>
+        </div>` : ''}
 
         <div class="price-section market-price-row">
           <span class="price-current" id="product-price-current">${formatCurrency(activePrice)}</span>
           ${activeMrp ? `<span class="price-mrp" id="product-price-mrp">${formatCurrency(activeMrp)}</span>` : '<span class="price-mrp" id="product-price-mrp" style="display:none;"></span>'}
           ${discountVal ? `<span class="discount-badge">${discountVal}% OFF</span>` : ''}
         </div>
-        <div class="price-tax-note"><i class="fas fa-receipt"></i> Final price shown. Taxes are included and invoice details stay on the bill.</div>
+        ${showProductDeliveryDetails ? `<div class="price-tax-note"><i class="fas fa-receipt"></i> Final price shown. Taxes are included and invoice details stay on the bill.</div>` : ''}
 
         ${p.hasVariants ? `
           <div class="variant-panel">
@@ -422,7 +425,7 @@ async function renderProductDetail(id) {
           </div>
         ` : '<div id="product-sku-line" class="market-sku-line" hidden></div>'}
 
-        <div class="delivery-info-amazon market-delivery-card">
+        ${showProductDeliveryDetails ? `<div class="delivery-info-amazon market-delivery-card">
           <h3>Delivery details</h3>
           <div class="delivery-row delivery-home-row">
             <i class="fas fa-home"></i>
@@ -440,7 +443,7 @@ async function renderProductDetail(id) {
             <i class="fas fa-shield-alt"></i>
             <span>Secure checkout | Safe online payment</span>
           </div>
-        </div>
+        </div>` : ''}
 
         <div class="product-assurance-strip" aria-label="Buyer assurance">
           <span><i class="fas fa-phone"></i> Fast WhatsApp support</span>
@@ -448,12 +451,12 @@ async function renderProductDetail(id) {
           <span><i class="fas fa-star"></i> Real customer reviews</span>
         </div>
 
-        <div class="stock-info">
+        ${showProductAvailability ? `<div class="stock-info">
           <strong>Availability:</strong>
           <span id="product-stock-label" class="${activeStock > 10 ? 'stock-available' : activeStock > 0 ? 'stock-limited' : 'stock-unavailable'}">
             ${activeStock > 10 ? 'In Stock' : activeStock > 0 ? 'Only few left' : 'Out of Stock'}
           </span>
-        </div>
+        </div>` : ''}
 
         <div class="product-actions">
           <button class="btn-add-to-cart" id="product-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '')" ${activeStock===0?'disabled':''}>
