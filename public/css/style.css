@@ -10161,3 +10161,150 @@ body.woollen-theme #site-header .wishlist-badge {
     bottom: 12%;
   }
 }
+
+/* Bigger hero framing and balanced dark-light shell */
+:root {
+  --lencho-shell-gradient: linear-gradient(120deg, #4b3343 0%, #6f4659 48%, #98755b 118%) !important;
+  --lencho-shell-border: rgba(255, 229, 196, .24) !important;
+  --lencho-shell-text: rgba(255, 252, 250, .96) !important;
+  --lencho-shell-muted: rgba(255, 244, 248, .84) !important;
+  --lencho-brand-gradient: linear-gradient(135deg, #ffe3ed 0%, #f7bfd1 48%, #f6d39a 100%) !important;
+  --lencho-brand-gradient-hover: linear-gradient(135deg, #ffd7e5 0%, #efadc5 48%, #edc57e 100%) !important;
+}
+
+#site-header,
+#site-header.scrolled,
+body.woollen-theme #site-header {
+  background: var(--lencho-shell-gradient) !important;
+  border-bottom: 1px solid var(--lencho-shell-border) !important;
+  box-shadow: 0 14px 34px rgba(50, 31, 44, .18) !important;
+}
+
+#site-footer,
+body.woollen-theme #site-footer {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .03), rgba(255, 255, 255, 0)),
+    var(--lencho-shell-gradient) !important;
+  border-top: 1px solid var(--lencho-shell-border) !important;
+}
+
+#site-header .nav-link,
+#site-header .nav-dropdown > .nav-link,
+body.woollen-theme #site-header .nav-link,
+body.woollen-theme #site-header .icon-btn {
+  color: var(--lencho-shell-muted) !important;
+}
+
+#site-header .nav-link:hover,
+body.woollen-theme #site-header .nav-link:hover,
+#site-header .hamburger,
+#site-header .nav-close {
+  color: #fffafc !important;
+}
+
+#site-header .icon-btn,
+body.woollen-theme #site-header .icon-btn,
+#site-header .user-btn {
+  background: rgba(255, 255, 255, .16) !important;
+  border-color: rgba(255, 229, 196, .28) !important;
+  color: #fffafc !important;
+  box-shadow: 0 10px 24px rgba(45, 28, 40, .16) !important;
+}
+
+#site-header .icon-btn:hover,
+body.woollen-theme #site-header .icon-btn:hover {
+  background: rgba(255, 255, 255, .24) !important;
+  color: #fff !important;
+}
+
+#site-footer .footer-logo,
+#site-footer h4,
+body.woollen-theme #site-footer h4 {
+  color: #fffafc !important;
+}
+
+#site-footer .footer-desc,
+#site-footer .footer-col ul li,
+#site-footer .footer-col ul li a,
+#site-footer .contact-item,
+#site-footer .footer-bottom p,
+#site-footer .footer-bottom a,
+#site-footer .footer-bottom p a,
+body.woollen-theme #site-footer a {
+  color: rgba(255, 244, 248, .76) !important;
+}
+
+#site-footer a:hover,
+#site-footer .footer-col ul li a:hover,
+#site-footer .footer-bottom a:hover,
+body.woollen-theme #site-footer a:hover {
+  color: #fff !important;
+}
+
+.hero-premium {
+  min-height: clamp(700px, calc(100svh - 125px), 900px) !important;
+  background-position: center 42% !important;
+  background-size: cover !important;
+}
+
+.woollen-hero {
+  min-height: clamp(700px, calc(100svh - 125px), 900px) !important;
+}
+
+.woollen-hero-bg img {
+  object-position: center 42% !important;
+}
+
+.hero-premium .hero-p-centered,
+.hero-premium .hero-compact-copy,
+.woollen-hero-content {
+  padding-top: clamp(70px, 8vh, 118px) !important;
+}
+
+.hero-premium .flow-top-right,
+.woollen-hero .flow-top-right {
+  top: 7% !important;
+  right: 2% !important;
+}
+
+.hero-premium .flow-mid-left,
+.woollen-hero .flow-mid-left {
+  left: 1% !important;
+}
+
+.hero-premium .flow-bottom-left,
+.woollen-hero .flow-bottom-left {
+  left: 1% !important;
+  bottom: 11% !important;
+}
+
+.hero-premium .flower-one,
+.woollen-hero .flower-one {
+  top: 22% !important;
+  right: 8% !important;
+}
+
+.hero-premium .flower-two,
+.woollen-hero .flower-two {
+  left: 10% !important;
+  bottom: 18% !important;
+}
+
+@media (max-width: 768px) {
+  .hero-premium,
+  .woollen-hero {
+    min-height: 68svh !important;
+    padding-top: 62px !important;
+  }
+
+  .hero-premium .hero-p-centered,
+  .hero-premium .hero-compact-copy,
+  .woollen-hero-content {
+    padding-top: 30px !important;
+  }
+
+  #site-header .main-nav,
+  #site-header .nav-dropdown-menu {
+    background: var(--lencho-shell-gradient) !important;
+  }
+}
