@@ -9578,3 +9578,205 @@ body.woollen-theme #site-footer .social-icon:hover {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Soft light palette refresh */
+:root {
+  --rose: #d985a0 !important;
+  --rose-dark: #ad5f7b !important;
+  --gold: #dcb46f !important;
+  --gold-light: #fde7ad !important;
+  --dark: #3a2a34 !important;
+  --dark2: #6a4b5b !important;
+  --beige: #fff8f2 !important;
+  --cream: #fffdf9 !important;
+  --lencho-brand-gradient: linear-gradient(135deg, #ffe9f1 0%, #f6c6d7 48%, #ffe2a8 100%);
+  --lencho-brand-gradient-hover: linear-gradient(135deg, #ffdce8 0%, #f0b6cb 50%, #f8d28f 100%);
+  --lencho-shell-gradient: linear-gradient(120deg, #fff9fb 0%, #fff4ee 48%, #f4fbef 100%);
+  --lencho-shell-border: rgba(173, 95, 123, .18);
+  --lencho-shell-text: #3a2a34;
+  --lencho-shell-muted: rgba(58, 42, 52, .72);
+}
+
+body {
+  background: linear-gradient(180deg, #fffdf9 0%, #fff8f2 46%, #f7fbf1 100%) !important;
+  color: var(--dark) !important;
+}
+
+#site-header,
+#site-header.scrolled,
+body.woollen-theme #site-header,
+#site-footer,
+body.woollen-theme #site-footer {
+  background: var(--lencho-shell-gradient) !important;
+  color: var(--lencho-shell-muted) !important;
+  border-color: var(--lencho-shell-border) !important;
+  box-shadow: 0 10px 28px rgba(173, 95, 123, .08) !important;
+}
+
+#site-header::after,
+#site-footer .footer-col h4::after {
+  background: linear-gradient(90deg, transparent, rgba(217, 133, 160, .46), transparent) !important;
+}
+
+#site-header .nav-link,
+#site-header .nav-dropdown > .nav-link,
+body.woollen-theme #site-header .nav-link,
+body.woollen-theme #site-header .icon-btn,
+#site-footer .footer-desc,
+#site-footer .footer-col ul li,
+#site-footer .footer-col ul li a,
+#site-footer .contact-item,
+#site-footer .footer-bottom p,
+body.woollen-theme #site-footer a {
+  color: var(--lencho-shell-muted) !important;
+  text-shadow: none !important;
+}
+
+#site-header .nav-link:hover,
+body.woollen-theme #site-header .nav-link:hover,
+#site-footer .footer-logo,
+#site-footer h4,
+body.woollen-theme #site-footer h4,
+#site-footer a:hover,
+body.woollen-theme #site-footer a:hover {
+  color: var(--rose-dark) !important;
+}
+
+#site-header .nav-link::after,
+#site-header .nav-link::before {
+  background: linear-gradient(90deg, #e6a0b7, #f2cf94) !important;
+  color: var(--rose-dark) !important;
+}
+
+#site-header .site-logo img,
+#site-header .icon-btn,
+body.woollen-theme #site-header .icon-btn,
+#site-header .user-btn,
+#site-footer .social-icon,
+body.woollen-theme #site-footer .social-icon {
+  background: rgba(255, 255, 255, .72) !important;
+  border-color: rgba(217, 133, 160, .22) !important;
+  color: var(--rose-dark) !important;
+  box-shadow: 0 8px 20px rgba(173, 95, 123, .09) !important;
+}
+
+#site-header .icon-btn:hover,
+body.woollen-theme #site-header .icon-btn:hover,
+#site-footer .social-icon:hover,
+body.woollen-theme #site-footer .social-icon:hover {
+  background: linear-gradient(135deg, #fff, #ffe9f1) !important;
+  border-color: rgba(217, 133, 160, .34) !important;
+  color: var(--rose-dark) !important;
+}
+
+#site-header .cart-badge,
+body.woollen-theme #site-header .cart-badge,
+body.woollen-theme #site-header .wishlist-badge {
+  background: linear-gradient(135deg, #f7bfd0, #ffe0a2) !important;
+  color: #613348 !important;
+  border-color: rgba(255, 255, 255, .86) !important;
+}
+
+#site-header .hamburger,
+#site-header .nav-close {
+  color: var(--rose-dark) !important;
+}
+
+#site-header .search-box input {
+  background: rgba(255, 255, 255, .78) !important;
+  border-color: rgba(217, 133, 160, .28) !important;
+  color: var(--dark) !important;
+}
+
+#site-header .search-box input::placeholder {
+  color: rgba(58, 42, 52, .52) !important;
+}
+
+.btn-primary,
+.btn-gold,
+.btn-outline,
+.btn-add-to-cart,
+.btn-buy-now-large,
+.btn-wishlist-large,
+.filter-clear-btn,
+.mobile-buy-bar button,
+.woollen-btn-primary,
+.woollen-btn-ghost,
+.home-bulk-action .btn-primary,
+.home-bulk-action .btn-outline,
+.product-actions .btn-primary,
+.product-actions .btn-outline,
+.hero-btns .btn-gold,
+.hero-btns .btn-outline,
+.otp-verify-btn,
+.admin-form button {
+  background: var(--lencho-brand-gradient) !important;
+  border: 1px solid rgba(217, 133, 160, .32) !important;
+  color: #6a3450 !important;
+  box-shadow: 0 8px 18px rgba(173, 95, 123, .12) !important;
+}
+
+.btn-primary:hover,
+.btn-gold:hover,
+.btn-outline:hover,
+.btn-add-to-cart:hover,
+.btn-buy-now-large:hover,
+.btn-wishlist-large:hover,
+.filter-clear-btn:hover,
+.mobile-buy-bar button:hover,
+.woollen-btn-primary:hover,
+.woollen-btn-ghost:hover,
+.home-bulk-action .btn-primary:hover,
+.home-bulk-action .btn-outline:hover,
+.product-actions .btn-primary:hover,
+.product-actions .btn-outline:hover,
+.hero-btns .btn-gold:hover,
+.hero-btns .btn-outline:hover,
+.otp-verify-btn:hover,
+.admin-form button:hover {
+  background: var(--lencho-brand-gradient-hover) !important;
+  color: #5a2d44 !important;
+  box-shadow: 0 10px 22px rgba(173, 95, 123, .16) !important;
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled,
+.btn-gold:disabled,
+.btn-outline:disabled,
+.btn-add-to-cart:disabled,
+.btn-buy-now-large:disabled,
+.mobile-buy-bar button:disabled,
+.product-actions button:disabled {
+  background: linear-gradient(135deg, #f5f1f1, #eee7e7) !important;
+  color: #9a8b90 !important;
+  border-color: rgba(154, 139, 144, .24) !important;
+  box-shadow: none !important;
+}
+
+.product-badge,
+.discount-badge,
+.badge-large,
+.hero-badge,
+.woollen-badge-top {
+  background: linear-gradient(135deg, #ffe9f1, #f8dca2) !important;
+  color: #6a3450 !important;
+  border-color: rgba(217, 133, 160, .24) !important;
+}
+
+@media (max-width: 768px) {
+  #site-header .main-nav {
+    background: var(--lencho-shell-gradient) !important;
+    border-right: 1px solid var(--lencho-shell-border) !important;
+  }
+
+  #site-header .main-nav .nav-link,
+  #site-header .main-nav .nav-dropdown > .nav-link,
+  #site-header .nav-dropdown-menu a {
+    color: var(--lencho-shell-muted) !important;
+  }
+
+  #site-header .nav-dropdown-menu {
+    background: rgba(255, 255, 255, .56) !important;
+    border-left-color: rgba(217, 133, 160, .26) !important;
+  }
+}
