@@ -9130,11 +9130,11 @@ select:focus,
 
 /* Unified premium header, footer, and button palette */
 :root {
-  --lencho-brand-gradient: linear-gradient(135deg, #c96a8a 0%, #9b4065 54%, #c9954c 100%);
-  --lencho-shell-gradient: linear-gradient(120deg, #18122b 0%, #321735 38%, #7d3159 74%, #c9954c 130%);
-  --lencho-shell-border: rgba(242, 208, 122, .24);
+  --lencho-brand-gradient: linear-gradient(135deg, #8f3f62 0%, #5b2749 58%, #a6773f 100%);
+  --lencho-shell-gradient: linear-gradient(120deg, #130f1d 0%, #211528 46%, #4a213a 82%, #8d6434 140%);
+  --lencho-shell-border: rgba(218, 176, 104, .18);
   --lencho-shell-text: rgba(255, 250, 246, .94);
-  --lencho-shell-muted: rgba(255, 250, 246, .68);
+  --lencho-shell-muted: rgba(255, 250, 246, .66);
 }
 
 #site-header,
@@ -9142,7 +9142,7 @@ select:focus,
 body.woollen-theme #site-header {
   background: var(--lencho-shell-gradient) !important;
   border-bottom: 1px solid var(--lencho-shell-border) !important;
-  box-shadow: 0 12px 36px rgba(24, 18, 43, .18) !important;
+  box-shadow: 0 10px 28px rgba(19, 15, 29, .16) !important;
 }
 
 #site-header::after {
@@ -9152,13 +9152,13 @@ body.woollen-theme #site-header {
   right: 0;
   bottom: -1px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(242, 208, 122, .8), transparent);
+  background: linear-gradient(90deg, transparent, rgba(218, 176, 104, .5), transparent);
   pointer-events: none;
 }
 
 #site-header .site-logo img {
   background: rgba(255, 250, 246, .94) !important;
-  border: 1px solid rgba(242, 208, 122, .35) !important;
+  border: 1px solid rgba(218, 176, 104, .26) !important;
   border-radius: 999px !important;
   padding: 4px 10px !important;
   box-shadow: 0 8px 22px rgba(24, 18, 43, .18) !important;
@@ -9174,33 +9174,33 @@ body.woollen-theme #site-header .icon-btn {
 
 #site-header .nav-link:hover,
 body.woollen-theme #site-header .nav-link:hover {
-  color: #f2d07a !important;
+  color: #dab068 !important;
 }
 
 #site-header .nav-link::after {
-  background: linear-gradient(90deg, #f2d07a, #fffaf6) !important;
+  background: linear-gradient(90deg, #dab068, rgba(255, 250, 246, .86)) !important;
 }
 
 #site-header .icon-btn,
 body.woollen-theme #site-header .icon-btn,
 #site-header .user-btn {
-  background: rgba(255, 250, 246, .11) !important;
-  border: 1px solid rgba(255, 250, 246, .28) !important;
+  background: rgba(255, 250, 246, .09) !important;
+  border: 1px solid rgba(255, 250, 246, .22) !important;
   color: #fffaf6 !important;
-  box-shadow: 0 8px 20px rgba(24, 18, 43, .12) !important;
+  box-shadow: 0 8px 18px rgba(19, 15, 29, .14) !important;
 }
 
 #site-header .icon-btn:hover,
 body.woollen-theme #site-header .icon-btn:hover {
-  background: rgba(255, 250, 246, .22) !important;
-  color: #f2d07a !important;
-  border-color: rgba(242, 208, 122, .55) !important;
+  background: rgba(255, 250, 246, .16) !important;
+  color: #dab068 !important;
+  border-color: rgba(218, 176, 104, .42) !important;
 }
 
 #site-header .cart-badge,
 body.woollen-theme #site-header .cart-badge,
 body.woollen-theme #site-header .wishlist-badge {
-  background: #f2d07a !important;
+  background: #dab068 !important;
   color: #321735 !important;
   border-color: rgba(255, 250, 246, .9) !important;
 }
@@ -9227,8 +9227,8 @@ body.woollen-theme #site-header .wishlist-badge {
 #site-footer,
 body.woollen-theme #site-footer {
   background:
-    radial-gradient(circle at 12% 0%, rgba(242, 208, 122, .18), transparent 26%),
-    radial-gradient(circle at 88% 14%, rgba(201, 106, 138, .16), transparent 28%),
+    radial-gradient(circle at 12% 0%, rgba(218, 176, 104, .12), transparent 28%),
+    radial-gradient(circle at 88% 14%, rgba(143, 63, 98, .16), transparent 30%),
     var(--lencho-shell-gradient) !important;
   color: var(--lencho-shell-muted) !important;
   border-top: 1px solid var(--lencho-shell-border) !important;
@@ -9238,7 +9238,7 @@ body.woollen-theme #site-footer {
 #site-footer .footer-logo,
 #site-footer h4,
 body.woollen-theme #site-footer h4 {
-  color: #f2d07a !important;
+  color: #dab068 !important;
 }
 
 #site-footer .footer-desc,
@@ -9251,7 +9251,7 @@ body.woollen-theme #site-footer a {
 }
 
 #site-footer .footer-col h4::after {
-  background: linear-gradient(90deg, #f2d07a, #c96a8a) !important;
+  background: linear-gradient(90deg, #dab068, #8f3f62) !important;
 }
 
 #site-footer .footer-col ul li a:hover,
@@ -9271,7 +9271,7 @@ body.woollen-theme #site-footer .social-icon {
 #site-footer .social-icon:hover,
 body.woollen-theme #site-footer .social-icon:hover {
   background: var(--lencho-brand-gradient) !important;
-  border-color: rgba(242, 208, 122, .46) !important;
+  border-color: rgba(218, 176, 104, .38) !important;
   color: #fff !important;
 }
 
@@ -9293,9 +9293,9 @@ body.woollen-theme #site-footer .social-icon:hover {
 .hero-btns .btn-outline,
 .otp-verify-btn {
   background: var(--lencho-brand-gradient) !important;
-  border: 1px solid rgba(201, 149, 76, .35) !important;
+  border: 1px solid rgba(218, 176, 104, .28) !important;
   color: #fff !important;
-  box-shadow: 0 10px 24px rgba(155, 64, 101, .24) !important;
+  box-shadow: 0 8px 18px rgba(91, 39, 73, .2) !important;
 }
 
 .btn-primary:hover,
@@ -9313,9 +9313,9 @@ body.woollen-theme #site-footer .social-icon:hover {
 .hero-btns .btn-gold:hover,
 .hero-btns .btn-outline:hover,
 .otp-verify-btn:hover {
-  background: linear-gradient(135deg, #d77799 0%, #9b4065 48%, #d0a252 100%) !important;
+  background: linear-gradient(135deg, #9c496d 0%, #5b2749 52%, #ad7e43 100%) !important;
   color: #fff !important;
-  box-shadow: 0 14px 30px rgba(155, 64, 101, .32) !important;
+  box-shadow: 0 11px 24px rgba(91, 39, 73, .28) !important;
 }
 
 .btn-primary i,
@@ -9341,12 +9341,12 @@ body.woollen-theme #site-footer .social-icon:hover {
   }
 
   #site-header .main-nav .nav-link::before {
-    color: #f2d07a !important;
+    color: #dab068 !important;
   }
 
   #site-header .nav-dropdown-menu {
     background: rgba(255, 250, 246, .09) !important;
-    border-left-color: rgba(242, 208, 122, .52) !important;
+    border-left-color: rgba(218, 176, 104, .42) !important;
   }
 
   #site-header .nav-dropdown-menu a {
