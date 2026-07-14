@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   
   <!-- SEO Meta Tags -->
-  <title>Lencho - Premium Artificial Jewellery Under ₹199 | Luxury Look at Affordable Prices</title>
-  <meta name="description" content="Shop premium artificial jewellery at Lencho. Trending earrings, necklaces, toe rings and more with clear prices, secure checkout, and delivery support."/>
-  <meta name="keywords" content="artificial jewellery, imitation jewellery, earrings online, necklace, toe rings, affordable jewellery India, trendy jewellery under 199, rose gold jewellery, Lencho jewellery"/>
+  <title>Lencho - Handmade Woollen Accessories & Artificial Jewellery</title>
+  <meta name="description" content="Shop Lencho handmade woollen accessories, crochet gifts, baby pieces, decor, and selected artificial jewellery with clear prices and delivery support."/>
+  <meta name="keywords" content="handmade woollen accessories, crochet hair clips, woollen scrunchies, crochet gifts India, baby woollen accessories, Lencho woollen, artificial jewellery"/>
   <meta name="author" content="Lencho India"/>
   <meta name="copyright" content="© 2026 Lencho. All rights reserved."/>
   <meta name="robots" content="index, follow"/>
@@ -15,8 +15,8 @@
   <meta name="revisit-after" content="7 days"/>
   
   <!-- Open Graph Tags (Social Sharing) -->
-  <meta property="og:title" content="Lencho – Premium Artificial Jewellery Under ₹199"/>
-  <meta property="og:description" content="Discover trendy, premium-quality artificial jewellery at incredible prices. Free delivery + 7-day returns. Shop now!"/>
+  <meta property="og:title" content="Lencho - Handmade Woollen Accessories"/>
+  <meta property="og:description" content="Soft crochet accessories, woollen gifts, baby pieces, decor, and selected jewellery from Lencho."/>
   <meta property="og:type" content="website"/>
   <meta property="og:url" content="https://lencho.in"/>
   <meta property="og:image" content="https://lencho.in/images/og-image.png"/>
@@ -25,8 +25,8 @@
   
   <!-- Twitter Card Tags -->
   <meta name="twitter:card" content="summary_large_image"/>
-  <meta name="twitter:title" content="Lencho – Premium Jewellery Under ₹199"/>
-  <meta name="twitter:description" content="Shop trending earrings, necklaces, and more with clear prices, secure checkout, and delivery support."/>
+  <meta name="twitter:title" content="Lencho - Handmade Woollen Accessories"/>
+  <meta name="twitter:description" content="Shop woollen accessories, crochet gifts, baby pieces, decor, and selected jewellery."/>
   <meta name="twitter:image" content="https://lencho.in/images/twitter-image.png"/>
   
   <!-- Canonical URL -->
@@ -43,7 +43,7 @@
   <link rel="preconnect" href="https://images.unsplash.com" crossorigin/>
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net"/>
   <link rel="dns-prefetch" href="https://images.unsplash.com"/>
-  <link rel="preload" as="image" href="/images/hero_model.png" fetchpriority="high"/>
+  <link rel="preload" as="image" href="/images/woollen_hero.jpg" fetchpriority="high"/>
   
   <!-- Google Fonts -->
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=Jost:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
@@ -82,7 +82,7 @@
     "name": "Lencho",
     "url": "https://lencho.in",
     "logo": "https://lencho.in/favicon.svg",
-    "description": "Premium artificial jewellery brand offering trendy designs at affordable prices",
+    "description": "Handmade woollen accessories and selected artificial jewellery by Lencho",
     "sameAs": [
       "https://instagram.com/lencho_official",
       "https://facebook.com/lencho_official",
@@ -112,8 +112,8 @@
     "@context": "https://schema.org",
     "@type": "Store",
     "name": "Lencho",
-    "image": "https://lencho.in/images/hero.png",
-    "description": "Premium artificial jewellery store with trending designs",
+    "image": "https://lencho.in/images/woollen_hero.jpg",
+    "description": "Handmade woollen accessories, crochet gifts, decor, and selected artificial jewellery",
     "url": "https://lencho.in",
     "priceRange": "₹99 - ₹9999",
     "areaServed": "IN"
@@ -312,8 +312,13 @@
         <a href="/" class="nav-link" onclick="event.preventDefault(); navigate('/')">Home</a>
         <a href="/woollen" class="nav-link" onclick="event.preventDefault(); navigate('/woollen')">Woollen</a>
         <div class="nav-dropdown" id="nav-collections-dd">
-          <span class="nav-link" style="cursor:pointer;" onclick="toggleNavDropdown(event)" data-href="/products">Collections <i class="fas fa-chevron-down" style="font-size:.65rem;transition:transform .2s;" id="coll-arrow"></i></span>
+          <span class="nav-link" style="cursor:pointer;" onclick="toggleNavDropdown(event)" data-href="/woollen">Collections <i class="fas fa-chevron-down" style="font-size:.65rem;transition:transform .2s;" id="coll-arrow"></i></span>
           <div class="nav-dropdown-menu">
+            <a href="/woollen/products" onclick="event.preventDefault(); navigate('/woollen/products')">All Woollen Products</a>
+            <a href="/woollen/category/scrunchies" onclick="event.preventDefault(); navigate('/woollen/category/scrunchies')">Scrunchies</a>
+            <a href="/woollen/category/accessories" onclick="event.preventDefault(); navigate('/woollen/category/accessories')">Crochet Accessories</a>
+            <a href="/woollen/category/baby-gifts" onclick="event.preventDefault(); navigate('/woollen/category/baby-gifts')">Baby Gifts</a>
+            <a href="/jewellery" onclick="event.preventDefault(); navigate('/jewellery')">Jewellery Corner</a>
             <a href="/products" onclick="event.preventDefault(); navigate('/products')">✦ All Collections</a>
             <a href="/woollen" onclick="event.preventDefault(); navigate('/woollen')">🧶 Woollen Collection</a>
             <a href="/products?category=earrings" onclick="event.preventDefault(); navigate('/products?category=earrings')">💍 Earrings</a>
@@ -361,7 +366,7 @@
     <div class="footer-grid">
       <div class="footer-brand">
         <div class="footer-logo">✦ Lencho ✦</div>
-        <p class="footer-desc">Crafting elegance for the modern woman. Premium artificial jewellery that celebrates your unique style.</p>
+        <p class="footer-desc">Handmade woollen accessories, crochet gifts, baby pieces, decor, and selected jewellery made with care.</p>
         <div class="social-links">
           <a href="https://www.instagram.com/lencho_official" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Follow us on Instagram" title="Instagram"><i class="fab fa-instagram"></i></a>
           <a href="https://www.facebook.com/lencho_official" class="social-icon" target="_blank" rel="noopener noreferrer" aria-label="Like us on Facebook" title="Facebook"><i class="fab fa-facebook-f"></i></a>
@@ -374,9 +379,9 @@
         <h4>Quick Links <i class="fas fa-chevron-down" style="font-size:.65rem;transition:transform .2s;margin-left:8px;"></i></h4>
         <ul class="footer-col-menu">
           <li><a href="/" onclick="event.preventDefault(); navigate('/')">Home</a></li>
-          <li><a href="/products?category=earrings" onclick="event.preventDefault(); navigate('/products?category=earrings')">Earrings</a></li>
-          <li><a href="/products?category=necklace" onclick="event.preventDefault(); navigate('/products?category=necklace')">Necklace</a></li>
-          <li><a href="/products?category=toe-rings" onclick="event.preventDefault(); navigate('/products?category=toe-rings')">Toe Rings</a></li>
+          <li><a href="/woollen" onclick="event.preventDefault(); navigate('/woollen')">Woollen Store</a></li>
+          <li><a href="/woollen/products" onclick="event.preventDefault(); navigate('/woollen/products')">Woollen Products</a></li>
+          <li><a href="/jewellery" onclick="event.preventDefault(); navigate('/jewellery')">Jewellery Corner</a></li>
           <li><a href="/track" onclick="event.preventDefault(); navigate('/track')">Track Order</a></li>
         </ul>
       </div>
@@ -407,7 +412,7 @@
     </div>
     <div class="footer-bottom">
       <p>© 2026 Lencho. All rights reserved.</p>
-      <p>Made with ❤️ in India | Premium Artificial Jewellery Brand</p>
+      <p>Made in India | Handmade Woollen and Selected Jewellery</p>
       <p style="margin-top:.5rem;font-size:.75rem;">
         <a href="/terms" onclick="event.preventDefault(); navigate('/terms')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Terms &amp; Conditions</a> |
         <a href="/privacy" onclick="event.preventDefault(); navigate('/privacy')" style="color:rgba(255,255,255,.45);cursor:pointer;text-decoration:none;margin:0 8px;" onmouseover="this.style.color='var(--rose)'" onmouseout="this.style.color='rgba(255,255,255,.45)'">Privacy Policy</a> |

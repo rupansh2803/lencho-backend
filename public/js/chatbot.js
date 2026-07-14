@@ -13,10 +13,14 @@ const LENCHO_KB = {
   default: `Samajh nahi aaya! 😊 Mujhe in topics mein help kar sakti hoon:\n\n💍 Products & Collections\n🏷️ Offers & Discount Codes\n📦 Order Tracking\n🚚 Shipping & Delivery\n💳 Payment Options\n🔄 Returns & Refunds\n📞 Contact Details\n\nKya poochna chahti hain?`
 };
 
+LENCHO_KB.products = `Hamare main focus woollen handmade pieces par hai:\n\n- Crochet hair clips, bows and bands\n- Woollen scrunchies\n- Baby accessories and soft gifts\n- Crochet flowers and decor\n- Winter and festive woollen drops\n- Selected jewellery corner\n\nAap woollen store dekhna chahenge ya jewellery corner?`;
+LENCHO_KB.size = `Woollen sizing:\n\n- Hair accessories mostly free size hain\n- Baby items ke liye size/age mention product page par rahega\n- Decor pieces handmade hone ki wajah se thoda variation ho sakta hai\n- Jewellery corner me rings/toe rings adjustable options available hain`;
+LENCHO_KB.default = `Main woollen products, collections, offers, order tracking, shipping, payment, returns, aur contact details me help kar sakti hoon. Kya dekhna hai?`;
+
 function getBotReply(msg) {
   const m = msg.toLowerCase();
   if (/namaste|hello|hi|helo|hii|hey/.test(m)) return LENCHO_KB.greet[Math.floor(Math.random()*3)];
-  if (/product|collection|jewel|jewellery|earring|necklace|ring|bangle|payal|chain|tikka|bridal|set|kya hai/.test(m)) return LENCHO_KB.products;
+  if (/product|collection|wool|woollen|crochet|scrunch|hair|baby|decor|jewel|jewellery|earring|necklace|ring|bangle|payal|chain|tikka|bridal|set|kya hai/.test(m)) return LENCHO_KB.products;
   if (/offer|discount|coupon|code|sale|off|cheap|price/.test(m)) return LENCHO_KB.offers;
   if (/track|order|status|kahan|delivery status|parcel/.test(m)) return LENCHO_KB.track;
   if (/contact|phone|email|address|call|whatsapp|number/.test(m)) return LENCHO_KB.contact;

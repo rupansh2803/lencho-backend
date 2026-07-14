@@ -494,13 +494,13 @@ const DEFAULT_FALLBACK_SETTINGS = {
   grievanceOfficerName: '',
   grievanceOfficerEmail: 'lencho.official01@gmail.com',
   refundTimeline: '',
-  heroTitle: 'Luxury Redefined',
-  heroSubtitle: 'For The Modern Woman',
-  heroDescription: 'Premium artificial jewellery for every occasion. Look expensive, spend smart.',
-  heroImage: '/images/hero_model.png',
-  heroBadge: 'Premium Collection 2026',
-  heroButton1Text: 'Shop Now',
-  heroButton2Text: 'View Collections',
+  heroTitle: 'Handmade Woollen',
+  heroSubtitle: 'Soft, Gift-ready Pieces',
+  heroDescription: 'Crochet accessories, baby gifts, decor, and seasonal woollen drops.',
+  heroImage: '/images/woollen_hero.jpg',
+  heroBadge: 'Lencho Woollen',
+  heroButton1Text: 'Shop Woollen',
+  heroButton2Text: 'View Products',
   heroMediaType: 'image',
   heroVideoUrl: '',
   promoTitle: 'Exclusive Seasonal Drop',
@@ -542,11 +542,11 @@ const DEFAULT_FALLBACK_SETTINGS = {
   seoRobotsPolicy: 'index,follow',
   seoJsonLdEnabled: true,
   seoSitemapPriority: '0.8',
-  seoTitleDefault: 'Lencho - Premium Artificial Jewellery',
-  seoDescriptionDefault: 'Shop premium artificial jewellery at Lencho. Trending earrings, necklaces, toe rings and more at great prices.',
+  seoTitleDefault: 'Lencho - Handmade Woollen Accessories',
+  seoDescriptionDefault: 'Shop handmade woollen accessories, crochet gifts, baby pieces, decor, and selected jewellery at Lencho.',
   seoCanonicalBaseUrl: SITE_URL,
-  seoOgImageUrl: '/images/premium_hero.png',
-  seoTwitterImageUrl: '/images/premium_hero.png',
+  seoOgImageUrl: '/images/woollen_hero.jpg',
+  seoTwitterImageUrl: '/images/woollen_hero.jpg',
   socialInstagramUrl: 'https://instagram.com/lencho_official',
   socialFacebookUrl: 'https://facebook.com/lencho_official',
   socialYoutubeUrl: 'https://youtube.com/lencho_official',
@@ -555,8 +555,8 @@ const DEFAULT_FALLBACK_SETTINGS = {
   schemaEmail: 'lencho.official01@gmail.com',
   schemaAddress: '197 Sarakpur, Barara, Ambala, Haryana',
   aiChatEnabled: true,
-  aiChatWelcome: 'Namaste! Main Lencho assistant hoon. Product, offers, shipping, ya order help ke liye message bhejiye.',
-  aiSystemPrompt: 'You are Lencho\'s premium jewelry shopping assistant. Recommend only products that fit the catalog context. Be concise, friendly, and practical.',
+  aiChatWelcome: 'Namaste! Main Lencho assistant hoon. Woollen products, offers, shipping, ya order help ke liye message bhejiye.',
+  aiSystemPrompt: 'You are Lencho\'s woollen-first shopping assistant. Recommend handmade woollen products first and selected jewellery second. Be concise, friendly, and practical.',
   aiHandoffWhatsappNumber: '919999999999',
   razorpayKeyId: process.env.RAZORPAY_KEY_ID || '',
   woollenHeaderTitle: 'Lencho Woollen',
@@ -753,7 +753,9 @@ async function initDB() {
     await mongoose.connect(atlasUri);
     useDB = true;
     console.log('MongoDB Atlas connected. Permanent storage enabled.');
+    await relaxLegacyCategoryIndexes();
     await ensureInitialAdminIfRequested();
+    await seedCategories();
     await seedSettings();
     warmupSmtpTransporter().catch(() => {});
     console.log('🚀 System Bootstrapped Successfully');
@@ -983,6 +985,97 @@ function getVariantSnapshot(product, variantId = '') {
   return { product: normalized, variant };
 }
 
+function numberOrFallback(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function getCartProductSnapshot(product, variantId = '') {
+  const snapshot = getVariantSnapshot(product, variantId);
+  const normalized = snapshot.product;
+  const variant = snapshot.variant;
+  if (!normalized) return { product: null, variant: null, stock: 0 };
+  const variantSelected = Boolean(String(variantId || '')) && variant;
+  const stock = variantSelected
+    ? numberOrFallback(variant.stock, 0)
+    : numberOrFallback(normalized.stock, 0);
+  return { product: normalized, variant, stock };
+}
+
+function cartLineProductPayload(product, variant = null) {
+  return {
+    ...product,
+    price: numberOrFallback(variant?.price, product.price),
+    mrp: numberOrFallback(variant?.mrp, product.mrp),
+    stock: variant ? numberOrFallback(variant.stock, 0) : numberOrFallback(product.stock, 0),
+    sku: String(variant?.sku || product.sku || ''),
+    image: variant?.images?.[0] || product.image,
+    images: variant?.images?.length ? variant.images : product.images
+  };
+}
+
+function httpError(message, statusCode = 400) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+}
+
+async function adjustOrderStock(order, delta = -1) {
+  const orderItems = Array.isArray(order?.items) ? order.items : [];
+  if (!orderItems.length) return;
+
+  if (useDB) {
+    for (const item of orderItems) {
+      const productDoc = await Product.findById(item.productId);
+      if (!productDoc) continue;
+      const qtyDelta = (Math.max(1, Number(item.quantity) || 1)) * delta;
+      const variantId = String(item.variantId || '');
+      if (variantId && Array.isArray(productDoc.variants)) {
+        const variant = productDoc.variants.find(v => String(v.id) === variantId);
+        if (variant) variant.stock = Math.max(0, numberOrFallback(variant.stock, 0) + qtyDelta);
+        if (productDoc.hasVariants) {
+          productDoc.stock = productDoc.variants.reduce((sum, v) => sum + Math.max(0, numberOrFallback(v.stock, 0)), 0);
+        } else {
+          productDoc.stock = Math.max(0, numberOrFallback(productDoc.stock, 0) + qtyDelta);
+        }
+      } else {
+        productDoc.stock = Math.max(0, numberOrFallback(productDoc.stock, 0) + qtyDelta);
+      }
+      await productDoc.save();
+    }
+    clearPublicApiCache('catalog');
+    return;
+  }
+
+  const products = readJson(FILES.products);
+  let changed = false;
+  for (const item of orderItems) {
+    const product = products.find(p => String(p.id || p._id) === String(item.productId));
+    if (!product) continue;
+    const qtyDelta = (Math.max(1, Number(item.quantity) || 1)) * delta;
+    const variantId = String(item.variantId || '');
+    if (variantId && Array.isArray(product.variants)) {
+      const variant = product.variants.find(v => String(v.id) === variantId);
+      if (variant) {
+        variant.stock = Math.max(0, numberOrFallback(variant.stock, 0) + qtyDelta);
+        changed = true;
+      }
+      if (product.hasVariants) {
+        product.stock = product.variants.reduce((sum, v) => sum + Math.max(0, numberOrFallback(v.stock, 0)), 0);
+      } else {
+        product.stock = Math.max(0, numberOrFallback(product.stock, 0) + qtyDelta);
+      }
+    } else {
+      product.stock = Math.max(0, numberOrFallback(product.stock, 0) + qtyDelta);
+      changed = true;
+    }
+  }
+  if (changed) {
+    writeJson(FILES.products, products);
+    clearPublicApiCache('catalog');
+  }
+}
+
 async function buildProductPayload(req, existingProduct = null) {
   const body = req.body || {};
   const category = String(body.category || existingProduct?.category || '').trim().toLowerCase();
@@ -1069,6 +1162,8 @@ function normalizeProductRecord(product) {
   const variants = normalizeVariantList(product.variants || [], category);
   const hasVariants = product.hasVariants === true || product.hasVariants === 'true' || variants.length > 0;
   const primaryVariant = variants[0] || null;
+  const rawProductStock = Number(product.stock);
+  const variantStockTotal = variants.reduce((sum, variant) => sum + Math.max(0, numberOrFallback(variant.stock, 0)), 0);
   const detailFields = collectProductDetailFields(product, product);
   return {
     ...product,
@@ -1079,7 +1174,7 @@ function normalizeProductRecord(product) {
     price: Number(product.price) || Number(primaryVariant?.price) || 0,
     mrp: Number(product.mrp) || Number(primaryVariant?.mrp) || Number(product.price) || Number(primaryVariant?.price) || 0,
     discount: Number(product.discount) || 0,
-    stock: Number(product.stock) || Number(primaryVariant?.stock) || 0,
+    stock: hasVariants ? variantStockTotal : (Number.isFinite(rawProductStock) ? rawProductStock : 0),
     rating: Number(product.rating) || 0,
     hasVariants,
     variantType: String(product.variantType || '').trim(),
@@ -1124,7 +1219,7 @@ function getPublicSettingsPayload(rawSettings = {}) {
     if (source[key] !== undefined) payload[key] = source[key];
   }
 
-  payload.heroImage = normalizeMediaUrl(source.heroImage, { fallback: '/images/premium_hero.png' });
+  payload.heroImage = normalizeMediaUrl(source.heroImage, { fallback: '/images/woollen_hero.jpg' });
   payload.promoImage = normalizeMediaUrl(source.promoImage, { fallback: '/images/showcase.png' });
   payload.seoOgImageUrl = normalizeMediaUrl(source.seoOgImageUrl, { fallback: '/images/premium_hero.png' });
   payload.seoTwitterImageUrl = normalizeMediaUrl(source.seoTwitterImageUrl, { fallback: '/images/premium_hero.png' });
@@ -1192,8 +1287,9 @@ function getJsonCategories() {
   const productCats = getJsonCategoriesFromProducts(getJsonCatalogProducts()).map(normalizeCategoryRecord).filter(Boolean);
   const bySlug = new Map();
   [...normalizedSaved, ...productCats, ...getDefaultWoollenCategories()].forEach(cat => {
-    if (!cat?.slug || bySlug.has(cat.slug)) return;
-    bySlug.set(cat.slug, normalizeCategoryRecord(cat));
+    const key = `${cat?.storeType || 'main'}:${cat?.slug || ''}`;
+    if (!cat?.slug || bySlug.has(key)) return;
+    bySlug.set(key, normalizeCategoryRecord(cat));
   });
   return Array.from(bySlug.values()).sort((a, b) => (Number(a.displayOrder) || 0) - (Number(b.displayOrder) || 0));
 }
@@ -1332,7 +1428,7 @@ async function seedCategories() {
     }
     for (const cat of getDefaultWoollenCategories()) {
       await Category.findOneAndUpdate(
-        { slug: cat.slug },
+        { slug: cat.slug, storeType: 'woollen' },
         { $setOnInsert: cat },
         { upsert: true, new: true }
       );
@@ -1400,13 +1496,13 @@ async function seedSettings() {
       { key: 'otpSubject', value: DEFAULT_OTP_SUBJECT, label: 'OTP Email Subject' },
       { key: 'otpBody', value: DEFAULT_OTP_BODY, label: 'OTP Email Body (HTML)' },
       // ── CMS SETTINGS ──
-      { key: 'heroTitle', value: 'Luxury Redefined', label: 'Hero Title' },
-      { key: 'heroSubtitle', value: 'For The Modern Woman', label: 'Hero Subtitle' },
-      { key: 'heroDescription', value: 'Premium artificial jewellery for every occasion. Look expensive, spend smart with clear pricing and fast support.', label: 'Hero Description' },
-      { key: 'heroImage', value: '/images/hero_model.png', label: 'Hero Background Image URL' },
-      { key: 'heroBadge', value: '✦ PREMIUM COLLECTION 2026 ✦', label: 'Hero Badge Text' },
-      { key: 'heroButton1Text', value: '🛍️ Shop Now & Save', label: 'Hero Button 1' },
-      { key: 'heroButton2Text', value: 'View Collections', label: 'Hero Button 2' },
+      { key: 'heroTitle', value: 'Handmade Woollen', label: 'Hero Title' },
+      { key: 'heroSubtitle', value: 'Soft, Gift-ready Pieces', label: 'Hero Subtitle' },
+      { key: 'heroDescription', value: 'Crochet accessories, baby gifts, decor, and seasonal woollen drops.', label: 'Hero Description' },
+      { key: 'heroImage', value: '/images/woollen_hero.jpg', label: 'Hero Background Image URL' },
+      { key: 'heroBadge', value: 'LENCHO WOOLLEN', label: 'Hero Badge Text' },
+      { key: 'heroButton1Text', value: 'Shop Woollen', label: 'Hero Button 1' },
+      { key: 'heroButton2Text', value: 'View Products', label: 'Hero Button 2' },
       { key: 'heroMediaType', value: 'image', label: 'Hero Media Type (image/video)' },
       { key: 'heroVideoUrl', value: '', label: 'Hero Video URL' },
       { key: 'offerBanner', value: '🎁 LIMITED OFFER: FLAT 50% OFF ON SELECTED ITEMS + FREE DELIVERY!', label: 'Offer Banner Text' },
@@ -1451,13 +1547,13 @@ async function seedSettings() {
   } else {
     // Add missing CMS keys to existing DB
     const cmsDefaults = [
-      { key: 'heroTitle', value: 'Luxury Redefined', label: 'Hero Title' },
-      { key: 'heroSubtitle', value: 'For The Modern Woman', label: 'Hero Subtitle' },
-      { key: 'heroDescription', value: 'Premium artificial jewellery for every occasion. Look expensive, spend smart with clear pricing and fast support.', label: 'Hero Description' },
-      { key: 'heroImage', value: '/images/hero_model.png', label: 'Hero Background Image URL' },
-      { key: 'heroBadge', value: '✦ PREMIUM COLLECTION 2026 ✦', label: 'Hero Badge Text' },
-      { key: 'heroButton1Text', value: '🛍️ Shop Now & Save', label: 'Hero Button 1' },
-      { key: 'heroButton2Text', value: 'View Collections', label: 'Hero Button 2' },
+      { key: 'heroTitle', value: 'Handmade Woollen', label: 'Hero Title' },
+      { key: 'heroSubtitle', value: 'Soft, Gift-ready Pieces', label: 'Hero Subtitle' },
+      { key: 'heroDescription', value: 'Crochet accessories, baby gifts, decor, and seasonal woollen drops.', label: 'Hero Description' },
+      { key: 'heroImage', value: '/images/woollen_hero.jpg', label: 'Hero Background Image URL' },
+      { key: 'heroBadge', value: 'LENCHO WOOLLEN', label: 'Hero Badge Text' },
+      { key: 'heroButton1Text', value: 'Shop Woollen', label: 'Hero Button 1' },
+      { key: 'heroButton2Text', value: 'View Products', label: 'Hero Button 2' },
       { key: 'heroMediaType', value: 'image', label: 'Hero Media Type (image/video)' },
       { key: 'heroVideoUrl', value: '', label: 'Hero Video URL' },
       { key: 'offerBanner', value: '🎁 LIMITED OFFER: FLAT 50% OFF ON SELECTED ITEMS + FREE DELIVERY!', label: 'Offer Banner Text' },
@@ -1500,6 +1596,27 @@ async function seedSettings() {
     ];
     for (const d of cmsDefaults) {
       await Settings.updateOne({ key: d.key }, { $setOnInsert: d }, { upsert: true });
+    }
+    const woollenHeroDefaultMigrations = [
+      { key: 'heroTitle', from: ['Luxury Redefined'], to: 'Handmade Woollen' },
+      { key: 'heroSubtitle', from: ['For The Modern Woman'], to: 'Soft, Gift-ready Pieces' },
+      { key: 'heroDescription', from: ['Premium artificial jewellery for every occasion. Look expensive, spend smart with clear pricing and fast support.', 'Premium artificial jewellery for every occasion. Look expensive, spend smart.'], to: 'Crochet accessories, baby gifts, decor, and seasonal woollen drops.' },
+      { key: 'heroImage', from: ['/images/hero_model.png', '/images/premium_hero.png'], to: '/images/woollen_hero.jpg' },
+      { key: 'heroBadge', from: ['Premium Collection 2026', '✦ PREMIUM COLLECTION 2026 ✦'], to: 'LENCHO WOOLLEN' },
+      { key: 'heroButton1Text', from: ['Shop Now', '🛍️ Shop Now & Save'], to: 'Shop Woollen' },
+      { key: 'heroButton2Text', from: ['View Collections'], to: 'View Products' },
+      { key: 'seoTitleDefault', from: ['Lencho - Premium Artificial Jewellery'], to: 'Lencho - Handmade Woollen Accessories' },
+      { key: 'seoDescriptionDefault', from: ['Shop premium artificial jewellery at Lencho. Trending earrings, necklaces, toe rings and more at great prices.'], to: 'Shop handmade woollen accessories, crochet gifts, baby pieces, decor, and selected jewellery at Lencho.' },
+      { key: 'seoOgImageUrl', from: ['/images/premium_hero.png', '/images/hero.png'], to: '/images/woollen_hero.jpg' },
+      { key: 'seoTwitterImageUrl', from: ['/images/premium_hero.png', '/images/hero.png'], to: '/images/woollen_hero.jpg' },
+      { key: 'aiChatWelcome', from: ['Namaste! Main Lencho assistant hoon. Product, offers, shipping, ya order help ke liye message bhejiye.'], to: 'Namaste! Main Lencho assistant hoon. Woollen products, offers, shipping, ya order help ke liye message bhejiye.' },
+      { key: 'aiSystemPrompt', from: ["You are Lencho's premium jewelry shopping assistant. Recommend only products that fit the catalog context. Be concise, friendly, and practical."], to: "You are Lencho's woollen-first shopping assistant. Recommend handmade woollen products first and selected jewellery second. Be concise, friendly, and practical." }
+    ];
+    for (const item of woollenHeroDefaultMigrations) {
+      await Settings.updateOne(
+        { key: item.key, value: { $in: item.from } },
+        { $set: { value: item.to } }
+      );
     }
     console.log('✅ CMS settings synced');
   }
@@ -1847,9 +1964,29 @@ async function uploadMediaFiles(files, folder) {
   }
 
   if (isProduction) {
-    throw new Error('Permanent image storage is not configured. Add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET before uploading products in production.');
+    console.warn('[Upload] Cloudinary is not configured; saving media to local /uploads fallback.');
   }
   return Promise.all(list.map(file => saveLocalMediaFile(file, sanitizeUploadFolder(folder))));
+}
+
+async function relaxLegacyCategoryIndexes() {
+  try {
+    const indexes = await Category.collection.indexes();
+    for (const name of ['name_1', 'slug_1']) {
+      if (indexes.some(index => index.name === name)) {
+        await Category.collection.dropIndex(name);
+        console.log(`[Category] Dropped legacy global unique index ${name}`);
+      }
+    }
+  } catch (e) {
+    console.error('Category legacy index check warning:', e.message);
+  }
+
+  try {
+    await Category.createIndexes();
+  } catch (e) {
+    console.error('Category compound index update warning:', e.message);
+  }
 }
 
 async function uploadSingleMedia(file, folder) {
@@ -3217,6 +3354,50 @@ app.post('/api/razorpay/verify', requireAuth, async (req, res) => {
       .digest('hex');
 
     if (expectedSignature === razorpay_signature) {
+      const uid = getRequestUserId(req);
+      if (useDB) {
+        const order = await Order.findOne({ id: orderId });
+        if (!order) return res.status(404).json({ error: 'Order not found' });
+        if (!order.stockAdjusted) {
+          await adjustOrderStock(order, -1);
+          order.stockAdjusted = true;
+        }
+        order.status = 'placed';
+        order.razorpayOrderId = razorpay_order_id;
+        order.razorpayPaymentId = razorpay_payment_id;
+        order.razorpaySignature = razorpay_signature;
+        order.timeline = order.timeline || [];
+        if (!order.timeline.find(item => item.status === 'paid')) {
+          order.timeline.push({ status: 'paid', label: 'Payment Verified', date: new Date(), done: true });
+        }
+        await order.save();
+        await Cart.findOneAndUpdate({ userId: uid }, { items: [] });
+      } else {
+        const orders = readJson(FILES.orders);
+        const idx = orders.findIndex(o => String(o.id) === String(orderId));
+        if (idx === -1) return res.status(404).json({ error: 'Order not found' });
+        const order = orders[idx];
+        if (!order.stockAdjusted) {
+          await adjustOrderStock(order, -1);
+          order.stockAdjusted = true;
+        }
+        order.status = 'placed';
+        order.razorpayOrderId = razorpay_order_id;
+        order.razorpayPaymentId = razorpay_payment_id;
+        order.razorpaySignature = razorpay_signature;
+        order.timeline = order.timeline || [];
+        if (!order.timeline.find(item => item.status === 'paid')) {
+          order.timeline.push({ status: 'paid', label: 'Payment Verified', date: new Date(), done: true });
+        }
+        writeJson(FILES.orders, orders);
+        const carts = readJson(FILES.carts);
+        const ci = carts.findIndex(c => c.userId === uid);
+        if (ci > -1) { carts[ci].items = []; writeJson(FILES.carts, carts); }
+      }
+      return res.json({ success: true, message: 'Payment verified successfully' });
+    }
+
+    if (expectedSignature === razorpay_signature) {
       if (useDB) {
         await Order.findOneAndUpdate({ id: orderId }, {
           status: 'placed',
@@ -3996,7 +4177,7 @@ app.post('/api/admin/categories', requireAdmin, async (req, res) => {
     const payload = { name, slug, image, bannerImage, icon, theme, storeType: storeType === 'woollen' ? 'woollen' : 'main', description, displayOrder };
     if (!useDB) {
       const cats = readJson(FILES.categories);
-      if (cats.some(c => c.slug === slug)) return res.status(400).json({ error: 'Collection already exists' });
+      if (cats.some(c => c.slug === slug && (c.storeType || 'main') === payload.storeType)) return res.status(400).json({ error: 'Collection already exists in this store' });
       const cat = { id: uuidv4(), ...payload, createdAt: new Date().toISOString() };
       cats.push(cat);
       writeJson(FILES.categories, cats);
@@ -4006,7 +4187,10 @@ app.post('/api/admin/categories', requireAdmin, async (req, res) => {
     const cat = await Category.create(payload);
     clearPublicApiCache('catalog');
     res.json({ success: true, category: cat });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    if (e?.code === 11000) return res.status(400).json({ error: 'Collection already exists in this store' });
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.put('/api/admin/categories/:id', requireAdmin, async (req, res) => {
@@ -4023,10 +4207,15 @@ app.put('/api/admin/categories/:id', requireAdmin, async (req, res) => {
       clearPublicApiCache('catalog');
       return res.json({ success: true, category: normalizeCategoryRecord(cats[idx]) });
     }
-    const cat = await Category.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const updates = { ...req.body };
+    if (updates.storeType !== 'woollen') updates.storeType = 'main';
+    const cat = await Category.findByIdAndUpdate(req.params.id, updates, { new: true });
     clearPublicApiCache('catalog');
     res.json({ success: true, category: cat });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    if (e?.code === 11000) return res.status(400).json({ error: 'Collection already exists in this store' });
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.delete('/api/admin/categories/:id', requireAdmin, async (req, res) => {
@@ -4339,7 +4528,7 @@ app.get('/api/cart', requireAuth, async (req, res) => {
       const enriched = await Promise.all((cart.items || []).map(async item => {
         const p = await Product.findById(item.productId).lean();
         if (!p) return null;
-        const snapshot = getVariantSnapshot(p, item.variantId);
+        const snapshot = getCartProductSnapshot(p, item.variantId);
         const variant = snapshot.variant;
         const product = snapshot.product;
         return {
@@ -4347,15 +4536,7 @@ app.get('/api/cart', requireAuth, async (req, res) => {
           ...item,
           variantId: item.variantId || '',
           variant,
-          product: {
-            ...product,
-            price: Number(variant?.price) || product.price,
-            mrp: Number(variant?.mrp) || product.mrp,
-            stock: Number(variant?.stock) || product.stock,
-            sku: String(variant?.sku || product.sku || ''),
-            image: variant?.images?.[0] || product.image,
-            images: variant?.images?.length ? variant.images : product.images
-          }
+          product: cartLineProductPayload(product, variant)
         };
       }));
       const items = enriched.filter(Boolean);
@@ -4367,22 +4548,14 @@ app.get('/api/cart', requireAuth, async (req, res) => {
     const enriched = cart.items.map(item => {
       const p = products.find(p => p.id === item.productId);
       if (!p) return null;
-      const snapshot = getVariantSnapshot(p, item.variantId);
+      const snapshot = getCartProductSnapshot(p, item.variantId);
       const variant = snapshot.variant;
       const product = snapshot.product;
       return {
         ...item,
         variantId: item.variantId || '',
         variant,
-        product: {
-          ...product,
-          price: Number(variant?.price) || product.price,
-          mrp: Number(variant?.mrp) || product.mrp,
-          stock: Number(variant?.stock) || product.stock,
-          sku: String(variant?.sku || product.sku || ''),
-          image: variant?.images?.[0] || product.image,
-          images: variant?.images?.length ? variant.images : product.images
-        }
+        product: cartLineProductPayload(product, variant)
       };
     }).filter(Boolean);
     res.json({ items: enriched, count: getCartCount(enriched), lineCount: enriched.length });
@@ -4396,19 +4569,38 @@ app.post('/api/cart/add', requireAuth, async (req, res) => {
     const qty = Math.max(1, Number(quantity) || 1);
     if (!productId) return res.status(400).json({ error: 'Product is required' });
     if (useDB) {
+      const rawProduct = await Product.findById(productId).lean();
+      if (!rawProduct) return res.status(404).json({ error: 'Product not found' });
+      const snapshot = getCartProductSnapshot(rawProduct, variantId);
+      if (String(variantId || '') && !snapshot.variant) return res.status(400).json({ error: 'Selected variant is not available' });
+      if (String(snapshot.product.status || 'published') !== 'published') return res.status(400).json({ error: 'Product is not available' });
       let cart = await Cart.findOne({ userId: uid });
       if (!cart) cart = await Cart.create({ userId: uid, items: [] });
-      const idx = cart.items.findIndex(i => i.productId === productId && String(i.variantId || '') === String(variantId || ''));
-      if (idx > -1) cart.items[idx].quantity = Math.max(1, Number(cart.items[idx].quantity) || 0) + qty;
+      const idx = cart.items.findIndex(i => String(i.productId) === String(productId) && String(i.variantId || '') === String(variantId || ''));
+      const existingQty = idx > -1 ? Math.max(0, Number(cart.items[idx].quantity) || 0) : 0;
+      const nextQty = existingQty + qty;
+      if (snapshot.stock <= 0) return res.status(400).json({ error: 'Out of stock' });
+      if (nextQty > snapshot.stock) return res.status(400).json({ error: `Only ${snapshot.stock} left in stock` });
+      if (idx > -1) cart.items[idx].quantity = nextQty;
       else cart.items.push({ productId, variantId: String(variantId || ''), quantity: qty });
       await cart.save();
       return res.json({ success: true, count: getCartCount(cart.items), lineCount: cart.items.length, items: cart.items });
     }
+    const products = readJson(FILES.products);
+    const rawProduct = products.find(p => String(p.id || p._id) === String(productId));
+    if (!rawProduct) return res.status(404).json({ error: 'Product not found' });
+    const snapshot = getCartProductSnapshot(rawProduct, variantId);
+    if (String(variantId || '') && !snapshot.variant) return res.status(400).json({ error: 'Selected variant is not available' });
+    if (String(snapshot.product.status || 'published') !== 'published') return res.status(400).json({ error: 'Product is not available' });
     const carts = readJson(FILES.carts);
     let ci = carts.findIndex(c => c.userId === uid);
     if (ci === -1) { carts.push({ userId: uid, items: [] }); ci = carts.length - 1; }
-    const ii = carts[ci].items.findIndex(i => i.productId === productId && String(i.variantId || '') === String(variantId || ''));
-    if (ii > -1) carts[ci].items[ii].quantity = Math.max(1, Number(carts[ci].items[ii].quantity) || 0) + qty;
+    const ii = carts[ci].items.findIndex(i => String(i.productId) === String(productId) && String(i.variantId || '') === String(variantId || ''));
+    const existingQty = ii > -1 ? Math.max(0, Number(carts[ci].items[ii].quantity) || 0) : 0;
+    const nextQty = existingQty + qty;
+    if (snapshot.stock <= 0) return res.status(400).json({ error: 'Out of stock' });
+    if (nextQty > snapshot.stock) return res.status(400).json({ error: `Only ${snapshot.stock} left in stock` });
+    if (ii > -1) carts[ci].items[ii].quantity = nextQty;
     else carts[ci].items.push({ productId, variantId: String(variantId || ''), quantity: qty });
     writeJson(FILES.carts, carts);
     res.json({ success: true, count: getCartCount(carts[ci].items), lineCount: carts[ci].items.length, items: carts[ci].items });
@@ -4423,9 +4615,16 @@ app.put('/api/cart/update', requireAuth, async (req, res) => {
     if (useDB) {
       const cart = await Cart.findOne({ userId: uid });
       if (!cart) return res.status(404).json({ error: 'Cart not found' });
-      if (qty <= 0) cart.items = cart.items.filter(i => !(i.productId === productId && String(i.variantId || '') === String(variantId || '')));
+      if (qty <= 0) cart.items = cart.items.filter(i => !(String(i.productId) === String(productId) && String(i.variantId || '') === String(variantId || '')));
       else {
-        const idx = cart.items.findIndex(i => i.productId === productId && String(i.variantId || '') === String(variantId || ''));
+        const rawProduct = await Product.findById(productId).lean();
+        if (!rawProduct) return res.status(404).json({ error: 'Product not found' });
+        const snapshot = getCartProductSnapshot(rawProduct, variantId);
+        if (String(variantId || '') && !snapshot.variant) return res.status(400).json({ error: 'Selected variant is not available' });
+        if (String(snapshot.product.status || 'published') !== 'published') return res.status(400).json({ error: 'Product is not available' });
+        if (snapshot.stock <= 0) return res.status(400).json({ error: 'Out of stock' });
+        if (qty > snapshot.stock) return res.status(400).json({ error: `Only ${snapshot.stock} left in stock` });
+        const idx = cart.items.findIndex(i => String(i.productId) === String(productId) && String(i.variantId || '') === String(variantId || ''));
         if (idx > -1) cart.items[idx].quantity = qty;
       }
       await cart.save(); return res.json({ success: true, count: getCartCount(cart.items), lineCount: cart.items.length });
@@ -4433,9 +4632,17 @@ app.put('/api/cart/update', requireAuth, async (req, res) => {
     const carts = readJson(FILES.carts);
     const ci = carts.findIndex(c => c.userId === uid);
     if (ci === -1) return res.status(404).json({ error: 'Cart not found' });
-    if (qty <= 0) carts[ci].items = carts[ci].items.filter(i => !(i.productId === productId && String(i.variantId || '') === String(variantId || '')));
+    if (qty <= 0) carts[ci].items = carts[ci].items.filter(i => !(String(i.productId) === String(productId) && String(i.variantId || '') === String(variantId || '')));
     else {
-      const ii = carts[ci].items.findIndex(i => i.productId === productId && String(i.variantId || '') === String(variantId || ''));
+      const products = readJson(FILES.products);
+      const rawProduct = products.find(p => String(p.id || p._id) === String(productId));
+      if (!rawProduct) return res.status(404).json({ error: 'Product not found' });
+      const snapshot = getCartProductSnapshot(rawProduct, variantId);
+      if (String(variantId || '') && !snapshot.variant) return res.status(400).json({ error: 'Selected variant is not available' });
+      if (String(snapshot.product.status || 'published') !== 'published') return res.status(400).json({ error: 'Product is not available' });
+      if (snapshot.stock <= 0) return res.status(400).json({ error: 'Out of stock' });
+      if (qty > snapshot.stock) return res.status(400).json({ error: `Only ${snapshot.stock} left in stock` });
+      const ii = carts[ci].items.findIndex(i => String(i.productId) === String(productId) && String(i.variantId || '') === String(variantId || ''));
       if (ii > -1) carts[ci].items[ii].quantity = qty;
     }
     writeJson(FILES.carts, carts); res.json({ success: true, count: getCartCount(carts[ci].items), lineCount: carts[ci].items.length });
@@ -4515,20 +4722,27 @@ app.post('/api/orders', requireAuth, async (req, res) => {
     const freeShipMin = await getSetting('freeShippingMin', 999);
     const shipCharge = await getSetting('shippingCharge', 49);
 
+    if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Cart is empty' });
+
     let subtotal = 0, totalGst = 0;
     const orderItems = await Promise.all(items.map(async item => {
+      const requestedQty = Math.max(1, Number(item.quantity) || 1);
       let p;
       if (useDB) { p = await Product.findById(item.productId).lean(); if (p) p.id = p._id; }
-      else { p = (readJson(FILES.products)).find(pr => pr.id === item.productId); }
-      if (!p) throw new Error('Product not found');
-      const snapshot = getVariantSnapshot(p, item.variantId);
+      else { p = (readJson(FILES.products)).find(pr => String(pr.id || pr._id) === String(item.productId)); }
+      if (!p) throw httpError('Product not found', 404);
+      const snapshot = getCartProductSnapshot(p, item.variantId);
       const variant = snapshot.variant;
       const product = snapshot.product || normalizeProductRecord(p);
-      const unitPrice = Number(variant?.price) || product.price;
-      const unitMrp = Number(variant?.mrp) || product.mrp;
+      if (String(item.variantId || '') && !variant) throw httpError(`Selected variant is not available for ${product.name}`);
+      if (String(product.status || 'published') !== 'published') throw httpError(`${product.name} is not available`);
+      if (snapshot.stock <= 0) throw httpError(`${product.name} is out of stock`);
+      if (requestedQty > snapshot.stock) throw httpError(`Only ${snapshot.stock} left for ${product.name}`);
+      const unitPrice = numberOrFallback(variant?.price, product.price);
+      const unitMrp = numberOrFallback(variant?.mrp, product.mrp);
       const gstRate = Number(product.gstRate) || 18;
-      const gstAmt = (unitPrice * gstRate / 100) * item.quantity;
-      subtotal += unitPrice * item.quantity;
+      const gstAmt = (unitPrice * gstRate / 100) * requestedQty;
+      subtotal += unitPrice * requestedQty;
       totalGst += gstAmt;
       return {
         productId: product.id || product._id,
@@ -4539,11 +4753,11 @@ app.post('/api/orders', requireAuth, async (req, res) => {
         image: variant?.images?.[0] || product.images?.[0] || product.image,
         price: unitPrice,
         mrp: unitMrp,
-        quantity: item.quantity,
+        quantity: requestedQty,
         gstRate,
         hsn: product.hsn,
         gstAmount: gstAmt,
-        total: unitPrice * item.quantity
+        total: unitPrice * requestedQty
       };
     }));
 
@@ -4588,17 +4802,26 @@ app.post('/api/orders', requireAuth, async (req, res) => {
     };
 
     if (useDB) {
-      await Order.create(orderData);
-      if (isCOD) await Cart.findOneAndUpdate({ userId: uid }, { items: [] });
+      const createdOrder = await Order.create(orderData);
+      if (isCOD) {
+        await adjustOrderStock(createdOrder, -1);
+        createdOrder.stockAdjusted = true;
+        await createdOrder.save();
+        await Cart.findOneAndUpdate({ userId: uid }, { items: [] });
+      }
     } else {
       const orders = readJson(FILES.orders); orders.push(orderData); writeJson(FILES.orders, orders);
       if (isCOD) {
+        orderData.stockAdjusted = true;
+        orders[orders.length - 1].stockAdjusted = true;
+        await adjustOrderStock(orderData, -1);
+        writeJson(FILES.orders, orders);
         const carts = readJson(FILES.carts); const ci = carts.findIndex(c => c.userId === uid);
         if (ci > -1) { carts[ci].items = []; writeJson(FILES.carts, carts); }
       }
     }
     res.json({ success: true, order: orderData });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(e.statusCode || 500).json({ error: e.message }); }
 });
 
 app.get('/api/orders/my', requireAuth, async (req, res) => {
@@ -4871,7 +5094,7 @@ app.get('/api/admin/orders/:id/label-branded', requireAdmin, async (req, res) =>
         <div class="section"><div class="label">ORDER ID:</div><div class="value">${order.id}</div></div>
         <div class="section"><div class="label">PAYMENT:</div><div class="value">${order.paymentMethod.toUpperCase()} (₹${order.grandTotal})</div></div>
         <div class="barcode">*${order.id}*<br/><small>AWB: ${order.awbCode || 'PENDING'}</small></div>
-        <div style="position:absolute;bottom:15px;font-size:10px;">Lencho India - Luxury Redefined</div>
+        <div style="position:absolute;bottom:15px;font-size:10px;">Lencho India - Handmade Woollen</div>
       </div>
       <script>window.onload = () => window.print();</script>
       </body></html>

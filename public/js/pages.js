@@ -2,12 +2,12 @@
 async function renderProductDetail(id) {
   const app = document.getElementById('app');
   const p = await api(`/api/products/${id}`);
-  if (p.error) return app.innerHTML = `<div class="container" style="padding:10rem 0;text-align:center;"><h2>Product Not Found</h2><button class="btn-primary" onclick="navigate('/products')">Back to Shop</button></div>`;
+  if (p.error) return app.innerHTML = `<div class="container" style="padding:10rem 0;text-align:center;"><h2>Product Not Found</h2><button class="btn-primary" onclick="navigate('/woollen/products')">Back to Shop</button></div>`;
   const selectedVariant = p.hasVariants ? (p.variants?.[0] || null) : null;
   const activeImages = selectedVariant?.images?.length ? selectedVariant.images : p.images;
   const activePrice = Number(selectedVariant?.price) || p.price;
   const activeMrp = Number(selectedVariant?.mrp) || p.mrp;
-  const activeStock = Number(selectedVariant?.stock) || p.stock;
+  const activeStock = selectedVariant ? finiteClientNumber(selectedVariant.stock, 0) : finiteClientNumber(p.stock, 0);
   const discountVal = activeMrp ? Math.round(((activeMrp - activePrice) / activeMrp) * 100) : 0;
   currentPageContext = { route: `/product/${p.id}`, category: p.category, product: p };
   window.__selectedProductVariant = selectedVariant ? selectedVariant.id : '';
@@ -91,11 +91,11 @@ async function renderProductDetail(id) {
         </div>
 
         <div class="product-actions">
-          <button class="btn-add-to-cart" id="product-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '')" ${activeStock===0?'disabled':''}>
-            <i class="fas fa-shopping-bag"></i> Add to Cart
+          <button class="btn-add-to-cart" id="product-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '')" ${activeStock<=0?'disabled':''}>
+            <i class="fas fa-shopping-bag"></i> ${activeStock <= 0 ? 'Out of Stock' : 'Add to Cart'}
           </button>
-          <button class="btn-buy-now-large" onclick="buyNow('${p.id}', window.__selectedProductVariant || '')" ${activeStock===0?'disabled':''}>
-            <i class="fas fa-bolt"></i> Buy Now
+          <button class="btn-buy-now-large" onclick="buyNow('${p.id}', window.__selectedProductVariant || '')" ${activeStock<=0?'disabled':''}>
+            <i class="fas fa-bolt"></i> ${activeStock <= 0 ? 'Sold Out' : 'Buy Now'}
           </button>
           <button class="btn-wishlist-large" onclick="toggleWishlist('${p.id}',this)">
             <i class="fas fa-heart"></i> Add to Wishlist
@@ -350,7 +350,7 @@ async function renderProductDetail(id) {
 
   const p = await api(`/api/products/${id}`, { timeoutMs: 5000 });
   if (p.error) {
-    app.innerHTML = `<div class="container" style="padding:10rem 0;text-align:center;"><h2>Product Not Found</h2><button class="btn-primary" onclick="navigate('/products')">Back to Shop</button></div>`;
+    app.innerHTML = `<div class="container" style="padding:10rem 0;text-align:center;"><h2>Product Not Found</h2><button class="btn-primary" onclick="navigate('/woollen/products')">Back to Shop</button></div>`;
     return;
   }
 
@@ -358,7 +358,7 @@ async function renderProductDetail(id) {
   const activeImages = selectedVariant?.images?.length ? selectedVariant.images : (Array.isArray(p.images) && p.images.length ? p.images : [p.image]);
   const activePrice = Number(selectedVariant?.price) || Number(p.price) || 0;
   const activeMrp = Number(selectedVariant?.mrp) || Number(p.mrp) || 0;
-  const activeStock = Number(selectedVariant?.stock) || Number(p.stock) || 0;
+  const activeStock = selectedVariant ? finiteClientNumber(selectedVariant.stock, 0) : finiteClientNumber(p.stock, 0);
   const discountVal = activeMrp ? Math.round(((activeMrp - activePrice) / activeMrp) * 100) : 0;
   const categoryLabel = productDetailLabel(p.category);
   const brandName = productDetailText(p, 'brand', 'Lencho');
@@ -451,7 +451,7 @@ async function renderProductDetail(id) {
           <span><i class="fas fa-star"></i> Real customer reviews</span>
         </div>
 
-        ${showProductAvailability ? `<div class="stock-info">
+        ${(showProductAvailability || activeStock <= 0) ? `<div class="stock-info">
           <strong>Availability:</strong>
           <span id="product-stock-label" class="${activeStock > 10 ? 'stock-available' : activeStock > 0 ? 'stock-limited' : 'stock-unavailable'}">
             ${activeStock > 10 ? 'In Stock' : activeStock > 0 ? 'Only few left' : 'Out of Stock'}
@@ -459,11 +459,11 @@ async function renderProductDetail(id) {
         </div>` : ''}
 
         <div class="product-actions">
-          <button class="btn-add-to-cart" id="product-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '')" ${activeStock===0?'disabled':''}>
-            <i class="fas fa-shopping-bag"></i> Add to Cart
+          <button class="btn-add-to-cart" id="product-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '')" ${activeStock<=0?'disabled':''}>
+            <i class="fas fa-shopping-bag"></i> ${activeStock <= 0 ? 'Out of Stock' : 'Add to Cart'}
           </button>
-          <button class="btn-buy-now-large" onclick="buyNow('${p.id}', window.__selectedProductVariant || '')" ${activeStock===0?'disabled':''}>
-            <i class="fas fa-bolt"></i> Buy Now
+          <button class="btn-buy-now-large" id="product-buy-now-btn" onclick="buyNow('${p.id}', window.__selectedProductVariant || '')" ${activeStock<=0?'disabled':''}>
+            <i class="fas fa-bolt"></i> ${activeStock <= 0 ? 'Sold Out' : 'Buy Now'}
           </button>
           <button class="btn-wishlist-large" onclick="toggleWishlist('${p.id}',this)">
             <i class="fas fa-heart"></i> Add to Wishlist
@@ -560,8 +560,8 @@ async function renderProductDetail(id) {
 
     <div class="mobile-buy-bar" aria-label="Quick buy controls">
       <div class="mobile-buy-price"><strong id="mobile-buy-price">${formatCurrency(activePrice)}</strong><span>Tax included</span></div>
-      <button type="button" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '')" ${activeStock===0?'disabled':''}><i class="fas fa-shopping-bag"></i> Cart</button>
-      <button type="button" class="mobile-buy-now" onclick="buyNow('${p.id}', window.__selectedProductVariant || '')" ${activeStock===0?'disabled':''}><i class="fas fa-bolt"></i> Buy</button>
+      <button type="button" id="mobile-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '')" ${activeStock<=0?'disabled':''}><i class="fas fa-shopping-bag"></i> ${activeStock <= 0 ? 'Sold Out' : 'Cart'}</button>
+      <button type="button" id="mobile-buy-now-btn" class="mobile-buy-now" onclick="buyNow('${p.id}', window.__selectedProductVariant || '')" ${activeStock<=0?'disabled':''}><i class="fas fa-bolt"></i> Buy</button>
     </div>  </div>`;
 
   window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
@@ -587,7 +587,7 @@ async function selectProductVariant(productId, variantId) {
   const images = variant.images?.length ? variant.images : product.images;
   const price = Number(variant.price) || product.price;
   const mrp = Number(variant.mrp) || product.mrp;
-  const stock = Number(variant.stock) || product.stock;
+  const stock = finiteClientNumber(variant.stock, 0);
 
   const thumbs = document.querySelector('.gallery-thumbs-top');
   if (thumbs) {
@@ -621,7 +621,28 @@ async function selectProductVariant(productId, variantId) {
     stockEl.textContent = stock > 10 ? 'In Stock' : stock > 0 ? 'Only few left' : 'Out of Stock';
   }
   const addButton = document.getElementById('product-add-cart-btn');
-  if (addButton) addButton.disabled = stock <= 0;
+  if (addButton) {
+    addButton.disabled = stock <= 0;
+    addButton.innerHTML = stock <= 0
+      ? '<i class="fas fa-shopping-bag"></i> Out of Stock'
+      : '<i class="fas fa-shopping-bag"></i> Add to Cart';
+  }
+  const buyButton = document.getElementById('product-buy-now-btn');
+  if (buyButton) {
+    buyButton.disabled = stock <= 0;
+    buyButton.innerHTML = stock <= 0
+      ? '<i class="fas fa-bolt"></i> Sold Out'
+      : '<i class="fas fa-bolt"></i> Buy Now';
+  }
+  const mobileAddButton = document.getElementById('mobile-add-cart-btn');
+  if (mobileAddButton) {
+    mobileAddButton.disabled = stock <= 0;
+    mobileAddButton.innerHTML = stock <= 0
+      ? '<i class="fas fa-shopping-bag"></i> Sold Out'
+      : '<i class="fas fa-shopping-bag"></i> Cart';
+  }
+  const mobileBuyButton = document.getElementById('mobile-buy-now-btn');
+  if (mobileBuyButton) mobileBuyButton.disabled = stock <= 0;
   document.querySelectorAll('#product-variant-options .variant-chip').forEach((chip, index) => {
     const active = String((product.variants || [])[index]?.id) === String(variantId);
     chip.classList.toggle('active', active);
@@ -700,7 +721,8 @@ async function submitReview(productId) {
 
 async function buyNow(productId, variantId = '') {
   if (!currentUser) { openAuthModal(); return; }
-  await addToCart(productId, false, variantId || window.__selectedProductVariant || '');
+  const added = await addToCart(productId, false, variantId || window.__selectedProductVariant || '');
+  if (!added) return;
   navigate('/checkout');
 }
 
@@ -722,9 +744,9 @@ async function getLocalCartItemsWithProducts() {
       variant,
       product: {
         ...product,
-        price: Number(variant?.price) || product.price,
-        mrp: Number(variant?.mrp) || product.mrp,
-        stock: Number(variant?.stock) || product.stock,
+        price: finiteClientNumber(variant?.price, product.price),
+        mrp: finiteClientNumber(variant?.mrp, product.mrp),
+        stock: variant ? finiteClientNumber(variant.stock, 0) : finiteClientNumber(product.stock, 0),
         sku: String(variant?.sku || product.sku || ''),
         images: variant?.images?.length ? variant.images : product.images
       }
@@ -752,7 +774,7 @@ async function renderCart() {
     }
     const totalQty = Number(r.count) || items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
     if (!items.length) {
-      app.innerHTML = `<div class="page-wrap"><h1 class="page-title">My Cart</h1><div class="empty-state"><div class="empty-icon">🛍️</div><h3>Your cart is empty</h3><p>Add some beautiful jewellery to your cart!</p><button class="btn-primary" onclick="navigate('/products')">Shop Now</button></div></div>`;
+      app.innerHTML = `<div class="page-wrap"><h1 class="page-title">My Cart</h1><div class="empty-state"><div class="empty-icon">🛍️</div><h3>Your cart is empty</h3><p>Add soft woollen pieces or selected jewellery to your cart.</p><button class="btn-primary" onclick="navigate('/woollen/products')">Shop Woollen</button></div></div>`;
       return;
     }
     
@@ -768,6 +790,7 @@ async function renderCart() {
             ${items.map(i => {
               const price = i.product?.price || 0;
               const qty = i.quantity || 1;
+              const stock = finiteClientNumber(i.product?.stock, 0);
               const total = price * qty;
               return `
             <div class="cart-item" id="ci-${i.productId}-${i.variantId || 'base'}">
@@ -780,8 +803,9 @@ async function renderCart() {
                 <div class="qty-control" style="margin-top:.5rem;display:flex;align-items:center;gap:0.5rem;">
                   <button class="qty-btn" onclick="updateQty('${i.productId}','${i.variantId || ''}',Math.max(1,${qty-1}))"><i class="fas fa-minus" style="font-size:.7rem;"></i></button>
                   <span class="qty-num" style="min-width:2rem;text-align:center;">${qty}</span>
-                  <button class="qty-btn" onclick="updateQty('${i.productId}','${i.variantId || ''}',${qty+1})"><i class="fas fa-plus" style="font-size:.7rem;"></i></button>
+                  <button class="qty-btn" onclick="updateQty('${i.productId}','${i.variantId || ''}',${qty+1})" ${qty >= stock ? 'disabled title="No more stock available"' : ''}><i class="fas fa-plus" style="font-size:.7rem;"></i></button>
                 </div>
+                ${stock <= 0 ? '<div class="cart-item-cat" style="color:#ef4444;font-weight:700;">Out of stock</div>' : qty >= stock ? `<div class="cart-item-cat" style="color:var(--gold);font-weight:700;">Only ${stock} left</div>` : ''}
                 <button class="cart-remove" onclick="removeFromCart('${i.productId}','${i.variantId || ''}')"><i class="fas fa-trash" style="font-size:.8rem;"></i> Remove</button>
               </div>
               <div class="cart-item-price" style="font-weight:700;color:var(--rose);">${formatCurrency(total)}</div>
@@ -802,7 +826,7 @@ async function renderCart() {
           <div class="summary-row"><span class="summary-total">Grand Total</span><span class="summary-total" id="grand-total">${formatCurrency(subtotal+shipping)}</span></div>
           ${subtotal < 999 ? `<p style="font-size:.75rem;color:var(--gray);margin:.75rem 0;">Add ${formatCurrency(999-subtotal)} more for FREE shipping!</p>` : ''}
           <button class="btn-primary full-width" style="margin-top:.75rem;" onclick="navigate('/checkout')">Proceed to Checkout <i class="fas fa-arrow-right"></i></button>
-          <button class="btn-outline full-width" style="margin-top:.5rem;" onclick="navigate('/products')">Continue Shopping</button>
+          <button class="btn-outline full-width" style="margin-top:.5rem;" onclick="navigate('/woollen/products')">Continue Shopping</button>
           <button class="btn-outline full-width" style="margin-top:.5rem;color:#ef4444;border-color:#ef4444;" onclick="clearCart()"><i class="fas fa-trash" style="margin-right:.5rem;"></i>Clear Cart</button>
         </div>
       </div>
@@ -813,7 +837,7 @@ async function renderCart() {
       <h2 style="color:var(--rose);margin-bottom:1rem;">⚠️ Cart Loading Error</h2>
       <p style="color:var(--gray);margin-bottom:1.5rem;">We're having trouble loading your cart. Please try again.</p>
       <button class="btn-primary" onclick="renderCart()">Retry</button>
-      <button class="btn-outline" onclick="navigate('/products')" style="margin-left:0.5rem;">Shop Now</button>
+      <button class="btn-outline" onclick="navigate('/woollen/products')" style="margin-left:0.5rem;">Shop Now</button>
     </div></div>`;
   }
 }
@@ -825,15 +849,25 @@ async function updateQty(productId, variantId, qty) {
     if (!confirmed) return;
   }
   
+  const before = typeof readLocalCart === 'function' ? readLocalCart() : [];
   if (typeof setLocalCartQty === 'function') setLocalCartQty(productId, variantId, qty);
   await updateCartCount();
+  if (!currentUser) {
+    renderCart();
+    return;
+  }
   try {
     const r = await api('/api/cart/update', { method: 'PUT', body: { productId, variantId, quantity: qty } });
-    if (r.error) console.warn('Cart quantity server sync failed, kept local cart:', r.error);
+    if (r.error) {
+      if (typeof writeLocalCart === 'function') writeLocalCart(before);
+      toast(r.error, 'error');
+    }
     await updateCartCount();
     renderCart();
   } catch (e) {
     console.error('Update quantity error:', e);
+    if (typeof writeLocalCart === 'function') writeLocalCart(before);
+    toast('Could not update quantity. Please try again.', 'error');
     renderCart();
   }
 }
@@ -886,7 +920,7 @@ async function renderWishlist() {
     
     const items = Array.isArray(r) ? r : [];
     if (!items.length) {
-      app.innerHTML = `<div class="page-wrap"><h1 class="page-title">My Wishlist</h1><div class="empty-state"><div class="empty-icon">❤️</div><h3>Your wishlist is empty</h3><p>Add your favorite jewellery to come back to them later!</p><button class="btn-primary" onclick="navigate('/products')">Browse Collections</button></div></div>`;
+      app.innerHTML = `<div class="page-wrap"><h1 class="page-title">My Wishlist</h1><div class="empty-state"><div class="empty-icon">❤️</div><h3>Your wishlist is empty</h3><p>Save your favourite woollen pieces and selected jewellery here.</p><button class="btn-primary" onclick="navigate('/woollen/products')">Browse Woollen</button></div></div>`;
       return;
     }
     
@@ -922,7 +956,7 @@ async function renderWishlist() {
       <h2 style="color:var(--rose);margin-bottom:1rem;">⚠️ Wishlist Loading Error</h2>
       <p style="color:var(--gray);margin-bottom:1.5rem;">We're having trouble loading your wishlist. Please try again.</p>
       <button class="btn-primary" onclick="renderWishlist()">Retry</button>
-      <button class="btn-outline" onclick="navigate('/products')" style="margin-left:0.5rem;">Shop Now</button>
+      <button class="btn-outline" onclick="navigate('/woollen/products')" style="margin-left:0.5rem;">Shop Now</button>
     </div></div>`;
   }
 }
@@ -1113,7 +1147,7 @@ function handleOrderSuccess(order) {
     <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
       <button class="btn-primary" onclick="navigate('/dashboard')">My Orders</button>
       <button class="btn-outline" onclick="navigate('/track')">Track Order</button>
-      <button class="btn-outline" onclick="navigate('/products')">Shop More</button>
+      <button class="btn-outline" onclick="navigate('/woollen/products')">Shop More</button>
     </div>
   </div>`;
 }
@@ -1126,7 +1160,7 @@ async function renderCheckoutNow(productId) {
   
   try {
     const p = await api(`/api/products/${productId}`);
-    if (p.error || !p.id) { navigate('/products'); toast('Product not found', 'error'); return; }
+    if (p.error || !p.id) { navigate('/woollen/products'); toast('Product not found', 'error'); return; }
     
     const subtotal = p.price;
     const gst = (p.price * (p.gstRate || 3) / 100);
@@ -1186,7 +1220,7 @@ async function renderCheckoutNow(productId) {
             <div class="summary-row"><span class="summary-total">Grand Total</span><span class="summary-total">${formatCurrency(grand)}</span></div>
             <button class="btn-gold full-width" style="margin-top:1rem;" onclick="placeOrderNow('${productId}',1)"><i class="fas fa-check-circle"></i> Place Order</button>
             <p style="font-size:.75rem;color:var(--gray);text-align:center;margin-top:.75rem;"><i class="fas fa-lock"></i> 100% Secure & Encrypted</p>
-            <button class="btn-outline full-width" style="margin-top:.75rem;" onclick="navigate('/products')">Back to Shop</button>
+            <button class="btn-outline full-width" style="margin-top:.75rem;" onclick="navigate('/woollen/products')">Back to Shop</button>
           </div>
         </div>
       </div>

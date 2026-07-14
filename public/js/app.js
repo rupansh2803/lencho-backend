@@ -256,6 +256,24 @@ function normalizeClientProduct(product) {
   };
 }
 
+function finiteClientNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function getClientProductStock(product, variantId = '') {
+  const normalized = normalizeClientProduct(product);
+  if (!normalized) return { product: null, variant: null, stock: 0 };
+  const requestedVariantId = String(variantId || '');
+  const variant = requestedVariantId
+    ? (normalized.variants || []).find(item => String(item.id) === requestedVariantId) || null
+    : null;
+  const stock = variant
+    ? finiteClientNumber(variant.stock, 0)
+    : finiteClientNumber(normalized.stock, 0);
+  return { product: normalized, variant, stock };
+}
+
 function setPageContext(next = {}) {
   currentPageContext = {
     route: next.route || location.pathname || '/',
@@ -327,15 +345,15 @@ async function applyRouteSeo(context = {}, settingsInput = null) {
   const product = context.product ? normalizeClientProduct(context.product) : currentPageContext.product;
   const baseUrl = String(settings.seoCanonicalBaseUrl || location.origin).replace(/\/+$/, '');
   const currentUrl = `${baseUrl}${route.startsWith('/') ? route : `/${route}`}${location.search || ''}`;
-  const defaultTitle = settings.seoTitleDefault || 'Lencho - Premium Artificial Jewellery';
-  const defaultDescription = settings.seoDescriptionDefault || 'Shop premium artificial jewellery at Lencho.';
+  const defaultTitle = settings.seoTitleDefault || 'Lencho - Handmade Woollen Accessories';
+  const defaultDescription = settings.seoDescriptionDefault || 'Shop handmade woollen accessories, crochet pieces, and selected artificial jewellery at Lencho.';
   const defaultImage = safeImageUrl(settings.seoOgImageUrl || settings.heroImage, '', '/images/premium_hero.png');
   const twitterImage = safeImageUrl(settings.seoTwitterImageUrl || defaultImage, '', defaultImage);
 
   let title = defaultTitle;
   let description = defaultDescription;
   let image = defaultImage;
-  let keywords = 'artificial jewellery, lencho, fashion jewellery';
+  let keywords = 'handmade woollen accessories, crochet scrunchies, woollen gifts, artificial jewellery, lencho';
   let schema = {
     '@context': 'https://schema.org',
     '@type': 'Store',
@@ -1446,30 +1464,70 @@ function updateCartBadgeOptimistic(newCount) {
   if (badge) badge.textContent = cartCount;
 }
 
-// Add to cart with INSTANT UI update (no waiting for server)
+// Add to cart after validating live stock.
 async function addToCart(productId, showToast = true, variantId = '') {
   const before = readLocalCart();
+  const variantKey = String(variantId || '');
+
+  try {
+    const productResponse = await api(`/api/products/${productId}`, { timeoutMs: 5000 });
+    if (productResponse?.error || !productResponse?.id) {
+      if (showToast) toast('Product not found', 'error');
+      return false;
+    }
+    const snapshot = getClientProductStock(productResponse, variantKey);
+    if (variantKey && !snapshot.variant) {
+      if (showToast) toast('Selected variant is not available', 'error');
+      return false;
+    }
+    if (String(snapshot.product.status || 'published') !== 'published') {
+      if (showToast) toast('Product is not available', 'error');
+      return false;
+    }
+    const existingQty = before
+      .filter(item => getCartItemKey(item.productId, item.variantId) === getCartItemKey(productId, variantKey))
+      .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+    if (snapshot.stock <= 0) {
+      if (showToast) toast('Out of stock', 'error');
+      return false;
+    }
+    if (existingQty + 1 > snapshot.stock) {
+      if (showToast) toast(`Only ${snapshot.stock} left in stock`, 'error');
+      return false;
+    }
+  } catch (e) {
+    console.error('Stock check failed:', e);
+    if (showToast) toast('Could not check stock. Please try again.', 'error');
+    return false;
+  }
+
   const optimistic = upsertLocalCart(productId, variantId, 1);
   updateCartBadgeOptimistic(getCartQuantity(optimistic));
-  if (showToast) toast('Added to cart!', 'cart');
 
   if (!currentUser) {
-    return;
+    if (showToast) toast('Added to cart!', 'cart');
+    return true;
   }
   
   // Background: Sync with server
   try {
     const r = await api('/api/cart/add', { method: 'POST', body: { productId, variantId, quantity: 1 } });
     if (r.error) { 
-      console.warn('Cart server sync failed, kept local cart:', r.error);
-      updateCartBadgeOptimistic(getCartQuantity(readLocalCart()));
-      return; 
+      writeLocalCart(before);
+      updateCartBadgeOptimistic(getCartQuantity(before));
+      if (showToast) toast(r.error, 'error');
+      return false;
     }
+    if (showToast) toast('Added to cart!', 'cart');
     updateCartBadgeOptimistic(Number(r.count) || getCartQuantity(readLocalCart()));
     await updateCartCount();
+    return true;
   } catch (e) {
     console.error('Add to cart error:', e);
-    updateCartBadgeOptimistic(getCartQuantity(readLocalCart()));
+    writeLocalCart(before);
+    updateCartBadgeOptimistic(getCartQuantity(before));
+    if (showToast) toast('Could not add to cart. Please try again.', 'error');
+    return false;
   }
 }
 
@@ -1545,10 +1603,11 @@ async function toggleWishlist(productId, btn) {
   }
 }
 
-// Buy Now - DIRECT to product checkout (not through add-to-cart)
-async function buyNow(productId) {
+async function buyNow(productId, variantId = '') {
   if (!currentUser) { openAuthModal(); return; }
-  navigate(`/checkout-now/${productId}`);
+  const added = await addToCart(productId, false, variantId || '');
+  if (!added) return;
+  navigate('/checkout');
   toast('Opening checkout...', 'success');
 }
 
@@ -1680,7 +1739,7 @@ function toggleNavDropdown(e) {
     if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
   } else {
     // On desktop: navigate directly
-    navigate('/products');
+    navigate('/woollen');
   }
 }
 
@@ -1902,10 +1961,16 @@ function productCardHTML(p) {
   const product = normalizeClientProduct(p);
   const detailPath = productRoutePath(product);
   const safeDetailPath = escapeInlineJsString(detailPath);
+  const productId = String(product.id || p.id || p._id || '');
+  const safeProductId = escapeInlineJsString(productId);
   const productName = escapeHtml(product.name || p.name || 'Product');
   const showCardRatings = publicFlagEnabled('showProductCardRatings', false);
   const showCardDeliveryBox = publicFlagEnabled('showProductCardDeliveryBox', false);
   const secondaryImg = product.images[1] || product.images[0];
+  const cardStock = finiteClientNumber(product.stock ?? p.stock, 0);
+  const cardOutOfStock = cardStock <= 0 || String(product.status || p.status || 'published') !== 'published';
+  const cardDisabledAttr = cardOutOfStock ? 'disabled aria-disabled="true"' : '';
+  const cardDisabledStyle = cardOutOfStock ? 'opacity:.55;cursor:not-allowed;filter:grayscale(.15);' : '';
   const stockStatus = p.stock < 5 && p.stock > 0 ? '⚡ Only few left' : '';
   const isBestSeller = p.popular ? '⭐ Best Seller' : '';
   const isFeatured = p.featured ? '✨ Featured' : '';
@@ -1916,12 +1981,13 @@ function productCardHTML(p) {
     <div class="product-img-wrap" style="position:relative;overflow:hidden;aspect-ratio:1/1.15;cursor:pointer;">
       <img class="product-img" src="${safeImageUrl(product.images[0], product.category)}" alt="${productName}" loading="lazy" decoding="async" ${imageFallbackAttr(product.category)} style="width:100%;height:100%;object-fit:contain;object-position:center;background:#fff;transition:opacity .4s ease !important;display:block;"/>
       <img class="product-img img-hover" src="${safeImageUrl(secondaryImg, product.category)}" alt="${productName}" loading="lazy" decoding="async" ${imageFallbackAttr(product.category)} style="width:100%;height:100%;object-fit:contain;object-position:center;background:#fff;position:absolute;top:0;left:0;opacity:0;transition:opacity .4s ease !important;display:block;"/>
+      ${cardOutOfStock ? `<span style="position:absolute;bottom:12px;left:12px;background:#374151;color:#fff;padding:6px 12px;border-radius:8px;font-weight:700;font-size:.75rem;z-index:3;">Out of Stock</span>` : ''}
       
       ${p.discount ? `<span class="product-badge" style="position:absolute;top:12px;left:12px;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;padding:6px 12px;border-radius:8px;font-weight:700;font-size:.75rem;z-index:2;">✦ ${p.discount}% OFF ✦</span>` : ''}
       
-      ${badge ? `<span style="position:absolute;bottom:12px;left:12px;background:var(--gold);color:var(--dark);padding:6px 12px;border-radius:8px;font-weight:600;font-size:.75rem;z-index:2;">${badge}</span>` : ''}
+      ${!cardOutOfStock && badge ? `<span style="position:absolute;bottom:12px;left:12px;background:var(--gold);color:var(--dark);padding:6px 12px;border-radius:8px;font-weight:600;font-size:.75rem;z-index:2;">${badge}</span>` : ''}
       
-      <button class="product-wish" onclick="event.stopPropagation(); toggleWishlist('${p.id}',this)" title="Add to Wishlist" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.95);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;transition:transform .2s;font-size:.9rem;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'"><i class="fas fa-heart" style="color:#ddd;"></i></button>
+      <button class="product-wish" onclick="event.stopPropagation(); toggleWishlist('${safeProductId}',this)" title="Add to Wishlist" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.95);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;transition:transform .2s;font-size:.9rem;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'"><i class="fas fa-heart" style="color:#ddd;"></i></button>
     </div>
     
     <div class="product-body" style="padding:1rem 1rem 1.2rem;">
@@ -1950,15 +2016,15 @@ function productCardHTML(p) {
       </div>` : ''}
       
       <div class="product-actions" style="margin-top:1rem;display:flex;gap:.5rem;flex-direction:column;">
-        <button class="btn-primary btn-sm" onclick="event.stopPropagation(); addToCart('${p.id}')" style="flex:1;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;font-weight:600;cursor:pointer;transition:transform .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
-          <i class="fas fa-shopping-bag"></i> Add to Cart
+        <button class="btn-primary btn-sm" onclick="event.stopPropagation(); addToCart('${safeProductId}')" ${cardDisabledAttr} style="flex:1;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;font-weight:600;cursor:pointer;transition:transform .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;${cardDisabledStyle}" onmouseover="${cardOutOfStock ? '' : "this.style.transform='translateY(-2px)'"}" onmouseout="this.style.transform='translateY(0)'">
+          <i class="fas fa-shopping-bag"></i> ${cardOutOfStock ? 'Out of Stock' : 'Add to Cart'}
         </button>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;">
           <button class="btn-outline btn-sm" onclick="event.stopPropagation(); navigate('${safeDetailPath}')" style="padding:10px;border-radius:8px;border:2px solid var(--rose);background:#fff;color:var(--rose);font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.background='var(--rose-light)'" onmouseout="this.style.background='#fff'">
             <i class="fas fa-eye"></i> View
           </button>
-          <button class="btn-gold btn-sm" onclick="event.stopPropagation(); buyNow('${p.id}')" style="padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9954c,#a67a38);color:#fff;font-weight:600;cursor:pointer;transition:transform .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
-            <i class="fas fa-bolt"></i> Buy Now
+          <button class="btn-gold btn-sm" onclick="event.stopPropagation(); buyNow('${safeProductId}')" ${cardDisabledAttr} style="padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9954c,#a67a38);color:#fff;font-weight:600;cursor:pointer;transition:transform .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;${cardDisabledStyle}" onmouseover="${cardOutOfStock ? '' : "this.style.transform='translateY(-2px)'"}" onmouseout="this.style.transform='translateY(0)'">
+            <i class="fas fa-bolt"></i> ${cardOutOfStock ? 'Sold Out' : 'Buy Now'}
           </button>
         </div>
       </div>
@@ -2141,7 +2207,7 @@ async function renderHome(options = {}) {
 
   // Hero media
   const heroMediaType = g('heroMediaType', 'image');
-  const heroImage = g('heroImage', '/images/hero_model.png');
+  const heroImage = g('heroImage', '/images/woollen_hero.jpg');
   const heroVideo = g('heroVideoUrl', '');
   
   // Optimize hero background image - use WebP if available, add loading optimization
@@ -2164,13 +2230,13 @@ async function renderHome(options = {}) {
     </div>` : ''}
     
     <div class="hero-p-centered reveal" style="position:relative; z-index:2; padding: 60px 5% 0; margin-top:20px; max-width:860px;">
-      <div class="hero-badge" style="color:var(--gold-light);background:rgba(0,0,0,0.3); border:1.5px solid rgba(201,168,76,.4);padding:12px 28px;border-radius:99px;display:inline-block;margin-bottom:1.5rem;letter-spacing:.25em;font-size:.85rem;backdrop-filter:blur(8px);font-weight:600;">${g('heroBadge', '✦ PREMIUM COLLECTION 2026 ✦')}</div>
-      <h1 class="hero-p-title" style="margin-bottom:1.5rem; font-size: clamp(2.5rem, 7vw, 5rem); line-height:1.15; color:#fff; text-shadow: 0 10px 30px rgba(0,0,0,0.8);">${g('heroTitle', 'Luxury Redefined')}<br/><span style="color:var(--gold-light); font-family:'Playfair Display',serif; font-style:italic;">${g('heroSubtitle', 'For The Modern Woman')}</span></h1>
-      <p class="hero-p-sub" style="max-width:700px; margin: 0 auto 1.5rem; color:#fff; font-size:1.15rem; line-height:1.7; font-weight:600; text-shadow: 0 4px 16px rgba(0,0,0,0.9);">${g('heroDescription', 'Premium artificial jewellery for every occasion. Look expensive, spend smart with clear pricing and fast support.')}</p>
+      <div class="hero-badge" style="color:var(--gold-light);background:rgba(0,0,0,0.3); border:1.5px solid rgba(201,168,76,.4);padding:12px 28px;border-radius:99px;display:inline-block;margin-bottom:1.2rem;letter-spacing:.22em;font-size:.82rem;backdrop-filter:blur(8px);font-weight:600;">${g('heroBadge', 'LENCHO WOOLLEN')}</div>
+      <h1 class="hero-p-title" style="margin-bottom:1rem; font-size: clamp(2.45rem, 6.4vw, 4.65rem); line-height:1.08; color:#fff; text-shadow: 0 10px 30px rgba(0,0,0,0.8);">${g('heroTitle', 'Handmade Woollen')}<br/><span style="color:var(--gold-light); font-family:'Playfair Display',serif; font-style:italic;">${g('heroSubtitle', 'Soft, Gift-ready Pieces')}</span></h1>
+      <p class="hero-p-sub" style="max-width:620px; margin: 0 auto 1.35rem; color:#fff; font-size:1.05rem; line-height:1.55; font-weight:600; text-shadow: 0 4px 16px rgba(0,0,0,0.9);">${g('heroDescription', 'Crochet accessories, baby gifts, decor, and seasonal woollen drops.')}</p>
       
       <div class="hero-btns" style="display:flex; justify-content:center; gap:1rem; flex-wrap:wrap; margin-bottom:2rem;">
-<button class="btn-gold" style="padding:18px 42px; font-size:1rem; font-weight:700;box-shadow:0 8px 25px rgba(201,149,76,.4);" onclick="navigate('/products')"><i class="fas fa-gem"></i> ${g('heroButton1Text', 'Shop Jewellery')}</button>
-<button class="btn-outline" style="padding:18px 42px; font-size:1rem; color:#fff; border-color:rgba(255,255,255,.7); border-width:2px;" onclick="navigate('/woollen')"><i class="fas fa-mitten"></i> ${g('heroButton2Text', 'Explore Woollen')}</button>
+<button class="btn-gold" style="padding:18px 42px; font-size:1rem; font-weight:700;box-shadow:0 8px 25px rgba(201,149,76,.4);" onclick="navigate('/woollen')"><i class="fas fa-mitten"></i> ${g('heroButton1Text', 'Shop Woollen')}</button>
+<button class="btn-outline" style="padding:18px 42px; font-size:1rem; color:#fff; border-color:rgba(255,255,255,.7); border-width:2px;" onclick="navigate('/woollen/products')"><i class="fas fa-bag-shopping"></i> ${g('heroButton2Text', 'View Products')}</button>
       </div>
     </div>
   </section>
@@ -2222,7 +2288,7 @@ async function renderHome(options = {}) {
         <div class="timer-box"><span class="timer-val" id="t-secs">00</span><span class="timer-label">Secs</span></div>
       </div>
       <p style="color:rgba(255,255,255,0.7); max-width:400px; margin-bottom:2rem;">${g('promoDescription', 'Our most awaited collection is here. Limited quantities available.')}</p>
-      <button class="btn-gold" onclick="navigate('/products')">${g('promoButtonText', 'Explore Collection')} <i class="fas fa-arrow-right"></i></button>
+      <button class="btn-gold" onclick="navigate('/woollen/products')">${g('promoButtonText', 'Explore Woollen')} <i class="fas fa-arrow-right"></i></button>
     </div>
     <div class="promo-image reveal-right" style="flex:1; max-width:400px; position:relative; z-index:2;">
       ${g('promoMediaType') === 'video' && g('promoVideoUrl') 
@@ -2235,37 +2301,37 @@ async function renderHome(options = {}) {
   ${isOn('showFeaturedProducts') ? `<!-- BEST SELLERS -->
   <section class="home-bestseller-section" style="background:${g('homeFeaturedBg', 'var(--beige)')};">
     <div class="section-header reveal">
-      <div class="section-eyebrow">Most Loved</div>
-      <h2 class="section-title">Best Sellers</h2>
+      <div class="section-eyebrow">Woollen Favourites</div>
+      <h2 class="section-title">Handmade Best Sellers</h2>
       <div class="divider"></div>
     </div>
     <div class="products-grid" id="featured-grid"></div>
-    <div class="home-view-more-row"><button class="btn-outline" onclick="navigate('/products?sort=best-selling')">View All Best Sellers <i class="fas fa-arrow-right"></i></button></div>
+    <div class="home-view-more-row"><button class="btn-outline" onclick="navigate('/woollen/products?sort=best-selling')">View All Woollen <i class="fas fa-arrow-right"></i></button></div>
   </section>` : ''}
 
 
   <section class="home-new-arrivals-section">
     <div class="section-header reveal">
-      <div class="section-eyebrow">Fresh Drop</div>
-      <h2 class="section-title">New Arrivals</h2>
+      <div class="section-eyebrow">Fresh Woollen Drop</div>
+      <h2 class="section-title">New Handmade Pieces</h2>
       <div class="divider"></div>
-      <p class="section-desc">Latest jewellery and gift-ready styles in a clean 3-card premium row.</p>
+      <p class="section-desc">Latest woollen products from the admin catalogue.</p>
     </div>
     <div class="products-grid" id="new-arrivals-grid">
       <div style="grid-column:1/-1;text-align:center;color:var(--gray);">Loading new arrivals...</div>
     </div>
-    <div class="home-view-more-row"><button class="btn-outline" onclick="navigate('/products?sort=newest')">View New Arrivals <i class="fas fa-arrow-right"></i></button></div>
+    <div class="home-view-more-row"><button class="btn-outline" onclick="navigate('/woollen/products?sort=newest')">View New Woollen <i class="fas fa-arrow-right"></i></button></div>
   </section>
   ${isOn('showCollections') ? `<section class="categories home-collections-section" style="padding:3rem 5%;${g('homeCollectionsBg') ? `background:${g('homeCollectionsBg')};` : ''}">
     <div class="section-header reveal">
-      <div class="section-eyebrow">Shop by Category</div>
-      <h2 class="section-title">Exclusive Collections</h2>
+      <div class="section-eyebrow">Jewellery Corner</div>
+      <h2 class="section-title">Jewellery Collections</h2>
       <div class="divider"></div>
     </div>
     <div class="categories-grid" id="home-categories-grid">
-      <div style="grid-column:1/-1;text-align:center;color:var(--gray);">Loading exclusive collections...</div>
+      <div style="grid-column:1/-1;text-align:center;color:var(--gray);">Loading jewellery collections...</div>
     </div>
-    <div class="home-view-more-row"><button class="btn-outline" onclick="navigate('/products')">View More Collections <i class="fas fa-arrow-right"></i></button></div>
+    <div class="home-view-more-row"><button class="btn-outline" onclick="navigate('/jewellery')">View Jewellery <i class="fas fa-arrow-right"></i></button></div>
   </section>` : ''}
 
   <section class="categories home-woollen-collection-section">
@@ -2284,7 +2350,7 @@ async function renderHome(options = {}) {
       <div class="section-eyebrow">Limited Drop</div>
       <h2>${g('promoTitle', 'Exclusive Seasonal Drop')}</h2>
       <p>${g('promoDescription', 'Our most awaited collection is here. Limited quantities available.')}</p>
-      <button class="btn-gold" onclick="navigate('/products')">${g('promoButtonText', 'Explore Collection')} <i class="fas fa-arrow-right"></i></button>
+      <button class="btn-gold" onclick="navigate('/woollen/products')">${g('promoButtonText', 'Explore Woollen')} <i class="fas fa-arrow-right"></i></button>
     </div>
     <div class="home-promo-image reveal-right">
       <img src="${g('promoImage', '/images/showcase.png')}" alt="Promo" loading="lazy" decoding="async" onerror="this.src='/images/showcase.png'"/>
@@ -2576,7 +2642,7 @@ async function loadFeaturedProducts() {
   const grid = document.getElementById('featured-grid');
   if (!grid) return;
   const renderFallbackProducts = async (message) => {
-    const fallback = await withTimeout(api('/api/products?storeType=main'), 2500);
+    const fallback = await withTimeout(api('/api/products?storeType=woollen'), 2500);
     if (Array.isArray(fallback) && fallback.length > 0) {
       grid.innerHTML = shuffleArray(fallback).slice(0, 3).map(productCardHTML).join('');
       initScrollReveal();
@@ -2586,12 +2652,12 @@ async function loadFeaturedProducts() {
   };
 
   try {
-    const r = await withTimeout(api('/api/products?storeType=main&popular=true&sort=best-selling'), 2500);
+    const r = await withTimeout(api('/api/products?storeType=woollen&popular=true&sort=best-selling'), 2500);
     if (r && Array.isArray(r) && r.length > 0) {
       grid.innerHTML = shuffleArray(r).slice(0, 3).map(productCardHTML).join('');
       initScrollReveal();
     } else if (Array.isArray(r) && r.length === 0) {
-      const ranked = await withTimeout(api('/api/products?storeType=main&sort=best-selling'), 2500);
+      const ranked = await withTimeout(api('/api/products?storeType=woollen&sort=best-selling'), 2500);
       if (Array.isArray(ranked) && ranked.length > 0) {
         grid.innerHTML = ranked.slice(0, 3).map(productCardHTML).join('');
         initScrollReveal();
@@ -2612,16 +2678,16 @@ async function loadNewArrivals() {
   const grid = document.getElementById('new-arrivals-grid');
   if (!grid) return;
   const renderFallback = async () => {
-    const fallback = await withTimeout(api('/api/products?storeType=main'), 2500);
+    const fallback = await withTimeout(api('/api/products?storeType=woollen'), 2500);
     const list = Array.isArray(fallback) ? fallback.slice(0, 3) : [];
     grid.innerHTML = list.length
       ? list.map(productCardHTML).join('')
-      : '<div class="empty-state"><h3>New arrivals coming soon</h3><p>Add products from admin to fill this section.</p></div>';
+      : '<div class="empty-state"><h3>Woollen arrivals coming soon</h3><p>Add woollen products from admin to fill this section.</p></div>';
     initScrollReveal();
   };
 
   try {
-    const r = await withTimeout(api('/api/products?storeType=main&sort=newest'), 2500);
+    const r = await withTimeout(api('/api/products?storeType=woollen&sort=newest'), 2500);
     const list = Array.isArray(r) ? r.slice(0, 3) : [];
     if (list.length) {
       grid.innerHTML = list.map(productCardHTML).join('');

@@ -141,6 +141,7 @@ const orderSchema = new mongoose.Schema({
   status:     { type: String, default: 'placed' },
   timeline:   [{ status:String, label:String, date:Date, done:Boolean }],
   clearCart:  { type: Boolean, default: true },
+  stockAdjusted: { type: Boolean, default: false },
   
   // ── PAYMENT & LOGISTICS ──
   razorpayOrderId:   String,
@@ -208,8 +209,8 @@ const testimonialSchema = new mongoose.Schema({
 // ── CATEGORY (COLLECTION) ─────────────────────────────────────
 const categorySchema = new mongoose.Schema({
   legacyId:     { type: String, default: '', index: true },
-  name:        { type: String, required: true, unique: true },
-  slug:        { type: String, required: true, unique: true },
+  name:        { type: String, required: true },
+  slug:        { type: String, required: true },
   image:       { type: String, default: '' },
   bannerImage: { type: String, default: '' },
   icon:        { type: String, default: 'star' },
@@ -222,7 +223,8 @@ const categorySchema = new mongoose.Schema({
 // ── INQUIRY (CONTACT FORM) ────────────────────────────────────
 
 categorySchema.index({ storeType: 1, displayOrder: 1, createdAt: 1 });
-categorySchema.index({ slug: 1, storeType: 1 });
+categorySchema.index({ slug: 1, storeType: 1 }, { unique: true });
+categorySchema.index({ name: 1, storeType: 1 }, { unique: true });
 
 const inquirySchema = new mongoose.Schema({
   name:    { type: String, required: true },

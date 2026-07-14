@@ -2341,8 +2341,8 @@ async function adminSiteManager() {
         </select>
       </div>
     </div>
-    <div class="form-group"><label>Hero Title</label><input id="cms-heroTitle" value="${g('heroTitle')}" placeholder="Luxury Redefined"/></div>
-    <div class="form-group"><label>Hero Subtitle</label><input id="cms-heroSubtitle" value="${g('heroSubtitle')}" placeholder="For The Modern Woman"/></div>
+    <div class="form-group"><label>Hero Title</label><input id="cms-heroTitle" value="${g('heroTitle')}" placeholder="Handmade Woollen"/></div>
+    <div class="form-group"><label>Hero Subtitle</label><input id="cms-heroSubtitle" value="${g('heroSubtitle')}" placeholder="Soft, Gift-ready Pieces"/></div>
     <div class="form-group"><label>Description</label><textarea id="cms-heroDescription" rows="2" placeholder="Premium artificial jewellery...">${g('heroDescription')}</textarea></div>
     <div id="hero-image-group" style="display:${g('heroMediaType')!=='video'?'block':'none'};">
       <div class="form-group"><label>Background Image URL</label><input id="cms-heroImage" value="${g('heroImage')}" placeholder="https://..."/></div>
@@ -2353,7 +2353,7 @@ async function adminSiteManager() {
       <div class="form-group"><label>Video URL (MP4, 10-20 sec max)</label><input id="cms-heroVideoUrl" value="${g('heroVideoUrl')}" placeholder="https://...video.mp4"/></div>
     </div>
     <div class="form-grid">
-      <div class="form-group"><label>Button 1 Text</label><input id="cms-heroButton1Text" value="${g('heroButton1Text')}" placeholder="🛍️ Shop Now & Save"/></div>
+      <div class="form-group"><label>Button 1 Text</label><input id="cms-heroButton1Text" value="${g('heroButton1Text')}" placeholder="Shop Woollen"/></div>
       <div class="form-group"><label>Button 2 Text</label><input id="cms-heroButton2Text" value="${g('heroButton2Text')}" placeholder="View Collections"/></div>
     </div>
     <button class="btn-primary" onclick="saveCmsHero()"><i class="fas fa-save"></i> Save Hero Section</button>
@@ -2402,7 +2402,7 @@ async function adminSiteManager() {
   document.getElementById('admin-content').innerHTML += `
   <div class="admin-form" style="margin-bottom:2rem;">
     <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-search"></i> SEO & Social Defaults</h3>
-    <div class="form-group"><label>Default SEO Title</label><input id="cms-seoTitleDefault" value="${g('seoTitleDefault') || ''}" placeholder="Lencho - Premium Artificial Jewellery"/></div>
+    <div class="form-group"><label>Default SEO Title</label><input id="cms-seoTitleDefault" value="${g('seoTitleDefault') || ''}" placeholder="Lencho - Handmade Woollen Accessories"/></div>
     <div class="form-group"><label>Default SEO Description</label><textarea id="cms-seoDescriptionDefault" rows="2" placeholder="Default meta description...">${g('seoDescriptionDefault') || ''}</textarea></div>
     <div class="form-group"><label>Canonical Base URL</label><input id="cms-seoCanonicalBaseUrl" value="${g('seoCanonicalBaseUrl') || ''}" placeholder="https://lencho.in"/></div>
     <div class="form-group"><label>OG Image URL</label><input id="cms-seoOgImageUrl" value="${g('seoOgImageUrl') || ''}" placeholder="https://.../og-image.png"/></div>
@@ -2819,9 +2819,11 @@ async function handleCategoryImageUpload(event, field) {
 async function showAddCategory(storeType = 'main', categoryJson = null) {
   const existing = categoryJson ? JSON.parse(categoryJson) : null;
   adminCategoryFormState = { id: existing?.id || existing?._id || '', name: existing?.name || '', image: existing?.image || '', bannerImage: existing?.bannerImage || '', icon: existing?.icon || 'star', theme: existing?.theme || '', storeType: existing?.storeType || storeType || 'main', description: existing?.description || '' };
+  const safeCategoryName = adminProductManagerEscape(adminCategoryFormState.name);
+  const safeCategoryDescription = adminProductManagerEscape(adminCategoryFormState.description);
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
-  modal.innerHTML = `<div class="modal-card"><h3>${existing ? 'Edit' : 'Add New'} ${adminCategoryFormState.storeType === 'woollen' ? 'Woollen ' : ''}Collection</h3><div class="form-group"><label>Name</label><input id="nc-name" value="${adminCategoryFormState.name}" placeholder="Collection name"/></div><div class="form-grid"><div class="form-group"><label>Collection Image</label><input type="file" accept="image/*" onchange="handleCategoryImageUpload(event, 'image')"/><img id="nc-preview-image" src="${safeImageUrl(adminCategoryFormState.image, '')}" style="width:100%;max-width:160px;margin-top:.75rem;border-radius:12px;object-fit:cover;${adminCategoryFormState.image ? '' : 'display:none;'}"/></div><div class="form-group"><label>Banner Image</label><input type="file" accept="image/*" onchange="handleCategoryImageUpload(event, 'bannerImage')"/><img id="nc-preview-bannerImage" src="${safeImageUrl(adminCategoryFormState.bannerImage, '')}" style="width:100%;max-width:160px;margin-top:.75rem;border-radius:12px;object-fit:cover;${adminCategoryFormState.bannerImage ? '' : 'display:none;'}"/></div></div><div class="form-grid" style="margin-top:1rem;"><div class="form-group"><label>Icon</label><select id="nc-icon">${['ribbon','flower','butterfly','yarn','star','baby','diamond','heart','gift','sparkles','home','snowflake'].map(v=>`<option value="${v}" ${adminCategoryFormState.icon===v?'selected':''}>${v}</option>`).join('')}</select></div><div class="form-group"><label>Theme</label><select id="nc-theme">${['pastel-pink','lavender','mint','cream','peach','baby-blue','light-yellow','rose-gold','soft-purple','sage'].map(v=>`<option value="${v}" ${adminCategoryFormState.theme===v?'selected':''}>${v}</option>`).join('')}</select></div></div><div class="form-group"><label>Description</label><textarea id="nc-desc" rows="2">${adminCategoryFormState.description}</textarea></div><div style="display:flex;gap:1rem;"><button class="btn-primary" onclick="saveCategory()">${existing ? 'Save Collection' : 'Create Collection'}</button><button class="btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancel</button></div></div>`;
+  modal.innerHTML = `<div class="modal-card"><h3>${existing ? 'Edit' : 'Add New'} ${adminCategoryFormState.storeType === 'woollen' ? 'Woollen ' : ''}Collection</h3><div class="form-group"><label>Name</label><input id="nc-name" value="${safeCategoryName}" placeholder="Collection name"/></div><div class="form-grid"><div class="form-group"><label>Collection Image</label><input type="file" accept="image/*" onchange="handleCategoryImageUpload(event, 'image')"/><img id="nc-preview-image" src="${safeImageUrl(adminCategoryFormState.image, '')}" style="width:100%;max-width:160px;margin-top:.75rem;border-radius:12px;object-fit:cover;${adminCategoryFormState.image ? '' : 'display:none;'}"/></div><div class="form-group"><label>Banner Image</label><input type="file" accept="image/*" onchange="handleCategoryImageUpload(event, 'bannerImage')"/><img id="nc-preview-bannerImage" src="${safeImageUrl(adminCategoryFormState.bannerImage, '')}" style="width:100%;max-width:160px;margin-top:.75rem;border-radius:12px;object-fit:cover;${adminCategoryFormState.bannerImage ? '' : 'display:none;'}"/></div></div><div class="form-grid" style="margin-top:1rem;"><div class="form-group"><label>Icon</label><select id="nc-icon">${['ribbon','flower','butterfly','yarn','star','baby','diamond','heart','gift','sparkles','home','snowflake'].map(v=>`<option value="${v}" ${adminCategoryFormState.icon===v?'selected':''}>${v}</option>`).join('')}</select></div><div class="form-group"><label>Theme</label><select id="nc-theme">${['pastel-pink','lavender','mint','cream','peach','baby-blue','light-yellow','rose-gold','soft-purple','sage'].map(v=>`<option value="${v}" ${adminCategoryFormState.theme===v?'selected':''}>${v}</option>`).join('')}</select></div></div><div class="form-group"><label>Description</label><textarea id="nc-desc" rows="2">${safeCategoryDescription}</textarea></div><div style="display:flex;gap:1rem;flex-wrap:wrap;"><button class="btn-primary" onclick="saveCategory()">${existing ? 'Save Collection' : 'Create Collection'}</button><button class="btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancel</button></div></div>`;
   document.body.appendChild(modal);
 }
 
@@ -2898,7 +2900,7 @@ const ADMIN_PRODUCT_DETAIL_FIELDS = [
   { key: 'brand', label: 'Brand', placeholder: 'Lencho' },
   { key: 'modelName', label: 'Model Name', placeholder: 'Adjustable Toe Ring' },
   { key: 'modelNumber', label: 'Model Number', placeholder: 'LEN-TR-001' },
-  { key: 'type', label: 'Product Type', placeholder: 'Toe Ring / Earrings / Scrunchie' },
+  { key: 'type', label: 'Product Type', placeholder: 'Scrunchie / Hair Clip / Toe Ring' },
   { key: 'color', label: 'Color', placeholder: 'Silver / Rose Gold / Pink' },
   { key: 'size', label: 'Size', placeholder: 'Free Size / S / M / L' },
   { key: 'ringSize', label: 'Ring Size', placeholder: 'Adjustable' },
@@ -2906,7 +2908,7 @@ const ADMIN_PRODUCT_DETAIL_FIELDS = [
   { key: 'occasion', label: 'Occasion', placeholder: 'Everyday / Festive / Wedding' },
   { key: 'collection', label: 'Collection', placeholder: 'Ethnic / Western / Handmade' },
   { key: 'fit', label: 'Fit', placeholder: 'Regular / Adjustable' },
-  { key: 'baseMaterial', label: 'Base Material', placeholder: 'Brass, Metal, Alloy' },
+  { key: 'baseMaterial', label: 'Base Material', placeholder: 'Cotton yarn / Wool / Brass / Alloy' },
   { key: 'plating', label: 'Plating', placeholder: 'Silver Plated / Gold Plated' },
   { key: 'finish', label: 'Finish', placeholder: 'Oxidized / Glossy / Matte' },
   { key: 'stoneType', label: 'Stone Type', placeholder: 'Crystal / Pearl / NA' },
@@ -2917,7 +2919,7 @@ const ADMIN_PRODUCT_DETAIL_FIELDS = [
   { key: 'warranty', label: 'Warranty', placeholder: 'No warranty / 7-day replacement' },
   { key: 'sellerSku', label: 'Seller SKU ID', placeholder: 'LEN-SELLER-001' },
   { key: 'styleCode', label: 'Style Code / Product ID', placeholder: 'LEN-STYLE-001' },
-  { key: 'genericName', label: 'Generic Name', placeholder: 'Artificial Jewellery' },
+  { key: 'genericName', label: 'Generic Name', placeholder: 'Handmade Woollen Accessory / Artificial Jewellery' },
   { key: 'countryOfOrigin', label: 'Country of Origin', placeholder: 'India' }
 ];
 
@@ -3293,6 +3295,11 @@ function renderAdminProductManager(preserveDraft = false) {
     variantType: product?.variantType || 'color',
     variants: Array.isArray(product?.variants) && product.variants.length ? product.variants.map(variant => createEmptyVariantRow(product?.variantType || 'color', variant)) : []
   };
+  const isWoollenStore = adminProductManagerState.storeType === 'woollen';
+  const productNamePlaceholder = isWoollenStore ? 'e.g. Crochet Hair Clip Set' : 'e.g. Rose Gold Hoop Earrings';
+  const skuPlaceholder = isWoollenStore ? 'WOL-001' : 'LEN-001';
+  const hsnDefault = isWoollenStore ? '6117' : '7117';
+  const descriptionPlaceholder = isWoollenStore ? 'Soft handmade woollen piece, colour, size, care and use...' : 'Product description...';
 
   document.getElementById('admin-content').innerHTML = `
     <div class="admin-header" style="align-items:flex-end;">
@@ -3321,7 +3328,7 @@ function renderAdminProductManager(preserveDraft = false) {
       ${renderAdminProductTemplateSuggestion(isEdit)}
 
       <div class="form-grid">
-        <div class="form-group"><label>Product Name *</label><input id="p-name" value="${adminProductManagerEscape(product?.name || '')}" placeholder="e.g. Rose Gold Hoop Earrings"/></div>
+        <div class="form-group"><label>Product Name *</label><input id="p-name" value="${adminProductManagerEscape(product?.name || '')}" placeholder="${productNamePlaceholder}"/></div>
         <div class="form-group"><label>Collection *</label><select id="p-cat">${catOptions}</select></div>
         <div class="form-group"><label>Store</label><select id="p-store-type" disabled><option value="main" ${adminProductManagerState.storeType !== 'woollen' ? 'selected' : ''}>Main Jewellery Store</option><option value="woollen" ${adminProductManagerState.storeType === 'woollen' ? 'selected' : ''}>Woollen Store</option></select></div>
         <div class="form-group"><label>Status</label><select id="p-status"><option value="published" ${String(product?.status || 'published') === 'published' ? 'selected' : ''}>Published</option><option value="draft" ${String(product?.status || '') === 'draft' ? 'selected' : ''}>Draft</option></select></div>
@@ -3330,12 +3337,12 @@ function renderAdminProductManager(preserveDraft = false) {
         <div class="form-group"><label>MRP (₹) *</label><input id="p-mrp" type="number" value="${product?.mrp || ''}" placeholder="999"/></div>
         <div class="form-group"><label>Discount (%)</label><input id="p-discount" type="number" value="${product?.discount || ''}" placeholder="40"/></div>
         <div class="form-group"><label>Stock Quantity *</label><input id="p-stock" type="number" value="${product?.stock || ''}" placeholder="50"/></div>
-        <div class="form-group"><label>SKU</label><input id="p-sku" value="${adminProductManagerEscape(product?.sku || '')}" placeholder="LEN-001"/></div>
+        <div class="form-group"><label>SKU</label><input id="p-sku" value="${adminProductManagerEscape(product?.sku || '')}" placeholder="${skuPlaceholder}"/></div>
         <div class="form-group"><label>GST Rate (%)</label><input id="p-gst" type="number" value="${product?.gstRate || 3}" placeholder="3"/></div>
-        <div class="form-group"><label>HSN Code</label><input id="p-hsn" value="${adminProductManagerEscape(product?.hsn || '7117')}" placeholder="7117"/></div>
+        <div class="form-group"><label>HSN Code</label><input id="p-hsn" value="${adminProductManagerEscape(product?.hsn || hsnDefault)}" placeholder="${hsnDefault}"/></div>
       </div>
 
-      <div class="form-group"><label>Description *</label><textarea id="p-desc" rows="4" placeholder="Product description...">${adminProductManagerEscape(product?.description || '')}</textarea></div>
+      <div class="form-group"><label>Description *</label><textarea id="p-desc" rows="4" placeholder="${descriptionPlaceholder}">${adminProductManagerEscape(product?.description || '')}</textarea></div>
 
       ${renderAdminProductDetailSection(product)}
 
