@@ -2203,7 +2203,16 @@ async function renderHome(options = {}) {
   applyCmsDesign(cms);
 
   const g = (k, def) => cms[k] || def || '';
+  const shortCopy = (key, fallback, blocked = []) => {
+    const value = String(cms[key] || '').trim();
+    return value && !blocked.includes(value) ? value : fallback;
+  };
   const isOn = (k) => cms[k] === true || cms[k] === 'true' || cms[k] === undefined;
+  const heroBadgeText = shortCopy('heroBadge', 'LENCHO WOOLLEN', ['Premium Collection 2026', '✦ PREMIUM COLLECTION 2026 ✦']);
+  const heroTitleText = shortCopy('heroTitle', 'Soft Handmade Woollen', ['Luxury Redefined']);
+  const heroLineText = shortCopy('heroDescription', 'Crochet accessories, gifts and decor.', ['Premium artificial jewellery for every occasion. Look expensive, spend smart.', 'Premium artificial jewellery for every occasion. Look expensive, spend smart with clear pricing and fast support.']);
+  const heroButton1Text = shortCopy('heroButton1Text', 'Shop Woollen', ['Shop Now', 'Shop Now & Save', '🛍️ Shop Now & Save']);
+  const heroButton2Text = shortCopy('heroButton2Text', 'View Products', ['View Collections']);
 
   // Hero media
   const heroMediaType = g('heroMediaType', 'image');
@@ -2224,48 +2233,45 @@ async function renderHome(options = {}) {
     ${heroMediaType === 'video' && heroVideo ? `<video autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;"><source src="${heroVideo}" type="video/mp4"></video>` : ''}
     <div style="position:absolute; inset:0; background:linear-gradient(to bottom, rgba(0,0,0,0.32), rgba(0,0,0,0.7)); z-index:1;"></div>
     <div id="particles" class="hero-particles" aria-hidden="true"></div>
+    <div class="woollen-flow-layer" aria-hidden="true">
+      <span class="woollen-flow flow-top-right"></span>
+      <span class="woollen-flow flow-mid-left"></span>
+      <span class="woollen-flow flow-bottom-left"></span>
+      <span class="woollen-flow-dot flow-dot-one"></span>
+      <span class="woollen-flow-dot flow-dot-two"></span>
+    </div>
     
     ${isOn('showOfferBanner') ? `<div style="position:absolute;top:0;left:0;right:0;background:linear-gradient(90deg,rgba(201,149,76,.95) 0%,rgba(242,208,122,.85) 50%,rgba(201,149,76,.95) 100%);padding:12px;z-index:3;color:var(--dark);font-weight:700;font-size:.9rem;letter-spacing:.05em;text-transform:uppercase;text-align:center;">
       ${g('offerBanner', '🎁 LIMITED OFFER: FLAT 50% OFF ON SELECTED ITEMS + FREE DELIVERY!')}
     </div>` : ''}
     
-    <div class="hero-p-centered reveal" style="position:relative; z-index:2; padding: 60px 5% 0; margin-top:20px; max-width:860px;">
-      <div class="hero-badge" style="color:var(--gold-light);background:rgba(0,0,0,0.3); border:1.5px solid rgba(201,168,76,.4);padding:12px 28px;border-radius:99px;display:inline-block;margin-bottom:1.2rem;letter-spacing:.22em;font-size:.82rem;backdrop-filter:blur(8px);font-weight:600;">${g('heroBadge', 'LENCHO WOOLLEN')}</div>
-      <h1 class="hero-p-title" style="margin-bottom:1rem; font-size: clamp(2.45rem, 6.4vw, 4.65rem); line-height:1.08; color:#fff; text-shadow: 0 10px 30px rgba(0,0,0,0.8);">${g('heroTitle', 'Handmade Woollen')}<br/><span style="color:var(--gold-light); font-family:'Playfair Display',serif; font-style:italic;">${g('heroSubtitle', 'Soft, Gift-ready Pieces')}</span></h1>
-      <p class="hero-p-sub" style="max-width:620px; margin: 0 auto 1.35rem; color:#fff; font-size:1.05rem; line-height:1.55; font-weight:600; text-shadow: 0 4px 16px rgba(0,0,0,0.9);">${g('heroDescription', 'Crochet accessories, baby gifts, decor, and seasonal woollen drops.')}</p>
+    <div class="hero-p-centered hero-compact-copy reveal" style="position:relative; z-index:2; padding: 48px 5% 0; margin-top:16px; max-width:720px;">
+      <div class="hero-badge">${heroBadgeText}</div>
+      <h1 class="hero-p-title">${heroTitleText}</h1>
+      <p class="hero-p-sub">${heroLineText}</p>
       
-      <div class="hero-btns" style="display:flex; justify-content:center; gap:1rem; flex-wrap:wrap; margin-bottom:2rem;">
-<button class="btn-gold" style="padding:18px 42px; font-size:1rem; font-weight:700;box-shadow:0 8px 25px rgba(201,149,76,.4);" onclick="navigate('/woollen')"><i class="fas fa-mitten"></i> ${g('heroButton1Text', 'Shop Woollen')}</button>
-<button class="btn-outline" style="padding:18px 42px; font-size:1rem; color:#fff; border-color:rgba(255,255,255,.7); border-width:2px;" onclick="navigate('/woollen/products')"><i class="fas fa-bag-shopping"></i> ${g('heroButton2Text', 'View Products')}</button>
+      <div class="hero-btns">
+        <button class="btn-gold hero-compact-btn" onclick="navigate('/woollen')"><i class="fas fa-mitten"></i> ${heroButton1Text}</button>
+        <button class="btn-outline hero-compact-btn" onclick="navigate('/woollen/products')"><i class="fas fa-bag-shopping"></i> ${heroButton2Text}</button>
       </div>
     </div>
   </section>
 
   <section class="home-woollen-entry home-woollen-premium" aria-labelledby="home-woollen-title">
+    <div class="woollen-flow-layer subtle" aria-hidden="true">
+      <span class="woollen-flow flow-top-right"></span>
+      <span class="woollen-flow flow-bottom-left"></span>
+    </div>
     <div class="home-woollen-copy reveal-left">
       <div class="section-eyebrow">Handmade Woollen Store</div>
-      <h2 class="section-title" id="home-woollen-title">Woollen pieces that feel handmade, not mass-made</h2>
-      <p>Soft crochet hair accessories, flowers, baby pieces, scrunchies, bows, and warm decor in calm seasonal colours.</p>
-      <div class="home-woollen-chips" aria-label="Woollen highlights">
-        <span>Hair clips</span>
-        <span>Scrunchies</span>
-        <span>Baby gifts</span>
-        <span>Crochet decor</span>
-      </div>
+      <h2 class="section-title" id="home-woollen-title">Soft Woollen Pieces</h2>
+      <p>Crochet clips, scrunchies, baby gifts and decor in calm seasonal colours.</p>
       <div class="home-woollen-actions">
-        <button class="btn-primary" onclick="navigate('/woollen')">Explore Woollen Store <i class="fas fa-arrow-right"></i></button>
-        <button class="btn-outline" onclick="navigate('/woollen/products')">View All Pieces</button>
+        <button class="btn-primary" onclick="navigate('/woollen/products')">Explore Woollen <i class="fas fa-arrow-right"></i></button>
       </div>
     </div>
     <div class="home-woollen-media reveal-right" aria-label="Handmade woollen collection preview">
       <img src="/images/woollen_hero.jpg" alt="Handmade woollen hair accessories, crochet flowers, baby pieces and soft decor" width="569" height="569" loading="lazy" decoding="async" fetchpriority="low" onerror="this.src='/images/hero.png'"/>
-      <div class="home-woollen-float float-one">Small-batch drops</div>
-      <div class="home-woollen-float float-two">Gift-ready finish</div>
-    </div>
-    <div class="home-woollen-proof reveal">
-      <div><strong>Soft yarn feel</strong><span>Gentle pieces for daily styling and gifting</span></div>
-      <div><strong>Separate catalogue</strong><span>Woollen products stay apart from jewellery</span></div>
-      <div><strong>Seasonal colours</strong><span>Fresh palettes for winter, baby, and decor drops</span></div>
     </div>
   </section>
 
@@ -2758,12 +2764,19 @@ async function renderWoollen() {
     <section class="woollen-hero">
       <div class="woollen-hero-bg"><img src="${heroBanner}" alt="${settings.woollenHeroTitle || 'Handmade Woollen Collection'}" loading="eager"/></div>
       <div class="woollen-hero-overlay"></div>
+      <div class="woollen-flow-layer" aria-hidden="true">
+        <span class="woollen-flow flow-top-right"></span>
+        <span class="woollen-flow flow-mid-left"></span>
+        <span class="woollen-flow flow-bottom-left"></span>
+        <span class="woollen-flow-dot flow-dot-one"></span>
+        <span class="woollen-flow-dot flow-dot-two"></span>
+      </div>
       <div class="woollen-hero-content">
-        <div class="woollen-badge-top">${settings.woollenHeaderTitle || 'Lencho Woollen'}</div>
-        <h1 class="woollen-hero-title">${settings.woollenHeroTitle || 'Handmade Woollen Collection'}<span class="woollen-hero-italic">crafted for every season</span></h1>
-        <p class="woollen-hero-sub">${settings.woollenHeroSubtitle || 'Crafted with love for every season.'}</p>
+        <div class="woollen-badge-top">Lencho Woollen</div>
+        <h1 class="woollen-hero-title">Handmade Woollen</h1>
+        <p class="woollen-hero-sub">Soft crochet accessories, gifts and decor.</p>
         <div class="woollen-hero-btns">
-          <button class="woollen-btn-primary" onclick="navigate('/woollen/products')">${settings.woollenHeroButtonText || 'Shop Now'}</button>
+          <button class="woollen-btn-primary" onclick="navigate('/woollen/products')">Shop Woollen</button>
           <button class="btn-outline" onclick="navigate('/woollen/category/${collections[0]?.slug || ''}')">Explore Collections</button>
         </div>
       </div>
@@ -2846,6 +2859,11 @@ async function renderWoollenProducts(params) {
   const app = document.getElementById('app');
   app.innerHTML = `
   <div class="page-wrap woollen-products-page">
+    <div class="woollen-flow-layer page-flow" aria-hidden="true">
+      <span class="woollen-flow flow-top-right"></span>
+      <span class="woollen-flow flow-bottom-left"></span>
+      <span class="woollen-flow-dot flow-dot-one"></span>
+    </div>
     <div class="admin-header" style="align-items:flex-end;">
       <div>
         <h1 class="page-title" style="text-align:left;margin-bottom:.4rem;">All Woollen Products</h1>
@@ -2873,10 +2891,15 @@ async function renderWoollenProducts(params) {
 
   app.innerHTML = `
   <div class="page-wrap woollen-products-page">
+    <div class="woollen-flow-layer page-flow" aria-hidden="true">
+      <span class="woollen-flow flow-top-right"></span>
+      <span class="woollen-flow flow-bottom-left"></span>
+      <span class="woollen-flow-dot flow-dot-one"></span>
+    </div>
     <div class="admin-header" style="align-items:flex-end;">
       <div>
         <h1 class="page-title" style="text-align:left;margin-bottom:.4rem;">All Woollen Products</h1>
-        <p style="color:var(--gray);">Filter by collection, status, stock, and sort order.</p>
+        <p style="color:var(--gray);">Filter woollen products by collection and stock.</p>
       </div>
       <button class="btn-outline" onclick="navigate('/woollen')">Back to Woollen Store</button>
     </div>

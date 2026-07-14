@@ -375,6 +375,11 @@ async function renderProductDetail(id) {
 
   app.innerHTML = `
   <div class="product-detail-container product-detail-market container reveal">
+    <div class="woollen-flow-layer page-flow" aria-hidden="true">
+      <span class="woollen-flow flow-top-right"></span>
+      <span class="woollen-flow flow-bottom-left"></span>
+      <span class="woollen-flow-dot flow-dot-two"></span>
+    </div>
     <button class="back-link" type="button" onclick="navigate('${detailPath}')"><i class="fas fa-arrow-left"></i> Back to shop</button>
     <div class="product-detail-grid">
       <div class="product-gallery">
