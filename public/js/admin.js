@@ -1,3 +1,43 @@
+const ADMIN_API_CACHE_TTL_MS = 15000;
+const adminApiCache = new Map();
+
+async function adminCachedApi(url, opts = {}) {
+  const method = String(opts.method || 'GET').toUpperCase();
+  if (method !== 'GET') {
+    adminApiCache.clear();
+    return api(url, opts);
+  }
+
+  const now = Date.now();
+  const hit = adminApiCache.get(url);
+  if (hit && (now - hit.ts) < ADMIN_API_CACHE_TTL_MS) return hit.data;
+  const data = await api(url, { timeoutMs: 12000, ...opts });
+  if (!data?.error) adminApiCache.set(url, { ts: now, data });
+  return data;
+}
+
+function clearAdminCache(prefix = '') {
+  if (!prefix) {
+    adminApiCache.clear();
+    return;
+  }
+  [...adminApiCache.keys()].forEach(key => {
+    if (String(key).startsWith(prefix)) adminApiCache.delete(key);
+  });
+}
+
+function renderAdminAccessPanel(message = 'Admin access only') {
+  return `
+    <div class="admin-access-panel">
+      <div>
+        <h2>Admin access needed</h2>
+        <p>${adminEscapeHtml(message)}. Please login again with an admin email.</p>
+      </div>
+      <button class="btn-primary" onclick="clearAuth(); renderAdmin();"><i class="fas fa-lock-open"></i> Login Again</button>
+    </div>
+  `;
+}
+
 async function renderAdmin() {
   try {
     const siteHeader = document.getElementById('site-header');
@@ -374,6 +414,7 @@ function buildAdminPanel() {
         <div class="admin-menu-item" id="am-products" onclick="adminTab('products')"><i class="fas fa-gem" style="width:20px;"></i> Jewellery Products</div>
         <div class="admin-menu-item" id="am-woollen" onclick="adminTab('woollen')"><i class="fas fa-mitten" style="width:20px;"></i> Woollen Store</div>
         <div class="admin-menu-item" id="am-collections" onclick="adminTab('collections')"><i class="fas fa-layer-group" style="width:20px;"></i> Jewellery Collections</div>
+        <div class="admin-menu-item" id="am-inventory" onclick="adminTab('inventory')"><i class="fas fa-warehouse" style="width:20px;"></i> Inventory Summary</div>
         <div class="admin-menu-item" id="am-inquiries" onclick="adminTab('inquiries')"><i class="fas fa-envelope-open-text" style="width:20px;"></i> Inquiries</div>
         <div class="admin-menu-item" id="am-marketing" onclick="adminTab('marketing')"><i class="fas fa-paper-plane" style="width:20px;"></i> Marketing Hub</div>
         <div class="admin-menu-item" id="am-users" onclick="adminTab('users')"><i class="fas fa-users" style="width:20px;"></i> Users</div>
@@ -442,6 +483,7 @@ function adminTab(tab) {
   if (tab === 'add-product') adminAddProduct();
   if (tab === 'woollen') adminWoollen();
   if (tab === 'collections') adminCollections();
+  if (tab === 'inventory') adminInventorySummary();
   if (tab === 'inquiries') adminInquiries();
   if (tab === 'marketing') adminMarketingHub();
   if (tab === 'users') adminUsers();
@@ -691,7 +733,11 @@ async function adminDashboard() {
 }
 
 async function adminOrders() {
-  const orders = await api('/api/admin/orders');
+  const orders = await adminCachedApi('/api/admin/orders');
+  if (orders.error) {
+    document.getElementById('admin-content').innerHTML = renderAdminAccessPanel(orders.error);
+    return;
+  }
   const statusLabelMap = {
     hold: 'Hold',
     pending: 'Pending',
@@ -747,6 +793,144 @@ async function adminOrders() {
   </div>`;
 }
 
+function buildSoldQuantityMap(orders = []) {
+  const soldByProduct = {};
+  (Array.isArray(orders) ? orders : []).forEach(order => {
+    const status = String(order.status || '').toLowerCase();
+    if (status === 'cancelled') return;
+    (order.items || []).forEach(item => {
+      const id = String(item.productId || '').trim();
+      if (!id) return;
+      soldByProduct[id] = (soldByProduct[id] || 0) + Math.max(0, Number(item.quantity) || 0);
+    });
+  });
+  return soldByProduct;
+}
+
+function getAdminProductStock(product = {}) {
+  if (product.hasVariants && Array.isArray(product.variants) && product.variants.length) {
+    return product.variants.reduce((sum, variant) => sum + Math.max(0, Number(variant.stock) || 0), 0);
+  }
+  return Math.max(0, Number(product.stock) || 0);
+}
+
+function renderInventoryStoreBlock(storeType, products, categories, soldByProduct) {
+  const label = storeType === 'woollen' ? 'Woollen' : 'Jewellery';
+  const icon = storeType === 'woollen' ? 'fa-mitten' : 'fa-gem';
+  const catMap = new Map();
+  categories
+    .filter(cat => (cat.storeType || 'main') === storeType)
+    .forEach(cat => catMap.set(cat.slug, cat));
+  products.forEach(product => {
+    if (!catMap.has(product.category)) {
+      catMap.set(product.category || 'uncategorized', {
+        slug: product.category || 'uncategorized',
+        name: product.category ? adminProductManagerSlugLabel(product.category) : 'Uncategorized',
+        storeType
+      });
+    }
+  });
+
+  const collectionRows = [...catMap.values()].map(cat => {
+    const items = products.filter(product => String(product.category || '') === String(cat.slug || ''));
+    const stock = items.reduce((sum, product) => sum + getAdminProductStock(product), 0);
+    const sold = items.reduce((sum, product) => sum + Math.max(0, Number(soldByProduct[product.id] || soldByProduct[product._id] || 0)), 0);
+    const names = items.slice(0, 4).map(product => adminEscapeHtml(product.name || 'Unnamed')).join(', ');
+    return { cat, items, stock, sold, names };
+  }).sort((a, b) => b.stock - a.stock || b.items.length - a.items.length);
+
+  const totalStock = products.reduce((sum, product) => sum + getAdminProductStock(product), 0);
+  const totalSold = products.reduce((sum, product) => sum + Math.max(0, Number(soldByProduct[product.id] || soldByProduct[product._id] || 0)), 0);
+  const outOfStock = products.filter(product => getAdminProductStock(product) <= 0).length;
+
+  return `
+    <div class="admin-form inventory-store-block">
+      <div class="admin-header" style="margin-bottom:1rem;align-items:flex-end;">
+        <div>
+          <h2 class="admin-page-title" style="font-size:1.45rem;margin-bottom:.2rem;"><i class="fas ${icon}"></i> ${label} Stock</h2>
+          <p style="color:var(--gray);font-size:.88rem;">Collection-wise quantity, sold count and product list.</p>
+        </div>
+        <button class="btn-outline" onclick="adminTab('${storeType === 'woollen' ? 'woollen' : 'products'}')">Manage ${label}</button>
+      </div>
+      <div class="admin-clarity-grid">
+        <div class="admin-clarity-card"><i class="fas fa-box"></i><span>Products</span><strong>${products.length}</strong></div>
+        <div class="admin-clarity-card"><i class="fas fa-layer-group"></i><span>Collections</span><strong>${collectionRows.length}</strong></div>
+        <div class="admin-clarity-card"><i class="fas fa-cubes"></i><span>In Stock</span><strong>${totalStock}</strong></div>
+        <div class="admin-clarity-card"><i class="fas fa-receipt"></i><span>Sold</span><strong>${totalSold}</strong></div>
+        <div class="admin-clarity-card"><i class="fas fa-triangle-exclamation"></i><span>Out</span><strong>${outOfStock}</strong></div>
+      </div>
+      <div class="admin-table-wrap">
+        <table>
+          <thead><tr><th>Collection</th><th>Products</th><th>Stock Qty</th><th>Sold Qty</th><th>Products Inside</th></tr></thead>
+          <tbody>
+            ${collectionRows.map(row => `
+              <tr>
+                <td><b>${adminEscapeHtml(row.cat.name || row.cat.slug || 'Collection')}</b><div style="font-size:.75rem;color:var(--gray);">${adminEscapeHtml(row.cat.slug || '')}</div></td>
+                <td>${row.items.length}</td>
+                <td><span class="stock-badge ${row.stock <= 0 ? 'status-outofstock' : row.stock < 5 ? 'status-fewstock' : 'status-instock'}">${row.stock}</span></td>
+                <td>${row.sold}</td>
+                <td style="max-width:420px;font-size:.82rem;color:var(--gray);">${row.names || 'No product yet'}${row.items.length > 4 ? ` +${row.items.length - 4} more` : ''}</td>
+              </tr>
+            `).join('')}
+            ${!collectionRows.length ? '<tr><td colspan="5" style="text-align:center;color:var(--gray);">No inventory yet.</td></tr>' : ''}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+async function adminInventorySummary() {
+  const content = document.getElementById('admin-content');
+  content.innerHTML = `
+    <div class="admin-header">
+      <div>
+        <h1 class="admin-page-title">Inventory Summary</h1>
+        <p style="color:var(--gray);font-size:.9rem;">Woollen and jewellery stock, sold quantity and collection breakdown.</p>
+      </div>
+      <button class="btn-outline" onclick="adminInventorySummary()"><i class="fas fa-rotate-right"></i> Refresh</button>
+    </div>
+    <div class="admin-form"><p style="color:var(--gray);">Loading inventory...</p></div>
+  `;
+
+  const [productsRaw, categoriesRaw, ordersRaw] = await Promise.all([
+    adminCachedApi('/api/products'),
+    adminCachedApi('/api/categories'),
+    adminCachedApi('/api/admin/orders')
+  ]);
+
+  if (productsRaw.error || categoriesRaw.error || ordersRaw.error) {
+    content.innerHTML = renderAdminAccessPanel(productsRaw.error || categoriesRaw.error || ordersRaw.error);
+    return;
+  }
+
+  const products = Array.isArray(productsRaw) ? productsRaw : [];
+  const categories = Array.isArray(categoriesRaw) ? categoriesRaw : [];
+  const soldByProduct = buildSoldQuantityMap(ordersRaw);
+  const woollenProducts = products.filter(product => (product.storeType || 'main') === 'woollen');
+  const jewelleryProducts = products.filter(product => (product.storeType || 'main') !== 'woollen');
+
+  content.innerHTML = `
+    <div class="admin-header">
+      <div>
+        <h1 class="admin-page-title">Inventory Summary</h1>
+        <p style="color:var(--gray);font-size:.9rem;">Woollen is first priority, jewellery is tracked separately.</p>
+      </div>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
+        <button class="btn-primary" onclick="adminTab('woollen')"><i class="fas fa-plus"></i> Add Woollen</button>
+        <button class="btn-outline" onclick="clearAdminCache(); adminInventorySummary()"><i class="fas fa-rotate-right"></i> Refresh</button>
+      </div>
+    </div>
+    <div class="inventory-priority-strip">
+      <span>70% Woollen focus</span>
+      <div><b style="width:70%;"></b></div>
+      <span>30% Jewellery support</span>
+    </div>
+    ${renderInventoryStoreBlock('woollen', woollenProducts, categories, soldByProduct)}
+    ${renderInventoryStoreBlock('main', jewelleryProducts, categories, soldByProduct)}
+  `;
+}
+
 async function adminShiprocketShip(id) {
   if (!confirm('Sync this order with Shiprocket and generate AWB?')) return;
   toast('Initiating Shiprocket Sync...', 'info');
@@ -769,6 +953,7 @@ async function updateOrderStatus(orderId) {
   const trackingNumber = document.getElementById('tn-' + orderId)?.value;
   const r = await api('/api/admin/orders/' + orderId + '/status', { method: 'PUT', body: { status, deliveryPartner, trackingNumber } });
   if (r.error) { toast(r.error, 'error'); return; }
+  clearAdminCache('/api/admin/orders');
   const nextStatus = r.order?.status || status;
   toast(`Order ${orderId} updated to "${nextStatus}"`, 'success');
   const el = document.getElementById('status-' + orderId);
@@ -779,6 +964,7 @@ async function deleteOrder(orderId) {
   if (!confirm(`Are you sure you want to delete order ${orderId}? This cannot be undone.`)) return;
   const r = await api(`/api/admin/orders/${orderId}`, { method: 'DELETE' });
   if (r.error) { toast(r.error, 'error'); return; }
+  clearAdminCache('/api/admin/orders');
   toast(`Order ${orderId} deleted successfully`, 'success');
   adminOrders();
 }
@@ -1289,10 +1475,14 @@ function downloadGSTReport() {
 
 async function adminWoollen() {
   const [products, collections, settingsRaw] = await Promise.all([
-    api('/api/products?storeType=woollen'),
-    api('/api/categories?storeType=woollen'),
-    api('/api/settings')
+    adminCachedApi('/api/products?storeType=woollen'),
+    adminCachedApi('/api/categories?storeType=woollen'),
+    adminCachedApi('/api/settings')
   ]);
+  if (products.error || collections.error || settingsRaw.error) {
+    document.getElementById('admin-content').innerHTML = renderAdminAccessPanel(products.error || collections.error || settingsRaw.error);
+    return;
+  }
   const settings = normalizeSettings(settingsRaw);
   const list = Array.isArray(products) ? products : [];
   const cats = Array.isArray(collections) ? collections : [];
@@ -1389,6 +1579,7 @@ async function saveWoollenSettings() {
     const el = document.getElementById('wl-' + key);
     if (el) await api('/api/admin/settings', { method: 'POST', body: { key, value: el.value } });
   }
+  clearAdminCache('/api/settings');
   toast('Woollen page settings saved', 'success');
 }
 
@@ -1992,7 +2183,7 @@ async function viewMarketingCampaignLogs(campaignId) {
 }
 
 async function adminTestimonials() {
-  const settings = normalizeSettings(await api('/api/settings'));
+  const settings = normalizeSettings(await adminCachedApi('/api/settings'));
   const showTestimonials = settings.showTestimonials !== false; // defaults to true
   
   document.getElementById('admin-content').innerHTML = `
@@ -2008,8 +2199,12 @@ async function adminTestimonials() {
     </div>
     <div id="testi-list-container" class="admin-table-wrap">Loading...</div>
   `;
-  const t = await api('/api/admin/testimonials');
+  const t = await adminCachedApi('/api/admin/testimonials', { timeoutMs: 15000 });
   const grid = document.getElementById('testi-list-container');
+  if (t.error) {
+    grid.innerHTML = renderAdminAccessPanel(t.error);
+    return;
+  }
   grid.innerHTML = `
     <table>
       <thead><tr><th>Name</th><th>City</th><th>Rating</th><th>Comment</th><th>Actions</th></tr></thead>
@@ -2063,6 +2258,7 @@ async function saveTestimonial() {
   };
   const r = await api('/api/admin/testimonials', { method: 'POST', body });
   if (r.error) { toast(r.error, 'error'); return; }
+  clearAdminCache('/api/admin/testimonials');
   toast('Reference added! ✦', 'success');
   document.querySelector('.modal-overlay').remove();
   adminTestimonials();
@@ -2071,6 +2267,7 @@ async function saveTestimonial() {
 async function deleteTestimonial(id) {
   if (!confirm('Delete this testimonial?')) return;
   await api('/api/admin/testimonials/' + id, { method: 'DELETE' });
+  clearAdminCache('/api/admin/testimonials');
   adminTestimonials();
 }
 
@@ -2337,6 +2534,21 @@ async function adminSiteManager() {
     <button class="btn-primary" onclick="saveCmsField('offerBanner')"><i class="fas fa-save"></i> Save Banner</button>
   </div>
 
+  <!-- DISCOUNT POPUP -->
+  <div class="admin-form" style="margin-bottom:2rem;">
+    <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-ticket"></i> Discount Popup</h3>
+    <div class="form-grid">
+      <div class="form-group"><label>Badge</label><input id="cms-popupBadgeText" value="${g('popupBadgeText') || 'EXCLUSIVE OFFER'}" placeholder="EXCLUSIVE OFFER"/></div>
+      <div class="form-group"><label>Discount %</label><input id="cms-popupDiscountPercent" value="${g('popupDiscountPercent') || '10'}" placeholder="10"/></div>
+      <div class="form-group"><label>Discount Code</label><input id="cms-popupDiscountCode" value="${g('popupDiscountCode') || 'WELCOME10'}" placeholder="WELCOME10"/></div>
+      <div class="form-group"><label>Button Text</label><input id="cms-popupButtonText" value="${g('popupButtonText') || 'Claim My Discount'}" placeholder="Claim My Discount"/></div>
+    </div>
+    <div class="form-group"><label>Popup Title (HTML allowed for highlight span)</label><input id="cms-popupTitle" value="${adminEscapeAttr(g('popupTitle') || '')}" placeholder="Get &lt;span class=&quot;gold-text&quot;&gt;10% OFF&lt;/span&gt;&lt;br/&gt;on Your First Order!"/></div>
+    <div class="form-group"><label>Subtitle</label><input id="cms-popupSubtitle" value="${g('popupSubtitle') || 'Enter your email to claim your special discount code'}"/></div>
+    <div class="form-group"><label>Terms Line</label><input id="cms-popupTerms" value="${g('popupTerms') || '*Valid for new customers only. Cannot be combined with other offers.'}"/></div>
+    <button class="btn-primary" onclick="saveCmsPopup()"><i class="fas fa-save"></i> Save Popup</button>
+  </div>
+
   <!-- HERO SECTION -->
   <div class="admin-form" style="margin-bottom:2rem;">
     <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-image"></i> Hero Section</h3>
@@ -2441,13 +2653,25 @@ async function saveCmsToggles() {
     const el = document.getElementById('cms-' + k);
     await api('/api/admin/settings', { method: 'POST', body: { key: k, value: el.checked } });
   }
+  clearAdminCache('/api/settings');
   toast('✅ Section toggles saved!', 'success');
 }
 
 async function saveCmsField(key) {
   const val = document.getElementById('cms-' + key).value;
   await api('/api/admin/settings', { method: 'POST', body: { key, value: val } });
+  clearAdminCache('/api/settings');
   toast('✅ Saved!', 'success');
+}
+
+async function saveCmsPopup() {
+  const fields = ['popupBadgeText','popupDiscountPercent','popupDiscountCode','popupButtonText','popupTitle','popupSubtitle','popupTerms'];
+  for (const key of fields) {
+    const el = document.getElementById('cms-' + key);
+    if (el) await api('/api/admin/settings', { method: 'POST', body: { key, value: el.value } });
+  }
+  clearAdminCache('/api/settings');
+  toast('Popup settings saved', 'success');
 }
 
 async function saveCmsHero() {
@@ -2456,6 +2680,7 @@ async function saveCmsHero() {
     const el = document.getElementById('cms-' + k);
     if (el) await api('/api/admin/settings', { method: 'POST', body: { key: k, value: el.value } });
   }
+  clearAdminCache('/api/settings');
   toast('✅ Hero section saved!', 'success');
 }
 
@@ -2465,6 +2690,7 @@ async function saveCmsPromo() {
     const el = document.getElementById('cms-' + k);
     if (el) await api('/api/admin/settings', { method: 'POST', body: { key: k, value: el.value } });
   }
+  clearAdminCache('/api/settings');
   toast('✅ Promo section saved!', 'success');
 }
 
@@ -2474,6 +2700,7 @@ async function saveCmsFooter() {
     const el = document.getElementById('cms-' + k);
     if (el) await api('/api/admin/settings', { method: 'POST', body: { key: k, value: el.value } });
   }
+  clearAdminCache('/api/settings');
   toast('✅ Footer details saved!', 'success');
 }
 
@@ -2488,6 +2715,7 @@ async function saveCmsDesignSystem() {
     if (!el) continue;
     await api('/api/admin/settings', { method: 'POST', body: { key, value: el.value } });
   }
+  clearAdminCache('/api/settings');
   toast('✅ Design system saved!', 'success');
 }
 
@@ -2529,7 +2757,7 @@ async function uploadCmsMedia(fileInputId, targetInputId) {
 async function adminDeliveryManager() {
   const cfg = await api('/api/admin/delivery-manager');
   if (cfg.error) {
-    document.getElementById('admin-content').innerHTML = `<div class="admin-form"><p style="color:#991b1b;">${cfg.error}</p></div>`;
+    document.getElementById('admin-content').innerHTML = renderAdminAccessPanel(cfg.error);
     return;
   }
 
@@ -2803,8 +3031,12 @@ function loadBackupRecovery() {
 
 // Overrides appended late so they win over older admin helpers.
 async function adminCollections() {
-  const cats = await api('/api/categories');
-  const products = await api('/api/products');
+  const cats = await adminCachedApi('/api/categories');
+  const products = await adminCachedApi('/api/products');
+  if (cats.error || products.error) {
+    document.getElementById('admin-content').innerHTML = renderAdminAccessPanel(cats.error || products.error);
+    return;
+  }
   const counts = products.reduce((acc, p) => { acc[p.category] = (acc[p.category] || 0) + 1; return acc; }, {});
   document.getElementById('admin-content').innerHTML = `<div class="admin-header"><h1 class="admin-page-title">Product Collections (${cats.length})</h1><button class="btn-primary" onclick="showAddCategory()"><i class="fas fa-plus"></i> New Collection</button></div><div class="stats-grid" style="margin-bottom:2rem;"><div class="stat-card"><div class="stat-label">Total Categories</div><div class="stat-value">${cats.length}</div></div><div class="stat-card"><div class="stat-label">Active Slugs</div><div class="stat-value">${cats.filter(c=>c.slug).length}</div></div></div><div class="admin-table-wrap"><table><thead><tr><th>Image</th><th>Name</th><th>Slug</th><th>Product Count</th><th>Actions</th></tr></thead><tbody>${cats.map(c => `<tr><td><img src="${safeImageUrl(c.image, c.slug)}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;background:#f0f0f0;"/></td><td>${c.name}</td><td><code>${c.slug}</code></td><td><span style="background:var(--rose-light);color:var(--rose-dark);padding:4px 8px;border-radius:6px;font-weight:600;">${counts[c.slug] || 0}</span></td><td><button class="btn-sm btn-outline" onclick="viewCategoryProducts('${c.slug}')"><i class="fas fa-boxes"></i> Inventory</button> <button class="btn-sm btn-outline" onclick='showAddCategory("${c.storeType || 'main'}", ${JSON.stringify(JSON.stringify(c))})'><i class="fas fa-pen"></i> Edit</button> <button class="btn-sm" onclick="deleteCategory('${c.id || c._id}', '${c.storeType || 'main'}')" style="background:#fee2e2;color:#ef4444;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button></td></tr>`).join('')}</tbody></table></div><div id="category-inventory" style="margin-top:3rem;display:none;"><div class="admin-header"><h2 id="inv-title" class="admin-page-title">Inventory: <span>All Products</span></h2><button class="btn-outline" onclick="document.getElementById('category-inventory').style.display='none'">Close</button></div><div class="admin-table-wrap"><table id="inv-table"><thead><tr><th>Product</th><th>Original Price</th><th>Stock Status</th><th>Action</th></tr></thead><tbody id="inv-body"></tbody></table></div></div>`;
 }
@@ -2842,6 +3074,8 @@ async function saveCategory() {
   const method = adminCategoryFormState?.id ? 'PUT' : 'POST';
   const r = await api(endpoint, { method, body });
   if (r.error) return toast(r.error, 'error');
+  clearAdminCache('/api/categories');
+  clearAdminCache('/api/products');
   toast(adminCategoryFormState?.id ? 'Collection updated' : 'Collection added', 'success');
   document.querySelector('.modal-overlay')?.remove();
   if (body.storeType === 'woollen') adminWoollen();
@@ -2853,21 +3087,27 @@ async function deleteCategory(id, storeType = '') {
   const targetStore = storeType || adminCategoryFormState?.storeType || adminProductManagerState?.storeType || 'main';
   const r = await api('/api/admin/categories/' + id, { method: 'DELETE' });
   if (r.error) return toast(r.error, 'error');
+  clearAdminCache('/api/categories');
+  clearAdminCache('/api/products');
   toast('Collection deleted', 'info');
   if (targetStore === 'woollen') adminWoollen();
   else adminCollections();
 }
 
 async function editCategoryById(categoryId) {
-  const cats = await api('/api/categories');
+  const cats = await adminCachedApi('/api/categories');
   const category = (cats || []).find(item => String(item.id || item._id) === String(categoryId));
   if (!category) return toast('Collection not found', 'error');
   showAddCategory(category.storeType || 'main', JSON.stringify(category));
 }
 
 async function adminCollections() {
-  const cats = await api('/api/categories');
-  const products = await api('/api/products');
+  const cats = await adminCachedApi('/api/categories');
+  const products = await adminCachedApi('/api/products');
+  if (cats.error || products.error) {
+    document.getElementById('admin-content').innerHTML = renderAdminAccessPanel(cats.error || products.error);
+    return;
+  }
   const counts = products.reduce((acc, p) => { acc[p.category] = (acc[p.category] || 0) + 1; return acc; }, {});
   document.getElementById('admin-content').innerHTML = `<div class="admin-header"><h1 class="admin-page-title">Product Collections (${cats.length})</h1><button class="btn-primary" onclick="showAddCategory()"><i class="fas fa-plus"></i> New Collection</button></div><div class="stats-grid" style="margin-bottom:2rem;"><div class="stat-card"><div class="stat-label">Total Categories</div><div class="stat-value">${cats.length}</div></div><div class="stat-card"><div class="stat-label">Active Slugs</div><div class="stat-value">${cats.filter(c=>c.slug).length}</div></div></div><div class="admin-table-wrap"><table><thead><tr><th>Image</th><th>Name</th><th>Slug</th><th>Product Count</th><th>Actions</th></tr></thead><tbody>${cats.map(c => `<tr><td><img src="${safeImageUrl(c.image, c.slug)}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;background:#f0f0f0;"/></td><td>${c.name}</td><td><code>${c.slug}</code></td><td><span style="background:var(--rose-light);color:var(--rose-dark);padding:4px 8px;border-radius:6px;font-weight:600;">${counts[c.slug] || 0}</span></td><td><button class="btn-sm btn-outline" onclick="viewCategoryProducts('${c.slug}')"><i class="fas fa-boxes"></i> Inventory</button> <button class="btn-sm btn-outline" onclick="editCategoryById('${c.id || c._id}')"><i class="fas fa-pen"></i> Edit</button> <button class="btn-sm" onclick="deleteCategory('${c.id || c._id}', '${c.storeType || 'main'}')" style="background:#fee2e2;color:#ef4444;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button></td></tr>`).join('')}</tbody></table></div><div id="category-inventory" style="margin-top:3rem;display:none;"><div class="admin-header"><h2 id="inv-title" class="admin-page-title">Inventory: <span>All Products</span></h2><button class="btn-outline" onclick="document.getElementById('category-inventory').style.display='none'">Close</button></div><div class="admin-table-wrap"><table id="inv-table"><thead><tr><th>Product</th><th>Original Price</th><th>Stock Status</th><th>Action</th></tr></thead><tbody id="inv-body"></tbody></table></div></div>`;
 }
@@ -3232,8 +3472,8 @@ function snapshotAdminProductManagerDraft() {
 
 async function loadAdminProductManagerData(storeType = 'main') {
   const [productsRaw, categoriesRaw] = await Promise.all([
-    api(`/api/products?storeType=${storeType}`),
-    api(`/api/categories?storeType=${storeType}`)
+    adminCachedApi(`/api/products?storeType=${storeType}`),
+    adminCachedApi(`/api/categories?storeType=${storeType}`)
   ]);
   adminProductManagerState.storeType = storeType;
   adminProductManagerState.products = Array.isArray(productsRaw) ? [...productsRaw] : [];
@@ -3675,21 +3915,29 @@ function collectAdminProductPayload() {
   const hasVariants = document.getElementById('p-has-variants')?.value === 'true';
   adminProductFormState.hasVariants = hasVariants;
   adminProductFormState.variantType = document.getElementById('p-variant-type')?.value || adminProductFormState.variantType || 'color';
+  const productName = document.getElementById('p-name').value.trim();
+  const productCategory = document.getElementById('p-cat').value;
+  const productPrice = document.getElementById('p-price').value || '';
+  const productMrp = document.getElementById('p-mrp').value || productPrice;
+  const productStock = document.getElementById('p-stock').value || '1';
+  const generatedSku = `LEN-${Date.now().toString().slice(-6)}`;
+  const productSku = document.getElementById('p-sku').value.trim() || generatedSku;
+  const description = document.getElementById('p-desc').value.trim() || `${productName || 'Product'} from ${adminProductManagerSlugLabel(productCategory || 'Lencho collection')}.`;
   return {
-    name: document.getElementById('p-name').value.trim(),
-    category: document.getElementById('p-cat').value,
+    name: productName,
+    category: productCategory,
     storeType: document.getElementById('p-store-type').value,
     status: document.getElementById('p-status').value,
     hasVariants,
     variantType: adminProductFormState.variantType,
-    price: document.getElementById('p-price').value,
-    mrp: document.getElementById('p-mrp').value,
+    price: productPrice,
+    mrp: productMrp,
     discount: document.getElementById('p-discount').value,
-    stock: document.getElementById('p-stock').value,
-    sku: document.getElementById('p-sku').value.trim(),
+    stock: productStock,
+    sku: productSku,
     gstRate: document.getElementById('p-gst').value,
     hsn: document.getElementById('p-hsn').value,
-    description: document.getElementById('p-desc').value.trim(),
+    description,
     ...collectAdminProductDetailPayload(),
     featured: document.getElementById('p-featured').value,
     popular: document.getElementById('p-popular').value,
@@ -3773,6 +4021,8 @@ async function submitAdminProduct(id = '') {
     return toast(response.error || 'Product save failed', 'error');
   }
 
+  clearAdminCache('/api/products');
+  clearAdminCache('/api/categories');
   const nextProduct = response.product;
   const idx = adminProductManagerState.products.findIndex(product => String(product.id) === String(nextProduct.id));
   if (idx >= 0) adminProductManagerState.products[idx] = nextProduct;
@@ -3796,6 +4046,8 @@ async function adminDeleteProduct(id, name) {
   if (!confirm(`Delete "${name}"? This action cannot be undone.`)) return;
   const response = await api('/api/products/' + id, { method: 'DELETE' });
   if (response.error) return toast(response.error, 'error');
+  clearAdminCache('/api/products');
+  clearAdminCache('/api/categories');
   adminProductManagerState.products = adminProductManagerState.products.filter(product => String(product.id) !== String(id));
   adminProductManagerState.selectedIds.delete(id);
   if (String(adminProductManagerState.editingProduct?.id || '') === String(id)) {
@@ -3912,6 +4164,8 @@ async function applyAdminProductBulkAction() {
   const response = await api('/api/admin/products/bulk', { method: 'POST', body });
   if (response.error) return toast(response.error, 'error');
 
+  clearAdminCache('/api/products');
+  clearAdminCache('/api/categories');
   if (action === 'delete') {
     adminProductManagerState.products = adminProductManagerState.products.filter(product => !ids.includes(product.id));
   } else if (action === 'publish' || action === 'draft') {

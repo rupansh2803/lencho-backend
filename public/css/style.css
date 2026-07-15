@@ -10485,3 +10485,198 @@ body.woollen-theme #site-footer a:hover {
     min-height: 72px;
   }
 }
+
+/* Final admin and woollen polish */
+#toast-container {
+  z-index: 2147483000 !important;
+  top: 18px !important;
+  right: 18px !important;
+}
+
+.toast {
+  position: relative;
+  z-index: 2147483001 !important;
+  border-radius: 12px !important;
+}
+
+.modal-overlay {
+  z-index: 120000 !important;
+}
+
+.modal-card {
+  max-height: calc(100vh - 34px) !important;
+  overflow: auto !important;
+}
+
+.modal-card .form-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+}
+
+.modal-card input[type="file"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 50px !important;
+  padding: 10px 12px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  background: #fff !important;
+}
+
+#site-header .site-logo,
+body.woollen-theme #site-header .site-logo {
+  min-width: 118px !important;
+  justify-content: center !important;
+}
+
+#site-header .site-logo img,
+.site-logo img,
+body.woollen-theme #site-header .site-logo img {
+  opacity: 1 !important;
+  filter: none !important;
+  background: rgba(255, 255, 255, .94) !important;
+  border: 1px solid rgba(255, 229, 196, .42) !important;
+  border-radius: 999px !important;
+  padding: 7px 13px !important;
+  box-shadow: 0 10px 28px rgba(38, 24, 34, .18) !important;
+  object-fit: contain !important;
+}
+
+.hero-premium::before,
+.woollen-hero::before {
+  content: '' !important;
+  position: absolute !important;
+  left: -3% !important;
+  right: -3% !important;
+  bottom: -1px !important;
+  height: clamp(62px, 8vw, 120px) !important;
+  z-index: 2 !important;
+  pointer-events: none !important;
+  background:
+    radial-gradient(110% 95% at 16% 100%, #fffaf5 0 34%, transparent 35%),
+    radial-gradient(90% 80% at 78% 100%, #fbf8ed 0 40%, transparent 41%),
+    linear-gradient(178deg, transparent 0 36%, #fffaf5 37% 100%) !important;
+  clip-path: polygon(0 38%, 11% 28%, 25% 42%, 38% 30%, 52% 43%, 67% 28%, 82% 40%, 100% 26%, 100% 100%, 0 100%) !important;
+}
+
+.hero-premium .hero-p-centered,
+.hero-premium .hero-compact-copy,
+.woollen-hero-content {
+  z-index: 4 !important;
+}
+
+body:not(:has(.admin-layout))::before {
+  content: '' !important;
+  position: fixed !important;
+  inset: 0 !important;
+  pointer-events: none !important;
+  z-index: 3 !important;
+  opacity: .18 !important;
+  background:
+    radial-gradient(12px 12px at 12% 24%, rgba(255, 225, 194, .8) 0 30%, transparent 32%),
+    radial-gradient(16px 16px at 82% 18%, rgba(215, 139, 167, .72) 0 28%, transparent 30%),
+    radial-gradient(7px 7px at 72% 78%, rgba(184, 143, 92, .65) 0 35%, transparent 37%),
+    linear-gradient(115deg, transparent 0 45%, rgba(255, 226, 177, .28) 47%, transparent 52%) !important;
+  background-size: 420px 420px, 520px 520px, 360px 360px, 760px 760px !important;
+  animation: siteWoollenFlow 24s linear infinite !important;
+}
+
+@keyframes siteWoollenFlow {
+  from { background-position: 0 0, 0 0, 0 0, -240px 0; }
+  to { background-position: 420px -420px, -520px 520px, 360px -360px, 760px 0; }
+}
+
+body:not(:has(.admin-layout)) #site-header,
+body:not(:has(.admin-layout)) #app,
+body:not(:has(.admin-layout)) #site-footer,
+body:not(:has(.admin-layout)) .chatbot-toggle,
+body:not(:has(.admin-layout)) .chat-window {
+  position: relative;
+}
+
+.admin-access-panel {
+  background: #fff;
+  border: 1px solid rgba(220, 38, 38, .18);
+  border-left: 4px solid #dc2626;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(43, 28, 39, .08);
+  padding: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.admin-access-panel h2 {
+  font-family: 'Cormorant Garamond', serif;
+  color: #4a2638;
+  margin-bottom: .25rem;
+}
+
+.admin-access-panel p {
+  color: #7a5b68;
+  margin: 0;
+}
+
+.inventory-priority-strip {
+  display: grid;
+  grid-template-columns: auto minmax(160px, 1fr) auto;
+  gap: .8rem;
+  align-items: center;
+  margin: 1rem 0 1.25rem;
+  padding: .9rem 1rem;
+  background: #fffafc;
+  border: 1px solid rgba(201, 106, 138, .18);
+  border-radius: 14px;
+  color: #6b4058;
+  font-weight: 800;
+}
+
+.inventory-priority-strip div {
+  height: 12px;
+  border-radius: 999px;
+  background: #f2e7dd;
+  overflow: hidden;
+}
+
+.inventory-priority-strip b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #f7bfd1, #f5c98d);
+}
+
+.inventory-store-block {
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  #site-header .site-logo,
+  body.woollen-theme #site-header .site-logo {
+    min-width: 94px !important;
+  }
+
+  #site-header .site-logo img,
+  .site-logo img {
+    width: 82px !important;
+    padding: 5px 9px !important;
+  }
+
+  .hero-premium,
+  .woollen-hero {
+    min-height: 76svh !important;
+  }
+
+  .hero-premium::before,
+  .woollen-hero::before {
+    height: 70px !important;
+  }
+
+  .inventory-priority-strip,
+  .admin-access-panel {
+    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

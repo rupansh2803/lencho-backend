@@ -1612,6 +1612,26 @@ async function buyNow(productId, variantId = '') {
 }
 
 // ── DISCOUNT POPUP (SHOW ONCE PER SESSION) ────────────────
+function applyDiscountPopupSettings() {
+  const settings = readCachedPublicSettings();
+  const get = (key, fallback = '') => String(settings[key] || fallback || '').trim();
+  const popup = document.getElementById('discount-popup');
+  if (!popup) return;
+
+  const badge = popup.querySelector('.popup-badge');
+  const title = popup.querySelector('.popup-title');
+  const sub = popup.querySelector('.popup-sub');
+  const button = popup.querySelector('.popup-form .btn-primary');
+  const terms = popup.querySelector('.popup-terms');
+  const offerPercent = get('popupDiscountPercent', '10');
+
+  if (badge) badge.textContent = get('popupBadgeText', 'EXCLUSIVE OFFER');
+  if (title) title.innerHTML = get('popupTitle', `Get <span class="gold-text">${offerPercent}% OFF</span><br/>on Your First Order!`);
+  if (sub) sub.textContent = get('popupSubtitle', 'Enter your email to claim your special discount code');
+  if (button) button.textContent = get('popupButtonText', 'Claim My Discount');
+  if (terms) terms.textContent = get('popupTerms', '*Valid for new customers only. Cannot be combined with other offers.');
+}
+
 function showDiscountPopup() {
   // Only show once per session using sessionStorage
   if (isSyntheticAudit()) return;
@@ -1620,6 +1640,7 @@ function showDiscountPopup() {
   const popup = document.getElementById('discount-popup');
   if (!popup) return;
   
+  applyDiscountPopupSettings();
   popup.style.display = 'flex';
   sessionStorage.setItem('popupShown', '1');
 }
@@ -1637,6 +1658,7 @@ async function claimDiscount() {
   if (!consent) { toast('Please agree to receive offers and updates', 'error'); return; }
   const btn = document.querySelector('.popup-form .btn-primary');
   const form = document.querySelector('.popup-form');
+  const settings = readCachedPublicSettings();
   
   btn.textContent = 'Claiming...'; btn.disabled = true;
   const r = await api('/api/discount/email', {
@@ -1651,6 +1673,7 @@ async function claimDiscount() {
   if (r.error) { 
     toast(r.error, 'error'); 
     btn.textContent = 'Claim My Discount 🎁'; 
+    btn.textContent = String(settings.popupButtonText || 'Claim My Discount').trim();
     btn.disabled = false; 
     return; 
   }
@@ -1659,6 +1682,9 @@ async function claimDiscount() {
   if (form) form.style.display = 'none';
   const result = document.getElementById('popup-result');
   result.innerHTML = `<div style="text-align:center;padding:1rem;">🎉 Thank you! Your code:<br/><strong style="color:var(--rose-dark);font-size:1.6rem;display:block;margin:10px 0;">WELCOME10</strong> — 10% OFF applied!</div>`;
+  const code = String(settings.popupDiscountCode || r.code || 'WELCOME10').trim();
+  const percent = String(settings.popupDiscountPercent || '10').trim();
+  result.innerHTML = `<div style="text-align:center;padding:1rem;">Thank you! Your code:<br/><strong style="color:var(--rose-dark);font-size:1.6rem;display:block;margin:10px 0;">${code}</strong>${percent ? ` - ${percent}% OFF applied!` : ''}</div>`;
   setTimeout(closePopup, 5000);
 }
 

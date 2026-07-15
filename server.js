@@ -70,6 +70,7 @@ const JWT_SECRET_RESOLVED = readEnvVar('JWT_SECRET', [], 'your-secret-key');
 const SESSION_SECRET_RESOLVED = readEnvVar('SESSION_SECRET', [], 'lencho-secret');
 const MONGODB_URI = readEnvVar('MONGODB_URI', ['MONGO_URI', 'DATABASE_URL']);
 const REQUIRE_MONGODB = true;
+const DEFAULT_OWNER_ADMIN_EMAIL = 'rupanshsaini17@gmail.com';
 
 function validateMongoUriForPermanentStorage(uri) {
   let value = cleanEnvValue(uri);
@@ -259,6 +260,17 @@ function getJwtAuthPayload(req) {
 }
 
 function getAuthContext(req) {
+  if (req.session?.userId) {
+    const sessionRole = req.session.role || 'user';
+    if (sessionRole === 'admin') {
+      return {
+        userId: req.session.userId,
+        role: sessionRole,
+        source: 'session'
+      };
+    }
+  }
+
   const jwtPayload = getJwtAuthPayload(req);
   if (jwtPayload) {
     return {
@@ -755,6 +767,7 @@ async function initDB() {
     console.log('MongoDB Atlas connected. Permanent storage enabled.');
     await relaxLegacyCategoryIndexes();
     await ensureInitialAdminIfRequested();
+    await ensureConfiguredAdmins();
     await seedCategories();
     await seedSettings();
     warmupSmtpTransporter().catch(() => {});
@@ -1460,7 +1473,7 @@ async function ensureInitialAdminIfRequested() {
     return;
   }
 
-  const email = cleanEnvValue(process.env.ADMIN_EMAIL) || 'admin@lencho.in';
+  const email = cleanEnvValue(process.env.ADMIN_EMAIL) || DEFAULT_OWNER_ADMIN_EMAIL;
   const pass = cleanEnvValue(process.env.ADMIN_PASSWORD) || 'Admin@123456';
   const phone = cleanEnvValue(process.env.ADMIN_PHONE) || '';
   const hashedPass = await bcrypt.hash(pass, 10);
@@ -1476,6 +1489,140 @@ async function ensureInitialAdminIfRequested() {
     securityAnswer: 'Admin'
   });
   console.log(`Admin bootstrap account created: ${email}`);
+}
+
+function parseAdminEmployeeEntry(entry = '') {
+  const raw = String(entry || '').trim();
+  if (!raw) return null;
+
+  const parts = raw.includes('|') ? raw.split('|') : raw.split(':');
+  const email = cleanEnvValue(parts.shift() || '').toLowerCase();
+  const password = cleanEnvValue(parts.shift() || '');
+  const name = cleanEnvValue(parts.join('|') || '');
+  if (!email) return null;
+  return { email, password, name };
+}
+
+function getConfiguredAdminAccounts() {
+  const accounts = [];
+  const addAccount = (record = {}) => {
+    const email = cleanEnvValue(record.email).toLowerCase();
+    if (!email) return;
+    accounts.push({
+      email,
+      password: cleanEnvValue(record.password),
+      name: cleanEnvValue(record.name) || (email === DEFAULT_OWNER_ADMIN_EMAIL ? 'Rupansh Kumar' : 'Lencho Admin'),
+      phone: cleanEnvValue(record.phone)
+    });
+  };
+
+  addAccount({
+    email: readEnvVar('ADMIN_EMAIL', [], DEFAULT_OWNER_ADMIN_EMAIL),
+    password: cleanEnvValue(process.env.ADMIN_PASSWORD),
+    name: readEnvVar('ADMIN_NAME', [], 'Rupansh Kumar'),
+    phone: cleanEnvValue(process.env.ADMIN_PHONE)
+  });
+
+  const employeesJson = cleanEnvValue(process.env.ADMIN_EMPLOYEES);
+  if (employeesJson) {
+    try {
+      const parsed = JSON.parse(employeesJson);
+      if (Array.isArray(parsed)) parsed.forEach(addAccount);
+    } catch {
+      employeesJson
+        .split(/[;\n]+/)
+        .map(parseAdminEmployeeEntry)
+        .filter(Boolean)
+        .forEach(addAccount);
+    }
+  }
+
+  const employeeEmails = cleanEnvValue(process.env.ADMIN_EMPLOYEE_EMAILS)
+    .split(/[,\n;]+/)
+    .map(value => cleanEnvValue(value).toLowerCase())
+    .filter(Boolean);
+  const employeePasswords = cleanEnvValue(process.env.ADMIN_EMPLOYEE_PASSWORDS || process.env.ADMIN_EMPLOYEE_PASSWORD)
+    .split(/[,\n;]+/)
+    .map(cleanEnvValue);
+  const employeeNames = cleanEnvValue(process.env.ADMIN_EMPLOYEE_NAMES)
+    .split(/[,\n;]+/)
+    .map(cleanEnvValue);
+
+  employeeEmails.forEach((email, index) => {
+    addAccount({
+      email,
+      password: employeePasswords[index] || employeePasswords[0] || '',
+      name: employeeNames[index] || 'Lencho Employee'
+    });
+  });
+
+  const unique = new Map();
+  accounts.forEach(account => {
+    if (!unique.has(account.email)) unique.set(account.email, account);
+    else {
+      const existing = unique.get(account.email);
+      unique.set(account.email, {
+        ...existing,
+        ...Object.fromEntries(Object.entries(account).filter(([, value]) => value))
+      });
+    }
+  });
+  return [...unique.values()];
+}
+
+async function ensureConfiguredAdmins() {
+  if (!useDB) return;
+  const accounts = getConfiguredAdminAccounts();
+  if (!accounts.length) return;
+
+  const syncPasswords = parseBooleanEnv(process.env.SYNC_ADMIN_PASSWORDS, false);
+  let created = 0;
+  let updated = 0;
+
+  for (const account of accounts) {
+    const existing = await User.findOne({ email: account.email });
+    if (!existing) {
+      if (!account.password) {
+        console.warn(`[admin-sync] Skipped ${account.email}: password missing in env`);
+        continue;
+      }
+      await User.create({
+        name: account.name,
+        email: account.email,
+        phone: account.phone || '',
+        password: await bcrypt.hash(account.password, 10),
+        role: 'admin',
+        authProvider: 'email',
+        isVerified: true,
+        emailVerifiedAt: new Date(),
+        securityQuestion: 'Birthplace',
+        securityAnswer: 'Lencho'
+      });
+      created += 1;
+      continue;
+    }
+
+    let changed = false;
+    if (existing.role !== 'admin') { existing.role = 'admin'; changed = true; }
+    if (existing.isVerified !== true) { existing.isVerified = true; changed = true; }
+    if (!existing.emailVerifiedAt) { existing.emailVerifiedAt = new Date(); changed = true; }
+    if (account.name && existing.name !== account.name && !existing.name) { existing.name = account.name; changed = true; }
+    if (account.phone && !existing.phone) { existing.phone = account.phone; changed = true; }
+    if (account.password && (syncPasswords || !existing.password)) {
+      existing.password = await bcrypt.hash(account.password, 10);
+      existing.authProvider = 'email';
+      changed = true;
+    }
+
+    if (changed) {
+      await existing.save();
+      updated += 1;
+    }
+  }
+
+  if (created || updated) {
+    console.log(`[admin-sync] configured admins synced. created=${created}, updated=${updated}`);
+  }
 }
 
 async function seedSettings() {
@@ -3874,7 +4021,12 @@ app.post('/api/admin/login/simple', async (req, res) => {
     await recordLoginActivity({ email, name: adminUser.name, status: 'success', method: 'admin_simple', role: 'admin', ip, userAgent });
     
     console.log(`✅ Admin logged in: ${email}`);
-    res.json({ success: true, message: 'Admin login successful', user: { id: req.session.userId, name: adminUser.name, email: adminUser.email, role: 'admin' } });
+    res.json({
+      success: true,
+      message: 'Admin login successful',
+      token: generateToken(req.session.userId, 'admin'),
+      user: { id: req.session.userId, name: adminUser.name, email: adminUser.email, role: 'admin' }
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
