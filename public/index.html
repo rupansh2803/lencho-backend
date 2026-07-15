@@ -54,12 +54,12 @@
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer"/></noscript>
   
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="/css/style.css?v=5.3"/>
+  <link rel="stylesheet" href="/css/style.css?v=5.4"/>
 
   <script>
     window.__lenchoScriptsReady = false;
   </script>
-  <script defer src="/js/app.js?v=5.6"></script>
+  <script defer src="/js/app.js?v=5.7"></script>
   <script defer src="/js/pages.js?v=4.9"></script>
   <script defer src="/js/dashboard.js?v=4.6"></script>
   <script defer src="/js/admin.js?v=6.0"></script>
@@ -134,8 +134,14 @@
   </script>
 </head>
 <body>
+  <script>
+    if (location.pathname === '/admin') document.body.classList.add('admin-mode');
+  </script>
   <!-- Loading Screen -->
-  <div id="loading-screen" class="hidden" aria-hidden="true"></div>
+  <div id="loading-screen" aria-hidden="true">
+    <div class="loader-yarn" aria-hidden="true"></div>
+    <div class="loader-logo">Lencho</div>
+  </div>
 
   <!-- Toast Notification -->
   <div id="toast-container"></div>
@@ -334,18 +340,8 @@
         </div>
         <a href="/track" class="nav-link" onclick="event.preventDefault(); navigate('/track')">Track Order</a>
         <a href="/contact" class="nav-link" onclick="event.preventDefault(); navigate('/contact')">Contact</a>
-        <!-- Search on Mobile -->
-        <div class="mobile-search" id="mobile-search" style="display:none;margin-top:1rem;width:100%;padding:0 0;border-top:1px solid var(--border);">
-          <input type="text" id="mobile-search-input" placeholder="Search products..." style="width:100%;padding:0.75rem 0;border:none;background:transparent;font-size:0.9rem;"/>
-        </div>
       </nav>
       <div class="header-actions">
-        <!-- Desktop Search -->
-        <div class="search-box" id="search-box" style="display:none;margin:0 0.5rem;">
-          <input type="text" id="header-search-input" placeholder="Search..." style="padding:0.75rem 1rem;border:2px solid var(--dark);border-radius:8px;background:#1a1a1a;color:#fff;font-size:0.9rem;width:200px;transition:all 0.3s;"/>
-          <div id="search-results" style="position:absolute;top:100%;left:0;right:0;background:white;border-radius:12px;box-shadow:var(--shadow-md);max-height:300px;overflow-y:auto;z-index:100;margin-top:0.5rem;display:none;"></div>
-        </div>
-        <button class="icon-btn" onclick="toggleSearch()" title="Search" id="header-search-btn" aria-label="Search products"><i class="fas fa-search"></i></button>
         <button class="icon-btn" onclick="navigate('/wishlist')" title="Wishlist" id="header-wishlist-btn" aria-label="Open wishlist"><i class="fas fa-heart"></i></button>
         <button class="icon-btn cart-btn" onclick="navigate('/cart')" title="Cart" id="header-cart-btn" aria-label="Open shopping cart">
           <i class="fas fa-shopping-bag"></i>

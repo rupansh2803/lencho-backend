@@ -508,7 +508,7 @@ async function navigate(path, pushState = true) {
   const app = document.getElementById('app');
   const footer = document.getElementById('site-footer');
   const header = document.getElementById('site-header');
-  app.innerHTML = '<div style="min-height:60vh;display:flex;align-items:center;justify-content:center;"><div class="loader-logo" style="color:var(--rose);font-size:1.5rem;">✦</div></div>';
+  app.innerHTML = '<div class="page-loading-top"><div class="loader-logo" aria-label="Loading">Lencho</div></div>';
   window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
   const [route, query] = path.split('?');
@@ -517,9 +517,12 @@ async function navigate(path, pushState = true) {
 
   // ── SAFETY GUARD: Always ensure header/footer visible for non-admin routes ──
   const isAdmin = route === '/admin';
+  const fullBleedRoute = route === '/' || route === '/woollen' || route === '/jewellery';
+  document.body.classList.toggle('admin-mode', isAdmin);
+  document.body.classList.toggle('woollen-page', route === '/' || route.startsWith('/woollen'));
   footer.style.display = isAdmin ? 'none' : '';
   header.style.display = isAdmin ? 'none' : '';
-  app.style.paddingTop = isAdmin ? '0' : getHeaderOffset();
+  app.style.paddingTop = isAdmin || fullBleedRoute ? '0' : getHeaderOffset();
 
   try {
     if (route === '/' || route === '') { app.style.paddingTop = '0'; renderHome(); }
@@ -798,14 +801,18 @@ async function autoLoginWithToken() {
 
 function updateHeader() {
   const btn = document.getElementById('header-user-btn');
+  if (!btn) return;
   if (currentUser) {
-    const firstName = String(currentUser.name || 'User').trim().split(/\s+/)[0];
-    const avatar = String(currentUser.avatar || '').trim();
+    const email = String(currentUser.email || '').trim();
+    const firstName = String(currentUser.name || email || 'User').trim().split(/\s+/)[0];
+    const avatar = String(currentUser.avatar || currentUser.profileImg || currentUser.picture || currentUser.photoURL || '').trim();
+    const label = email || `Hi, ${firstName}`;
     if (avatar) {
-      btn.innerHTML = `<img src="${avatar}" alt="${firstName}" class="header-user-avatar"/><span class="header-user-label">Hi, ${firstName}</span>`;
+      btn.innerHTML = `<img src="${avatar}" alt="${firstName}" class="header-user-avatar"/><span class="header-user-label">${label}</span>`;
     } else {
-      btn.innerHTML = `<i class="fas fa-user-check"></i><span class="header-user-label">Hi, ${firstName}</span>`;
+      btn.innerHTML = `<i class="fas fa-user-check"></i><span class="header-user-label">${label}</span>`;
     }
+    btn.title = email || `Signed in as ${firstName}`;
     btn.classList.add('signed-in');
     btn.style.color = 'var(--rose)';
   } else {
@@ -2233,7 +2240,10 @@ async function renderHome(options = {}) {
     const value = String(cms[key] || '').trim();
     return value && !blocked.includes(value) ? value : fallback;
   };
-  const isOn = (k) => cms[k] === true || cms[k] === 'true' || cms[k] === undefined;
+  const isOn = (k) => {
+    if (k === 'showOfferBanner') return false;
+    return cms[k] === true || cms[k] === 'true' || cms[k] === undefined;
+  };
   const heroBadgeText = shortCopy('heroBadge', 'LENCHO WOOLLEN', ['Premium Collection 2026', '✦ PREMIUM COLLECTION 2026 ✦']);
   const heroTitleText = shortCopy('heroTitle', 'Soft Handmade Woollen', ['Luxury Redefined']);
   const heroLineText = shortCopy('heroDescription', 'Crochet accessories, gifts and decor.', ['Premium artificial jewellery for every occasion. Look expensive, spend smart.', 'Premium artificial jewellery for every occasion. Look expensive, spend smart with clear pricing and fast support.']);

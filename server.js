@@ -523,7 +523,7 @@ const DEFAULT_FALLBACK_SETTINGS = {
   promoVideoUrl: '',
   promoButtonText: 'Explore Collection',
   offerBanner: '🎁 LIMITED OFFER: FLAT 50% OFF ON SELECTED ITEMS + FREE DELIVERY!',
-  showOfferBanner: true,
+  showOfferBanner: false,
   showTrustHub: true,
   showCollections: true,
   showFeaturedProducts: true,
@@ -1570,6 +1570,22 @@ function getConfiguredAdminAccounts() {
   return [...unique.values()];
 }
 
+function normalizeAdminEmail(email = '') {
+  return cleanEnvValue(email).toLowerCase();
+}
+
+function getConfiguredAdminEmailSet() {
+  return new Set(getConfiguredAdminAccounts().map(account => normalizeAdminEmail(account.email)).filter(Boolean));
+}
+
+function isConfiguredAdminEmail(email = '') {
+  return getConfiguredAdminEmailSet().has(normalizeAdminEmail(email));
+}
+
+function getAdminAlertEmail() {
+  return normalizeAdminEmail(readEnvVar('ADMIN_ALERT_EMAIL', ['ADMIN_OWNER_EMAIL'], DEFAULT_OWNER_ADMIN_EMAIL));
+}
+
 async function ensureConfiguredAdmins() {
   if (!useDB) return;
   const accounts = getConfiguredAdminAccounts();
@@ -1674,7 +1690,7 @@ async function seedSettings() {
       { key: 'showFeaturedProducts', value: true, label: 'Show Featured Products' },
       { key: 'showPromo', value: true, label: 'Show Promo/Timer Section' },
       { key: 'showTrustHub', value: true, label: 'Show Trust Hub Strip' },
-      { key: 'showOfferBanner', value: true, label: 'Show Offer Banner' },
+      { key: 'showOfferBanner', value: false, label: 'Show Offer Banner' },
       { key: 'showProductRatings', value: false, label: 'Show Product Detail Ratings' },
       { key: 'showProductDeliveryDetails', value: false, label: 'Show Product Detail Delivery/Tax Box' },
       { key: 'showProductAvailability', value: false, label: 'Show Product Detail Availability' },
@@ -1725,7 +1741,7 @@ async function seedSettings() {
       { key: 'showFeaturedProducts', value: true, label: 'Show Featured Products' },
       { key: 'showPromo', value: true, label: 'Show Promo/Timer Section' },
       { key: 'showTrustHub', value: true, label: 'Show Trust Hub Strip' },
-      { key: 'showOfferBanner', value: true, label: 'Show Offer Banner' },
+      { key: 'showOfferBanner', value: false, label: 'Show Offer Banner' },
       { key: 'siteVisitorCount', value: 0, label: 'Website Visitor Count' },
       { key: 'storeVisitorCount', value: 0, label: 'Store Visitor Count' },
       { key: 'footerAddress', value: '197 Sarakpur, Barara, Ambala, Haryana', label: 'Footer Address' },
@@ -2187,6 +2203,53 @@ async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
     console.error(`[OTP] ❌ FAILED — ${err?.message || err}`);
     console.error(`[OTP] Error Code: ${err?.code || 'N/A'} | Response: ${err?.response || 'N/A'}`);
     throw err;
+  }
+}
+
+function escapeEmailHtml(value = '') {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function sendAdminSecurityAlert({ email = '', reason = 'admin_login_failed', ip = '', userAgent = '' } = {}) {
+  const ownerEmail = getAdminAlertEmail();
+  if (!ownerEmail) return { sent: false, skipped: true };
+
+  try {
+    const smtpConfig = getSmtpConfigFromSettings({
+      smtpHost: await getMeaningfulSetting('smtpHost', 'smtp.gmail.com'),
+      smtpPort: await getMeaningfulSetting('smtpPort', 465),
+      smtpUser: await getMeaningfulSetting('smtpUser', DEFAULT_SMTP_USER),
+      smtpPass: await getMeaningfulSetting('smtpPass', DEFAULT_SMTP_PASS),
+      storeName: await getMeaningfulSetting('storeName', DEFAULT_EMAIL_FROM_NAME),
+    });
+    const transporter = await getVerifiedSmtpTransporter(smtpConfig);
+    const result = await sendEmailWithRetry(transporter, {
+      from: `"${smtpConfig.storeName} Security" <${smtpConfig.user}>`,
+      to: ownerEmail,
+      subject: 'Lencho Admin Security Alert',
+      html: `
+        <div style="font-family:Arial,sans-serif;background:#fff7fb;padding:24px;color:#2b1c27;">
+          <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #f3c8d9;border-radius:16px;padding:24px;">
+            <h2 style="margin:0 0 12px;color:#7c2d4f;">Admin login alert</h2>
+            <p style="margin:0 0 16px;">A blocked or failed admin login attempt was detected.</p>
+            <p><b>Email:</b> ${escapeEmailHtml(email || 'not provided')}</p>
+            <p><b>Reason:</b> ${escapeEmailHtml(reason)}</p>
+            <p><b>IP:</b> ${escapeEmailHtml(ip || 'unknown')}</p>
+            <p><b>Device:</b> ${escapeEmailHtml(userAgent || 'unknown')}</p>
+            <p style="color:#7a6671;font-size:13px;margin-top:18px;">If this was not you or your employee, keep the email out of ADMIN_EMPLOYEE_EMAILS and rotate passwords.</p>
+          </div>
+        </div>`
+    });
+    console.log(`[Admin Security] Alert sent to ${ownerEmail} | messageId=${result.messageId || 'n/a'}`);
+    return { sent: true, messageId: result.messageId };
+  } catch (err) {
+    console.warn('[Admin Security] Alert email failed:', err?.message || err);
+    return { sent: false, error: err?.message || String(err) };
   }
 }
 
@@ -3805,7 +3868,8 @@ app.post('/api/otp/verify-email', async (req, res) => {
 
 app.post('/api/admin/login/request-otp', async (req, res) => {
   try {
-    const { email, password, captchaAnswer, resend } = req.body || {};
+    const { email: submittedEmail, password, captchaAnswer, resend } = req.body || {};
+    const email = normalizeAdminEmail(submittedEmail);
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
     
@@ -3835,15 +3899,22 @@ app.post('/api/admin/login/request-otp', async (req, res) => {
         return res.json({ success: true, message: 'OTP resent to your admin email. Valid for 5 minutes.', via: 'email', devOtp: isDev ? otp : undefined });
       } catch (emailErr) {
         console.error('[Admin OTP Resend] Email failed:', emailErr.message);
-        return res.json({ success: true, message: isDev ? `DEV: OTP is ${otp}` : 'OTP resend failed. Check server logs.', via: 'console', devOtp: isDev ? otp : undefined });
+        return res.status(502).json({ error: toFriendlySmtpError(emailErr), devOtp: isDev ? otp : undefined });
       }
     }
     
     // ── FIRST LOGIN: Require email, password, captcha ──
     if (!email || !password || !captchaAnswer) return res.status(400).json({ error: 'Email, password and CAPTCHA are required' });
 
+    if (!isConfiguredAdminEmail(email)) {
+      await recordLoginActivity({ email, status: 'failed', method: 'admin_otp', role: 'admin', ip, userAgent });
+      sendAdminSecurityAlert({ email, reason: 'unapproved_admin_email', ip, userAgent });
+      return res.status(400).json({ error: 'Invalid admin credentials' });
+    }
+
     if (String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
       await recordLoginActivity({ email, status: 'failed', method: 'admin_otp', role: 'admin', ip, userAgent });
+      sendAdminSecurityAlert({ email, reason: 'invalid_admin_captcha', ip, userAgent });
       return res.status(400).json({ error: 'Invalid CAPTCHA' });
     }
 
@@ -3852,6 +3923,7 @@ app.post('/api/admin/login/request-otp', async (req, res) => {
       adminUser = await User.findOne({ email });
       if (!adminUser || adminUser.role !== 'admin' || !await bcrypt.compare(password, adminUser.password)) {
         await recordLoginActivity({ email, name: adminUser?.name || '', status: 'failed', method: 'admin_otp', role: adminUser?.role || 'user', ip, userAgent });
+        sendAdminSecurityAlert({ email, reason: 'invalid_admin_credentials', ip, userAgent });
         return res.status(400).json({ error: 'Invalid admin credentials' });
       }
     } else {
@@ -3859,6 +3931,7 @@ app.post('/api/admin/login/request-otp', async (req, res) => {
       adminUser = users.find(u => u.email === email && u.role === 'admin');
       if (!adminUser || !await bcrypt.compare(password, adminUser.password)) {
         await recordLoginActivity({ email, name: adminUser?.name || '', status: 'failed', method: 'admin_otp', role: adminUser?.role || 'user', ip, userAgent });
+        sendAdminSecurityAlert({ email, reason: 'invalid_admin_credentials', ip, userAgent });
         return res.status(400).json({ error: 'Invalid admin credentials' });
       }
     }
@@ -3892,6 +3965,8 @@ app.post('/api/admin/login/request-otp', async (req, res) => {
       await sendConfiguredEmailOTP(email, otp, 'admin_login');
       otpSent = { via: 'email', message: 'OTP sent to your admin email. Valid for 5 minutes.' };
     } catch (emailErr) {
+      console.log('[Admin OTP] Email OTP failed:', emailErr.message);
+      return res.status(502).json({ error: toFriendlySmtpError(emailErr), devOtp: isDev ? otp : undefined });
       console.log('⚠️  Email OTP failed, attempting fallback:', emailErr.message);
       if (isDev) {
         otpSent = { via: 'console', message: 'Email OTP failed. Under dev mode, OTP printed to console.' };
@@ -3913,7 +3988,8 @@ app.post('/api/admin/login/request-otp', async (req, res) => {
 
 app.post('/api/admin/login/verify-otp', async (req, res) => {
   try {
-    const { email, otp } = req.body || {};
+    const { email: submittedEmail, otp } = req.body || {};
+    const email = normalizeAdminEmail(submittedEmail);
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
     if (!email || !otp) return res.status(400).json({ error: 'Email and OTP are required' });
@@ -3976,15 +4052,23 @@ app.post('/api/admin/login/verify-otp', async (req, res) => {
 // ─── SIMPLIFIED ADMIN LOGIN (Email + Password only, no OTP/CAPTCHA) ────────────────
 app.post('/api/admin/login/simple', async (req, res) => {
   try {
-    const { email, password, captchaAnswer } = req.body || {};
+    const { email: submittedEmail, password, captchaAnswer } = req.body || {};
+    const email = normalizeAdminEmail(submittedEmail);
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
     
     if (!email || !password || !captchaAnswer) return res.status(400).json({ error: 'Email, password and CAPTCHA are required' });
 
+    if (!isConfiguredAdminEmail(email)) {
+      await recordLoginActivity({ email, status: 'failed', method: 'admin_simple', role: 'admin', ip, userAgent });
+      sendAdminSecurityAlert({ email, reason: 'unapproved_admin_email_simple', ip, userAgent });
+      return res.status(400).json({ error: 'Invalid admin credentials' });
+    }
+
     // Validate CAPTCHA (case-insensitive)
     if (String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
       await recordLoginActivity({ email, status: 'failed', method: 'admin_simple', role: 'admin', ip, userAgent });
+      sendAdminSecurityAlert({ email, reason: 'invalid_admin_captcha_simple', ip, userAgent });
       return res.status(400).json({ error: 'Invalid CAPTCHA code' });
     }
 
@@ -3995,6 +4079,7 @@ app.post('/api/admin/login/simple', async (req, res) => {
       adminUser = await User.findOne({ email });
       if (!adminUser || adminUser.role !== 'admin' || !await bcrypt.compare(password, adminUser.password)) {
         await recordLoginActivity({ email, status: 'failed', method: 'admin_simple', role: adminUser?.role || 'user', ip, userAgent });
+        sendAdminSecurityAlert({ email, reason: 'invalid_admin_credentials_simple', ip, userAgent });
         return res.status(400).json({ error: 'Invalid admin credentials' });
       }
     } else {
@@ -4003,6 +4088,7 @@ app.post('/api/admin/login/simple', async (req, res) => {
       adminUser = users.find(u => u.email === email && u.role === 'admin');
       if (!adminUser || !await bcrypt.compare(password, adminUser.password)) {
         await recordLoginActivity({ email, status: 'failed', method: 'admin_simple', role: adminUser?.role || 'user', ip, userAgent });
+        sendAdminSecurityAlert({ email, reason: 'invalid_admin_credentials_simple', ip, userAgent });
         return res.status(400).json({ error: 'Invalid admin credentials' });
       }
     }
@@ -4181,7 +4267,9 @@ app.get('/api/me', async (req, res) => {
   try {
     if (useDB) {
       const user = await User.findById(auth.userId).select('-password');
-      return res.json({ user: user ? { id: user._id, ...user.toObject() } : null });
+      if (!user) return res.json({ user: null });
+      const safe = user.toObject();
+      return res.json({ user: { id: user._id, ...safe, avatar: safe.profileImg || safe.avatar || '' } });
     }
     const users = readJson(FILES.users);
     const user = users.find(u => String(u.id) === String(auth.userId));
@@ -5630,7 +5718,7 @@ app.post('/api/auth/firebase/google', async (req, res) => {
           email: finalEmail, 
           password: 'GOOGLE_' + (finalGoogleId || Date.now()),
           googleId: finalGoogleId,
-          avatar: finalPicture,
+          profileImg: finalPicture,
           role: 'user',
           verified: true,
           phone: ''
@@ -5641,8 +5729,8 @@ app.post('/api/auth/firebase/google', async (req, res) => {
       } else {
         console.log('[GoogleAuth] Existing user found:', user._id);
         // Update googleId and avatar if missing
-        if ((!user.googleId && finalGoogleId) || (!user.avatar && finalPicture)) {
-          await User.updateOne({ _id: user._id }, { $set: { googleId: finalGoogleId || user.googleId, avatar: finalPicture || user.avatar } });
+        if ((!user.googleId && finalGoogleId) || (!user.profileImg && finalPicture)) {
+          await User.updateOne({ _id: user._id }, { $set: { googleId: finalGoogleId || user.googleId, profileImg: finalPicture || user.profileImg } });
         }
       }
     } else {
@@ -5653,6 +5741,8 @@ app.post('/api/auth/firebase/google', async (req, res) => {
           id: Date.now().toString(), 
           name: finalName || finalEmail.split('@')[0], 
           email: finalEmail, googleId: finalGoogleId, 
+          profileImg: finalPicture,
+          avatar: finalPicture,
           role: 'user', 
           verified: true 
         };
@@ -5675,7 +5765,8 @@ app.post('/api/auth/firebase/google', async (req, res) => {
         name: user.name || finalName, 
         email: user.email, 
         role: user.role || 'user', 
-        avatar: user.avatar || finalPicture 
+        avatar: user.profileImg || user.avatar || finalPicture,
+        profileImg: user.profileImg || user.avatar || finalPicture
       } 
     };
     console.log('[GoogleAuth] Login successful:', { userId, email: finalEmail, role: user.role || 'user' });
