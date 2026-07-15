@@ -10721,13 +10721,41 @@ body:not(:has(.admin-layout)) .chat-window {
   align-items: center !important;
   justify-content: center !important;
   flex-direction: column !important;
-  gap: 18px !important;
+  gap: 12px !important;
   background:
-    radial-gradient(circle at 50% 42%, rgba(255, 226, 204, .16), transparent 24%),
-    var(--lencho-shell-gradient) !important;
+    radial-gradient(circle at 50% 42%, rgba(255, 238, 214, .22), transparent 20%),
+    radial-gradient(circle at 30% 24%, rgba(255, 212, 230, .2), transparent 30%),
+    radial-gradient(circle at 80% 75%, rgba(255, 212, 153, .18), transparent 34%),
+    linear-gradient(120deg, #4d2f43 0%, #8a5860 48%, #ba846b 100%) !important;
   opacity: 1 !important;
   visibility: visible !important;
   transition: opacity .45s ease, visibility .45s ease !important;
+  overflow: hidden !important;
+}
+
+#loading-screen::before,
+#loading-screen::after {
+  content: '' !important;
+  position: absolute !important;
+  inset: -20% !important;
+  pointer-events: none !important;
+}
+
+#loading-screen::before {
+  background:
+    linear-gradient(120deg, transparent 20%, rgba(255, 255, 255, .09) 43%, transparent 64%),
+    radial-gradient(circle at 52% 48%, rgba(255, 244, 233, .14), transparent 16%) !important;
+  animation: lenchoLoaderAurora 6.5s ease-in-out infinite !important;
+}
+
+#loading-screen::after {
+  background-image:
+    radial-gradient(circle, rgba(255, 236, 224, .28) 0 2px, transparent 3px),
+    radial-gradient(circle, rgba(255, 203, 226, .22) 0 3px, transparent 4px) !important;
+  background-size: 220px 170px, 360px 280px !important;
+  background-position: 30px 20px, 110px 90px !important;
+  opacity: .8 !important;
+  animation: lenchoLoaderSpecks 8s linear infinite !important;
 }
 
 #loading-screen.hidden {
@@ -10736,38 +10764,186 @@ body:not(:has(.admin-layout)) .chat-window {
   pointer-events: none !important;
 }
 
+.loader-stage {
+  width: 192px !important;
+  height: 150px !important;
+  display: grid !important;
+  place-items: center !important;
+  position: relative !important;
+  perspective: 720px !important;
+  transform-style: preserve-3d !important;
+  z-index: 1 !important;
+  animation: lenchoStageFloat 2.8s ease-in-out infinite !important;
+}
+
+.loader-stage::before {
+  content: '' !important;
+  position: absolute !important;
+  left: 35px !important;
+  right: 30px !important;
+  bottom: 24px !important;
+  height: 20px !important;
+  border-radius: 50% !important;
+  background: radial-gradient(ellipse, rgba(36, 19, 31, .34), transparent 68%) !important;
+  filter: blur(4px) !important;
+  transform: rotateX(64deg) !important;
+}
+
+.loader-stage::after {
+  content: '' !important;
+  position: absolute !important;
+  width: 112px !important;
+  height: 112px !important;
+  border-radius: 50% !important;
+  background: radial-gradient(circle, rgba(255, 229, 201, .28), transparent 64%) !important;
+  filter: blur(2px) !important;
+  transform: translate3d(0, -8px, -70px) !important;
+}
+
 .loader-yarn {
-  width: 66px !important;
-  height: 66px !important;
+  width: 92px !important;
+  height: 92px !important;
+  border-radius: 50% !important;
+  position: relative !important;
+  overflow: hidden !important;
+  transform-style: preserve-3d !important;
+  background:
+    radial-gradient(circle at 31% 23%, rgba(255, 255, 252, .95) 0 7%, rgba(255, 244, 235, .62) 8% 18%, transparent 30%),
+    radial-gradient(circle at 66% 75%, rgba(138, 82, 91, .2), transparent 34%),
+    repeating-linear-gradient(12deg, rgba(255, 221, 234, .98) 0 7px, rgba(255, 205, 153, .98) 7px 14px, rgba(255, 237, 222, .98) 14px 20px),
+    conic-gradient(from 30deg, #ffccd9, #ffd99d, #ffe8ce, #e99db6, #ffccd9) !important;
+  border: 1px solid rgba(255, 245, 238, .48) !important;
+  box-shadow:
+    0 26px 46px rgba(34, 18, 29, .34),
+    0 0 0 10px rgba(255, 240, 226, .06),
+    inset 15px 18px 22px rgba(255, 255, 255, .32),
+    inset -18px -18px 22px rgba(87, 47, 61, .22) !important;
+  animation: lenchoYarn3d 1.9s cubic-bezier(.45, .03, .28, .96) infinite !important;
+  z-index: 3 !important;
+}
+
+.loader-yarn::before {
+  content: '' !important;
+  position: absolute !important;
+  inset: 9px 13px 16px 10px !important;
   border-radius: 50% !important;
   background:
-    repeating-linear-gradient(35deg, rgba(255, 221, 234, .95) 0 7px, rgba(255, 205, 153, .95) 7px 14px),
-    linear-gradient(135deg, #ffe1eb, #ffd49c) !important;
-  box-shadow: 0 18px 44px rgba(43, 28, 39, .22), inset 0 0 0 8px rgba(255, 255, 255, .18) !important;
-  position: relative !important;
-  animation: lenchoYarnSpin 1.15s linear infinite !important;
+    linear-gradient(118deg, transparent 0 36%, rgba(255, 255, 255, .34) 45%, transparent 58%),
+    radial-gradient(circle at 45% 50%, transparent 40%, rgba(88, 47, 58, .2) 72%) !important;
+  transform: rotate(-10deg) !important;
 }
 
 .loader-yarn::after {
   content: '' !important;
   position: absolute !important;
-  right: -22px !important;
-  top: 31px !important;
-  width: 36px !important;
-  height: 2px !important;
-  background: linear-gradient(90deg, rgba(255, 221, 234, .95), transparent) !important;
-  transform: rotate(-8deg) !important;
+  inset: 15px !important;
+  border-radius: 50% !important;
+  border: 3px solid rgba(120, 70, 82, .22) !important;
+  border-left-color: transparent !important;
+  border-bottom-color: rgba(255, 255, 255, .18) !important;
+  transform: rotate(23deg) !important;
+}
+
+.loader-strand {
+  position: absolute !important;
+  inset: 9px !important;
+  border-radius: 50% !important;
+  border: 3px solid rgba(118, 68, 80, .22) !important;
+  border-top-color: rgba(255, 250, 242, .58) !important;
+  border-right-color: rgba(255, 213, 163, .38) !important;
+  pointer-events: none !important;
+}
+
+.loader-strand.strand-a {
+  transform: rotate(16deg) scaleX(1.08) !important;
+}
+
+.loader-strand.strand-b {
+  inset: 18px 6px 14px 18px !important;
+  transform: rotate(-38deg) scaleY(.84) !important;
+}
+
+.loader-strand.strand-c {
+  inset: 8px 18px 20px 7px !important;
+  transform: rotate(58deg) scaleX(.78) !important;
+  opacity: .72 !important;
+}
+
+.loader-needle {
+  position: absolute !important;
+  width: 150px !important;
+  height: 9px !important;
+  border-radius: 999px !important;
+  background:
+    linear-gradient(90deg, rgba(255, 236, 185, .4), #f7d69c 24%, #b98554 58%, #f3d39a 100%) !important;
+  box-shadow:
+    0 12px 22px rgba(34, 18, 29, .28),
+    inset 0 2px 2px rgba(255, 255, 255, .55),
+    inset 0 -2px 2px rgba(70, 38, 38, .16) !important;
+  transform: translate3d(-8px, -3px, -44px) rotate(-34deg) !important;
+  z-index: 2 !important;
+}
+
+.loader-needle::after {
+  content: '' !important;
+  position: absolute !important;
+  right: -7px !important;
+  top: -3px !important;
+  width: 18px !important;
+  height: 15px !important;
+  border-radius: 999px 999px 999px 3px !important;
+  border: 3px solid rgba(255, 236, 185, .82) !important;
+  border-left: 0 !important;
+  transform: rotate(16deg) !important;
+}
+
+.loader-thread {
+  position: absolute !important;
+  width: 118px !important;
+  height: 48px !important;
+  right: 2px !important;
+  bottom: 36px !important;
+  border-top: 3px solid rgba(255, 218, 229, .88) !important;
+  border-radius: 50% 50% 0 0 !important;
+  transform: rotate(-18deg) !important;
+  filter: drop-shadow(0 8px 10px rgba(42, 22, 35, .24)) !important;
+  z-index: 1 !important;
+  animation: lenchoThreadBreathe 1.9s ease-in-out infinite !important;
+}
+
+.loader-thread::after {
+  content: '' !important;
+  position: absolute !important;
+  right: -9px !important;
+  top: -3px !important;
+  width: 20px !important;
+  height: 3px !important;
+  border-radius: 999px !important;
+  background: linear-gradient(90deg, rgba(255, 218, 229, .88), transparent) !important;
 }
 
 #loading-screen .loader-logo,
 .page-loading-top .loader-logo {
   font-family: 'Cormorant Garamond', serif !important;
   color: #fff7fb !important;
-  letter-spacing: .24em !important;
+  letter-spacing: .32em !important;
   text-transform: uppercase !important;
-  font-size: .95rem !important;
+  font-size: 1rem !important;
   margin: 0 !important;
-  animation: lenchoLoaderPulse 1.4s ease-in-out infinite !important;
+  text-shadow: 0 12px 30px rgba(30, 16, 27, .3) !important;
+  animation: lenchoLoaderPulse 1.6s ease-in-out infinite !important;
+  z-index: 1 !important;
+}
+
+#loading-screen .loader-caption {
+  color: rgba(255, 247, 251, .76) !important;
+  font-family: 'Jost', sans-serif !important;
+  font-size: .7rem !important;
+  font-weight: 600 !important;
+  letter-spacing: .22em !important;
+  line-height: 1 !important;
+  text-transform: uppercase !important;
+  z-index: 1 !important;
 }
 
 .page-loading-top {
@@ -10780,9 +10956,88 @@ body:not(:has(.admin-layout)) .chat-window {
   to { transform: rotate(360deg); }
 }
 
+@keyframes lenchoYarn3d {
+  0% { transform: rotateX(18deg) rotateY(-18deg) rotateZ(0deg) translateY(0); }
+  50% { transform: rotateX(18deg) rotateY(18deg) rotateZ(180deg) translateY(-4px); }
+  100% { transform: rotateX(18deg) rotateY(-18deg) rotateZ(360deg) translateY(0); }
+}
+
+@keyframes lenchoStageFloat {
+  0%, 100% { transform: translateY(0) rotateX(0deg); }
+  50% { transform: translateY(-8px) rotateX(4deg); }
+}
+
+@keyframes lenchoThreadBreathe {
+  0%, 100% { opacity: .72; transform: rotate(-18deg) translateX(0); }
+  50% { opacity: 1; transform: rotate(-14deg) translateX(7px); }
+}
+
+@keyframes lenchoLoaderAurora {
+  0%, 100% { transform: translate3d(-6%, -4%, 0) rotate(0deg); opacity: .74; }
+  50% { transform: translate3d(6%, 4%, 0) rotate(4deg); opacity: 1; }
+}
+
+@keyframes lenchoLoaderSpecks {
+  to { background-position: 250px 170px, -190px 330px; }
+}
+
 @keyframes lenchoLoaderPulse {
   0%, 100% { opacity: .68; transform: translateY(0); }
   50% { opacity: 1; transform: translateY(-2px); }
+}
+
+@media (max-width: 640px) {
+  .loader-stage {
+    width: 156px !important;
+    height: 126px !important;
+  }
+
+  .loader-yarn {
+    width: 74px !important;
+    height: 74px !important;
+  }
+
+  .loader-needle {
+    width: 124px !important;
+    height: 8px !important;
+  }
+
+  .loader-thread {
+    width: 96px !important;
+    height: 38px !important;
+    bottom: 32px !important;
+  }
+
+  #loading-screen .loader-logo {
+    font-size: .9rem !important;
+  }
+
+  #loading-screen .loader-caption {
+    font-size: .62rem !important;
+  }
+}
+
+@media (max-width: 768px) {
+  html,
+  body {
+    overflow-x: hidden !important;
+  }
+
+  .reveal-left:not(.visible),
+  .reveal-right:not(.visible) {
+    transform: translate3d(0, 22px, 0) scale(.985) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #loading-screen::before,
+  #loading-screen::after,
+  .loader-stage,
+  .loader-yarn,
+  .loader-thread,
+  #loading-screen .loader-logo {
+    animation: none !important;
+  }
 }
 
 body.admin-mode::before,

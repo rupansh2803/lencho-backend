@@ -54,7 +54,7 @@
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer"/></noscript>
   
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="/css/style.css?v=5.4"/>
+  <link rel="stylesheet" href="/css/style.css?v=5.5"/>
 
   <script>
     window.__lenchoScriptsReady = false;
@@ -139,8 +139,17 @@
   </script>
   <!-- Loading Screen -->
   <div id="loading-screen" aria-hidden="true">
-    <div class="loader-yarn" aria-hidden="true"></div>
+    <div class="loader-stage" aria-hidden="true">
+      <div class="loader-needle"></div>
+      <div class="loader-yarn">
+        <span class="loader-strand strand-a"></span>
+        <span class="loader-strand strand-b"></span>
+        <span class="loader-strand strand-c"></span>
+      </div>
+      <div class="loader-thread"></div>
+    </div>
     <div class="loader-logo">Lencho</div>
+    <div class="loader-caption">Handmade Woollen</div>
   </div>
 
   <!-- Toast Notification -->
