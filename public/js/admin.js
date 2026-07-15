@@ -412,8 +412,9 @@ function buildAdminPanel() {
         <div class="admin-menu-item active" id="am-dashboard" onclick="adminTab('dashboard')"><i class="fas fa-chart-line" style="width:20px;"></i> Dashboard</div>
         <div class="admin-menu-item" id="am-orders" onclick="adminTab('orders')"><i class="fas fa-shopping-bag" style="width:20px;"></i> Orders</div>
         <div class="admin-menu-item" id="am-products" onclick="adminTab('products')"><i class="fas fa-gem" style="width:20px;"></i> Jewellery Products</div>
-        <div class="admin-menu-item" id="am-woollen" onclick="adminTab('woollen')"><i class="fas fa-mitten" style="width:20px;"></i> Woollen Store</div>
         <div class="admin-menu-item" id="am-collections" onclick="adminTab('collections')"><i class="fas fa-layer-group" style="width:20px;"></i> Jewellery Collections</div>
+        <div class="admin-menu-item" id="am-woollen" onclick="adminTab('woollen')"><i class="fas fa-mitten" style="width:20px;"></i> Woollen Store</div>
+        <div class="admin-menu-item" id="am-woollen-collections" onclick="adminTab('woollen-collections')"><i class="fas fa-layer-group" style="width:20px;"></i> Woollen Collections</div>
         <div class="admin-menu-item" id="am-inventory" onclick="adminTab('inventory')"><i class="fas fa-warehouse" style="width:20px;"></i> Inventory Summary</div>
         <div class="admin-menu-item" id="am-inquiries" onclick="adminTab('inquiries')"><i class="fas fa-envelope-open-text" style="width:20px;"></i> Inquiries</div>
         <div class="admin-menu-item" id="am-marketing" onclick="adminTab('marketing')"><i class="fas fa-paper-plane" style="width:20px;"></i> Marketing Hub</div>
@@ -482,7 +483,8 @@ function adminTab(tab) {
   if (tab === 'products') adminProducts();
   if (tab === 'add-product') adminAddProduct();
   if (tab === 'woollen') adminWoollen();
-  if (tab === 'collections') adminCollections();
+  if (tab === 'collections') adminCollections('main');
+  if (tab === 'woollen-collections') adminCollections('woollen');
   if (tab === 'inventory') adminInventorySummary();
   if (tab === 'inquiries') adminInquiries();
   if (tab === 'marketing') adminMarketingHub();
@@ -3110,14 +3112,28 @@ async function saveCategory() {
   if (!body.name) return toast('Collection name is required', 'error');
   const endpoint = adminCategoryFormState?.id ? `/api/admin/categories/${adminCategoryFormState.id}` : '/api/admin/categories';
   const method = adminCategoryFormState?.id ? 'PUT' : 'POST';
+  const openedFromProductManager = Boolean(document.getElementById('admin-product-submit'));
+  const draft = openedFromProductManager ? snapshotAdminProductManagerDraft() : null;
   const r = await api(endpoint, { method, body });
   if (r.error) return toast(r.error, 'error');
   clearAdminCache('/api/categories');
   clearAdminCache('/api/products');
   toast(adminCategoryFormState?.id ? 'Collection updated' : 'Collection added', 'success');
-  document.querySelector('.modal-overlay')?.remove();
-  if (body.storeType === 'woollen') adminWoollen();
-  else adminCollections();
+  document.querySelectorAll('.modal-overlay').forEach(modal => modal.remove());
+  const savedCategory = r.category || {};
+  adminCategoryFormState = null;
+  if (openedFromProductManager) {
+    const storeType = body.storeType === 'woollen' ? 'woollen' : 'main';
+    await loadAdminProductManagerData(storeType);
+    adminProductManagerState.editingProduct = {
+      ...(draft || {}),
+      storeType,
+      category: savedCategory.slug || draft?.category || ''
+    };
+    renderAdminProductManager();
+    return;
+  }
+  adminCollections(body.storeType === 'woollen' ? 'woollen' : 'main');
 }
 
 async function deleteCategory(id, storeType = '') {
@@ -3128,8 +3144,7 @@ async function deleteCategory(id, storeType = '') {
   clearAdminCache('/api/categories');
   clearAdminCache('/api/products');
   toast('Collection deleted', 'info');
-  if (targetStore === 'woollen') adminWoollen();
-  else adminCollections();
+  adminCollections(targetStore === 'woollen' ? 'woollen' : 'main');
 }
 
 async function editCategoryById(categoryId) {
@@ -3139,15 +3154,131 @@ async function editCategoryById(categoryId) {
   showAddCategory(category.storeType || 'main', JSON.stringify(category));
 }
 
-async function adminCollections() {
-  const cats = await adminCachedApi('/api/categories');
-  const products = await adminCachedApi('/api/products');
+function getCollectionInventorySummary(collection, products = []) {
+  const slug = collection?.slug || '';
+  const items = products.filter(product => product.category === slug);
+  const totalStock = items.reduce((sum, product) => sum + Number(product.stock || 0), 0);
+  const outOfStock = items.filter(product => Number(product.stock || 0) <= 0).length;
+  return { items, totalStock, outOfStock };
+}
+
+async function viewCategoryProducts(slug, storeType = 'main') {
+  const qs = new URLSearchParams();
+  if (slug) qs.set('category', slug);
+  if (storeType) qs.set('storeType', storeType);
+  const products = await api('/api/products?' + qs.toString());
+  const container = document.getElementById('category-inventory');
+  const body = document.getElementById('inv-body');
+  const title = document.querySelector('#inv-title span');
+  if (!container || !body || !title) return;
+  if (products.error) return toast(products.error, 'error');
+
+  title.innerText = slug ? adminProductManagerSlugLabel(slug) : 'All Products';
+  body.innerHTML = Array.isArray(products) && products.length
+    ? products.map(product => {
+      let statusClass = 'status-instock';
+      let statusText = 'In stock';
+      const stock = Number(product.stock || 0);
+      if (stock <= 0) {
+        statusClass = 'status-outofstock';
+        statusText = 'Out of stock';
+      } else if (stock < 5) {
+        statusClass = 'status-fewstock';
+        statusText = `Few stock (${stock})`;
+      }
+      const image = product.images?.[0] || product.image || '';
+      const name = adminProductManagerEscape(product.name || 'Product');
+      return `
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:15px;">
+              <img src="${safeImageUrl(image, product.category)}" ${imageFallbackAttr(product.category, image)} style="width:44px;height:44px;border-radius:9px;object-fit:cover;background:#fff;border:1px solid #eee;"/>
+              <div>
+                <div style="font-weight:700;">${name}</div>
+                <small style="color:var(--gray);">SKU: ${adminProductManagerEscape(product.sku || 'Not set')}</small>
+              </div>
+            </div>
+          </td>
+          <td>${formatCurrency(product.price || 0)}</td>
+          <td><span class="stock-badge ${statusClass}">${statusText}</span></td>
+          <td><button class="btn-sm btn-outline" onclick="adminEditProduct('${product.id}')"><i class="fas fa-edit"></i> Edit</button></td>
+        </tr>
+      `;
+    }).join('')
+    : `<tr><td colspan="4" style="text-align:center;color:var(--gray);padding:1.5rem;">No products inside this collection yet.</td></tr>`;
+  container.style.display = 'block';
+  container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function adminCollections(storeType = 'main') {
+  const normalizedStore = storeType === 'woollen' ? 'woollen' : 'main';
+  const storeLabel = getAdminStoreLabel(normalizedStore);
+  const [cats, products] = await Promise.all([
+    adminCachedApi(`/api/categories?storeType=${normalizedStore}`),
+    adminCachedApi(`/api/products?storeType=${normalizedStore}`)
+  ]);
   if (cats.error || products.error) {
     document.getElementById('admin-content').innerHTML = renderAdminAccessPanel(cats.error || products.error);
     return;
   }
-  const counts = products.reduce((acc, p) => { acc[p.category] = (acc[p.category] || 0) + 1; return acc; }, {});
-  document.getElementById('admin-content').innerHTML = `<div class="admin-header"><h1 class="admin-page-title">Product Collections (${cats.length})</h1><button class="btn-primary" onclick="showAddCategory()"><i class="fas fa-plus"></i> New Collection</button></div><div class="stats-grid" style="margin-bottom:2rem;"><div class="stat-card"><div class="stat-label">Total Categories</div><div class="stat-value">${cats.length}</div></div><div class="stat-card"><div class="stat-label">Active Slugs</div><div class="stat-value">${cats.filter(c=>c.slug).length}</div></div></div><div class="admin-table-wrap"><table><thead><tr><th>Image</th><th>Name</th><th>Slug</th><th>Product Count</th><th>Actions</th></tr></thead><tbody>${cats.map(c => `<tr><td><img src="${safeImageUrl(c.image, c.slug)}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;background:#f0f0f0;"/></td><td>${c.name}</td><td><code>${c.slug}</code></td><td><span style="background:var(--rose-light);color:var(--rose-dark);padding:4px 8px;border-radius:6px;font-weight:600;">${counts[c.slug] || 0}</span></td><td><button class="btn-sm btn-outline" onclick="viewCategoryProducts('${c.slug}')"><i class="fas fa-boxes"></i> Inventory</button> <button class="btn-sm btn-outline" onclick="editCategoryById('${c.id || c._id}')"><i class="fas fa-pen"></i> Edit</button> <button class="btn-sm" onclick="deleteCategory('${c.id || c._id}', '${c.storeType || 'main'}')" style="background:#fee2e2;color:#ef4444;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button></td></tr>`).join('')}</tbody></table></div><div id="category-inventory" style="margin-top:3rem;display:none;"><div class="admin-header"><h2 id="inv-title" class="admin-page-title">Inventory: <span>All Products</span></h2><button class="btn-outline" onclick="document.getElementById('category-inventory').style.display='none'">Close</button></div><div class="admin-table-wrap"><table id="inv-table"><thead><tr><th>Product</th><th>Original Price</th><th>Stock Status</th><th>Action</th></tr></thead><tbody id="inv-body"></tbody></table></div></div>`;
+  const rows = (cats || []).map(collection => {
+    const summary = getCollectionInventorySummary(collection, products || []);
+    const id = collection.id || collection._id || collection.slug;
+    const slug = collection.slug || '';
+    const stockLabel = summary.totalStock > 0 ? `${summary.totalStock} qty` : 'No stock';
+    const stockColor = summary.totalStock > 0 ? '#166534' : '#b91c1c';
+    return `
+      <tr>
+        <td><img src="${safeImageUrl(collection.image, slug)}" ${imageFallbackAttr(slug, collection.image)} style="width:44px;height:44px;border-radius:8px;object-fit:cover;background:#f8f3f6;border:1px solid #eee;"/></td>
+        <td>
+          <div style="font-weight:800;color:var(--dark);">${adminProductManagerEscape(collection.name || 'Collection')}</div>
+          <small style="color:var(--gray);">${adminProductManagerEscape(collection.description || `${storeLabel} collection`)}</small>
+        </td>
+        <td><code>${adminProductManagerEscape(slug)}</code></td>
+        <td><span style="background:var(--rose-light);color:var(--rose-dark);padding:4px 9px;border-radius:999px;font-weight:800;">${summary.items.length}</span></td>
+        <td><span style="background:${summary.totalStock > 0 ? '#dcfce7' : '#fee2e2'};color:${stockColor};padding:4px 9px;border-radius:999px;font-weight:800;">${stockLabel}</span>${summary.outOfStock ? `<small style="display:block;color:#b91c1c;margin-top:.35rem;">${summary.outOfStock} out of stock</small>` : ''}</td>
+        <td>
+          <button class="btn-sm btn-outline" onclick="viewCategoryProducts('${slug}', '${normalizedStore}')"><i class="fas fa-boxes"></i> Products</button>
+          <button class="btn-sm btn-outline" onclick="editCategoryById('${id}')"><i class="fas fa-pen"></i> Edit</button>
+          <button class="btn-sm" onclick="deleteCategory('${id}', '${normalizedStore}')" style="background:#fee2e2;color:#ef4444;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+  const totalStock = (products || []).reduce((sum, product) => sum + Number(product.stock || 0), 0);
+  document.getElementById('admin-content').innerHTML = `
+    <div class="admin-header">
+      <div>
+        <h1 class="admin-page-title">${storeLabel} Collections (${cats.length})</h1>
+        <p style="color:var(--gray);font-size:.95rem;">Every collection below shows its product count and available quantity.</p>
+      </div>
+      <button class="btn-primary" onclick="showAddCategory('${normalizedStore}')"><i class="fas fa-plus"></i> New ${storeLabel} Collection</button>
+    </div>
+    <div class="stats-grid" style="margin-bottom:2rem;">
+      <div class="stat-card"><div class="stat-label">Collections</div><div class="stat-value">${cats.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Products</div><div class="stat-value">${products.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Total Quantity</div><div class="stat-value">${totalStock}</div></div>
+      <div class="stat-card"><div class="stat-label">Out Of Stock</div><div class="stat-value">${products.filter(product => Number(product.stock || 0) <= 0).length}</div></div>
+    </div>
+    <div class="admin-table-wrap">
+      <table>
+        <thead><tr><th>Image</th><th>Name</th><th>Slug</th><th>Products</th><th>Quantity</th><th>Actions</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="6" style="text-align:center;color:var(--gray);padding:1.5rem;">No ${storeLabel.toLowerCase()} collections yet. Create one above.</td></tr>`}</tbody>
+      </table>
+    </div>
+    <div id="category-inventory" style="margin-top:3rem;display:none;">
+      <div class="admin-header">
+        <h2 id="inv-title" class="admin-page-title">Products: <span>All Products</span></h2>
+        <button class="btn-outline" onclick="document.getElementById('category-inventory').style.display='none'">Close</button>
+      </div>
+      <div class="admin-table-wrap">
+        <table id="inv-table">
+          <thead><tr><th>Product</th><th>Price</th><th>Stock Status</th><th>Action</th></tr></thead>
+          <tbody id="inv-body"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
 }
 
 let adminProductManagerState = {
