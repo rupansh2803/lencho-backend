@@ -2133,7 +2133,14 @@ async function uploadMediaFiles(files, folder) {
   if (!list.length) return [];
 
   if (hasCloudinaryConfig()) {
-    return Promise.all(list.map(file => uploadToCloudinary(file, folder)));
+    try {
+      return await Promise.all(list.map(file => uploadToCloudinary(file, folder)));
+    } catch (error) {
+      const status = error?.response?.status;
+      const message = error?.response?.data?.error?.message || error?.response?.data?.message || error.message;
+      console.warn(`[Upload] Cloudinary upload failed${status ? ` (${status})` : ''}; saving media to local /uploads fallback. ${message || ''}`);
+      return Promise.all(list.map(file => saveLocalMediaFile(file, sanitizeUploadFolder(folder))));
+    }
   }
 
   if (isProduction) {

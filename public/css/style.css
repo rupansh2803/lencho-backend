@@ -11040,6 +11040,87 @@ body:not(:has(.admin-layout)) .chat-window {
   }
 }
 
+.admin-category-modal {
+  position: relative !important;
+  padding-top: 3.25rem !important;
+}
+
+.admin-modal-close,
+.admin-image-remove {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  cursor: pointer !important;
+  line-height: 1 !important;
+}
+
+.admin-modal-close {
+  position: absolute !important;
+  top: 14px !important;
+  right: 14px !important;
+  width: 38px !important;
+  height: 38px !important;
+  background: rgba(63, 36, 52, .08) !important;
+  color: #6f3e55 !important;
+  font-size: 1.45rem !important;
+  box-shadow: 0 8px 20px rgba(63, 36, 52, .08) !important;
+  z-index: 2 !important;
+}
+
+.admin-modal-close:hover {
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+}
+
+.admin-category-preview-wrap {
+  position: relative !important;
+  margin-top: .75rem !important;
+  max-width: 170px !important;
+}
+
+.admin-category-preview-img {
+  width: 100% !important;
+  aspect-ratio: 1 / 1 !important;
+  border-radius: 12px !important;
+  object-fit: cover !important;
+  background: #fff !important;
+  border: 1px solid rgba(201, 106, 138, .16) !important;
+}
+
+.admin-image-remove {
+  position: absolute !important;
+  top: 7px !important;
+  right: 7px !important;
+  width: 28px !important;
+  height: 28px !important;
+  background: rgba(255, 255, 255, .95) !important;
+  color: #b91c1c !important;
+  font-size: 1.1rem !important;
+  font-weight: 800 !important;
+  box-shadow: 0 8px 22px rgba(63, 36, 52, .18) !important;
+  z-index: 4 !important;
+}
+
+.admin-image-remove:hover {
+  background: #fee2e2 !important;
+  transform: scale(1.04) !important;
+}
+
+.admin-image-uploading {
+  position: absolute !important;
+  left: 8px !important;
+  bottom: 8px !important;
+  padding: 4px 8px !important;
+  border-radius: 999px !important;
+  background: rgba(63, 36, 52, .84) !important;
+  color: #fff !important;
+  font-size: .68rem !important;
+  font-weight: 700 !important;
+  letter-spacing: .03em !important;
+}
+
 body.admin-mode::before,
 body.admin-mode #app::before {
   content: none !important;

@@ -1190,11 +1190,25 @@ async function saveEditProduct(id) {
 let adminProductFormState = null;
 let adminCategoryFormState = null;
 
+function getAdminAuthToken() {
+  try {
+    const candidates = [
+      typeof getJWTToken === 'function' ? getJWTToken() : '',
+      localStorage.getItem('lencho_jwt_token_v1'),
+      localStorage.getItem('authToken'),
+      sessionStorage.getItem('authToken')
+    ];
+    return candidates.map(token => String(token || '').trim()).find(Boolean) || '';
+  } catch {
+    return '';
+  }
+}
+
 function getAdminAuthHeaders() {
   const headers = {};
   try {
-    const token = typeof getJWTToken === 'function' ? getJWTToken() : null;
-    if (token) headers.Authorization = `Bearer ${token}`;
+    const token = getAdminAuthToken();
+    if (token) headers.Authorization = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
   } catch {}
   return headers;
 }
@@ -1211,7 +1225,10 @@ async function uploadAdminMediaFile(file, folder = 'products/general') {
   } catch {
     throw new Error('Upload API returned non-JSON response');
   }
-  if (!res.ok || data.error || !data.url) throw new Error(data.error || 'Upload failed');
+  if (res.status === 401 || res.status === 403) {
+    throw new Error('Admin login expired. Please login again, then upload.');
+  }
+  if (!res.ok || data.error || !data.url) throw new Error(data.error || data.message || 'Upload failed');
   return data.url;
 }
 
@@ -1278,7 +1295,7 @@ function renderAdminProductImages() {
   if (!grid || !adminProductFormState) return;
   const category = document.getElementById('p-cat')?.value || '';
   grid.innerHTML = adminProductFormState.images.length
-    ? adminProductFormState.images.map((image, index) => `<div style="border:1px solid var(--border);border-radius:14px;padding:.6rem;background:#fff;"><div style="position:relative;aspect-ratio:1;overflow:hidden;border-radius:12px;background:#faf7f9;"><img src="${safeImageUrl(image, category)}" style="width:100%;height:100%;object-fit:cover;" />${index === 0 ? '<span style="position:absolute;left:8px;top:8px;background:rgba(22,163,74,.92);color:#fff;padding:4px 8px;border-radius:999px;font-size:.72rem;font-weight:700;">Main</span>' : ''}</div><div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.55rem;"><button type="button" class="btn-outline btn-sm" onclick="moveAdminProductImage(${index}, -1)" ${index === 0 ? 'disabled' : ''}>Up</button><button type="button" class="btn-outline btn-sm" onclick="moveAdminProductImage(${index}, 1)" ${index === adminProductFormState.images.length - 1 ? 'disabled' : ''}>Down</button><button type="button" class="btn-outline btn-sm" onclick="removeAdminProductImage(${index})" style="color:#dc2626;border-color:#fecaca;">Remove</button></div></div>`).join('')
+    ? adminProductFormState.images.map((image, index) => `<div style="border:1px solid var(--border);border-radius:14px;padding:.6rem;background:#fff;"><div style="position:relative;aspect-ratio:1;overflow:hidden;border-radius:12px;background:#faf7f9;"><img src="${safeImageUrl(image, category)}" style="width:100%;height:100%;object-fit:cover;" />${String(image || '').startsWith('blob:') ? '<span class="admin-image-uploading">Uploading</span>' : ''}${index === 0 ? '<span style="position:absolute;left:8px;top:8px;background:rgba(22,163,74,.92);color:#fff;padding:4px 8px;border-radius:999px;font-size:.72rem;font-weight:700;">Main</span>' : ''}<button type="button" class="admin-image-remove" onclick="removeAdminProductImage(${index})" aria-label="Remove product image" title="Remove image">&times;</button></div><div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.55rem;"><button type="button" class="btn-outline btn-sm" onclick="moveAdminProductImage(${index}, -1)" ${index === 0 ? 'disabled' : ''}>Up</button><button type="button" class="btn-outline btn-sm" onclick="moveAdminProductImage(${index}, 1)" ${index === adminProductFormState.images.length - 1 ? 'disabled' : ''}>Down</button></div></div>`).join('')
     : `<div style="padding:1rem;border:2px dashed var(--border);border-radius:16px;color:var(--gray);text-align:center;">No image selected.</div>`;
   syncAdminProductFormState();
 }
@@ -3047,13 +3064,31 @@ async function handleCategoryImageUpload(event, field) {
   try {
     adminCategoryFormState[field] = await uploadAdminMediaFile(file, `categories/${adminCategoryFormState?.storeType || 'main'}`);
     const img = document.getElementById(`nc-preview-${field}`);
+    const wrap = document.getElementById(`nc-preview-wrap-${field}`);
     if (img) { img.src = safeImageUrl(adminCategoryFormState[field], ''); img.style.display = 'block'; }
+    if (wrap) wrap.style.display = 'inline-block';
     toast('Collection image uploaded', 'success');
   } catch (error) {
     toast(error.message || 'Image upload failed', 'error');
   } finally {
     event.target.value = '';
   }
+}
+
+function removeCategoryImage(field) {
+  if (!adminCategoryFormState) return;
+  adminCategoryFormState[field] = '';
+  const img = document.getElementById(`nc-preview-${field}`);
+  const wrap = document.getElementById(`nc-preview-wrap-${field}`);
+  const input = document.getElementById(`nc-${field}-input`);
+  if (img) { img.removeAttribute('src'); img.style.display = 'none'; }
+  if (wrap) wrap.style.display = 'none';
+  if (input) input.value = '';
+}
+
+function renderCategoryImagePicker(field, label) {
+  const value = adminCategoryFormState?.[field] || '';
+  return `<div class="form-group"><label>${label}</label><input id="nc-${field}-input" type="file" accept="image/*" onchange="handleCategoryImageUpload(event, '${field}')"/><div id="nc-preview-wrap-${field}" class="admin-category-preview-wrap" style="${value ? '' : 'display:none;'}"><img id="nc-preview-${field}" src="${safeImageUrl(value, '')}" class="admin-category-preview-img" style="${value ? '' : 'display:none;'}"/><button type="button" class="admin-image-remove" onclick="removeCategoryImage('${field}')" aria-label="Remove ${label}" title="Remove image">&times;</button></div></div>`;
 }
 
 async function showAddCategory(storeType = 'main', categoryJson = null) {
@@ -3063,7 +3098,10 @@ async function showAddCategory(storeType = 'main', categoryJson = null) {
   const safeCategoryDescription = adminProductManagerEscape(adminCategoryFormState.description);
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
-  modal.innerHTML = `<div class="modal-card"><h3>${existing ? 'Edit' : 'Add New'} ${adminCategoryFormState.storeType === 'woollen' ? 'Woollen ' : ''}Collection</h3><div class="form-group"><label>Name</label><input id="nc-name" value="${safeCategoryName}" placeholder="Collection name"/></div><div class="form-grid"><div class="form-group"><label>Collection Image</label><input type="file" accept="image/*" onchange="handleCategoryImageUpload(event, 'image')"/><img id="nc-preview-image" src="${safeImageUrl(adminCategoryFormState.image, '')}" style="width:100%;max-width:160px;margin-top:.75rem;border-radius:12px;object-fit:cover;${adminCategoryFormState.image ? '' : 'display:none;'}"/></div><div class="form-group"><label>Banner Image</label><input type="file" accept="image/*" onchange="handleCategoryImageUpload(event, 'bannerImage')"/><img id="nc-preview-bannerImage" src="${safeImageUrl(adminCategoryFormState.bannerImage, '')}" style="width:100%;max-width:160px;margin-top:.75rem;border-radius:12px;object-fit:cover;${adminCategoryFormState.bannerImage ? '' : 'display:none;'}"/></div></div><div class="form-grid" style="margin-top:1rem;"><div class="form-group"><label>Icon</label><select id="nc-icon">${['ribbon','flower','butterfly','yarn','star','baby','diamond','heart','gift','sparkles','home','snowflake'].map(v=>`<option value="${v}" ${adminCategoryFormState.icon===v?'selected':''}>${v}</option>`).join('')}</select></div><div class="form-group"><label>Theme</label><select id="nc-theme">${['pastel-pink','lavender','mint','cream','peach','baby-blue','light-yellow','rose-gold','soft-purple','sage'].map(v=>`<option value="${v}" ${adminCategoryFormState.theme===v?'selected':''}>${v}</option>`).join('')}</select></div></div><div class="form-group"><label>Description</label><textarea id="nc-desc" rows="2">${safeCategoryDescription}</textarea></div><div style="display:flex;gap:1rem;flex-wrap:wrap;"><button class="btn-primary" onclick="saveCategory()">${existing ? 'Save Collection' : 'Create Collection'}</button><button class="btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancel</button></div></div>`;
+  modal.innerHTML = `<div class="modal-card admin-category-modal"><button type="button" class="admin-modal-close" onclick="this.closest('.modal-overlay').remove()" aria-label="Close collection form">&times;</button><h3>${existing ? 'Edit' : 'Add New'} ${adminCategoryFormState.storeType === 'woollen' ? 'Woollen ' : ''}Collection</h3><div class="form-group"><label>Name</label><input id="nc-name" value="${safeCategoryName}" placeholder="Collection name"/></div><div class="form-grid">${renderCategoryImagePicker('image', 'Collection Image')}${renderCategoryImagePicker('bannerImage', 'Banner Image')}</div><div class="form-grid" style="margin-top:1rem;"><div class="form-group"><label>Icon</label><select id="nc-icon">${['ribbon','flower','butterfly','yarn','star','baby','diamond','heart','gift','sparkles','home','snowflake'].map(v=>`<option value="${v}" ${adminCategoryFormState.icon===v?'selected':''}>${v}</option>`).join('')}</select></div><div class="form-group"><label>Theme</label><select id="nc-theme">${['pastel-pink','lavender','mint','cream','peach','baby-blue','light-yellow','rose-gold','soft-purple','sage'].map(v=>`<option value="${v}" ${adminCategoryFormState.theme===v?'selected':''}>${v}</option>`).join('')}</select></div></div><div class="form-group"><label>Description</label><textarea id="nc-desc" rows="2">${safeCategoryDescription}</textarea></div><div style="display:flex;gap:1rem;flex-wrap:wrap;"><button class="btn-primary" onclick="saveCategory()">${existing ? 'Save Collection' : 'Create Collection'}</button><button class="btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancel</button></div></div>`;
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) modal.remove();
+  });
   document.body.appendChild(modal);
 }
 
@@ -3876,32 +3914,47 @@ async function handleAdminProductFiles(files) {
   if (!list.length || !adminProductFormState) return;
   const category = document.getElementById('p-cat')?.value || 'general';
   adminProductManagerState.uploadingCount += list.length;
-  renderAdminProductManager(true);
+  const status = document.getElementById('admin-product-upload-status');
+  if (status) {
+    status.textContent = `Uploading ${list.length} image(s)...`;
+    status.style.color = '#b45309';
+  }
+  const submitButton = document.getElementById('admin-product-submit');
+  if (submitButton) submitButton.disabled = true;
   try {
-    for (const file of list) {
+    const results = await Promise.all(list.map(async (file) => {
       const tempUrl = URL.createObjectURL(file);
       adminProductFormState.images.push(tempUrl);
       renderAdminProductImages();
-      const placeholderIndex = adminProductFormState.images.length - 1;
       try {
         const uploadedUrl = await uploadAdminMediaFile(file, `products/${category}`);
-        adminProductFormState.images[placeholderIndex] = uploadedUrl;
+        const index = adminProductFormState.images.indexOf(tempUrl);
+        if (index >= 0) adminProductFormState.images[index] = uploadedUrl;
         renderAdminProductImages();
+        return { ok: true, file: file.name };
       } catch (error) {
-        adminProductFormState.images = adminProductFormState.images.filter((_, index) => index !== placeholderIndex);
+        adminProductFormState.images = adminProductFormState.images.filter(image => image !== tempUrl);
         renderAdminProductImages();
-        throw error;
+        return { ok: false, file: file.name, error };
       } finally {
         URL.revokeObjectURL(tempUrl);
+        adminProductManagerState.uploadingCount = Math.max(0, adminProductManagerState.uploadingCount - 1);
+        if (status) status.textContent = adminProductManagerState.uploadingCount ? `Uploading ${adminProductManagerState.uploadingCount} image(s)...` : 'Upload now, preview instantly, and reorder before saving.';
       }
-    }
-    toast('Images uploaded successfully', 'success');
+    }));
+    const failed = results.filter(result => !result.ok);
+    const uploaded = results.length - failed.length;
+    if (uploaded) toast(`${uploaded} image${uploaded > 1 ? 's' : ''} uploaded`, 'success');
+    if (failed.length) toast(`${failed.length} image${failed.length > 1 ? 's' : ''} failed. ${failed[0].error?.message || 'Try again.'}`, 'error', 5000);
   } catch (error) {
     toast(error.message || 'Image upload failed', 'error');
   } finally {
-    adminProductManagerState.uploadingCount = Math.max(0, adminProductManagerState.uploadingCount - list.length);
-    const status = document.getElementById('admin-product-upload-status');
-    if (status) status.textContent = adminProductManagerState.uploadingCount ? `Uploading ${adminProductManagerState.uploadingCount} image(s)...` : 'Upload now, preview instantly, and reorder before saving.';
+    adminProductManagerState.uploadingCount = 0;
+    if (status) {
+      status.textContent = 'Upload now, preview instantly, and reorder before saving.';
+      status.style.color = 'var(--gray)';
+    }
+    if (submitButton) submitButton.disabled = false;
     const input = document.getElementById('p-image-upload');
     if (input) input.value = '';
   }
