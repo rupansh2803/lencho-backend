@@ -1625,7 +1625,7 @@ function getConfiguredAdminAccounts() {
   addAccount({
     email: SECONDARY_OWNER_EMAIL,
     name: 'Rupansh Kumar',
-    adminType: 'employee'
+    adminType: 'owner'
   });
 
   cleanEnvValue(process.env.ADMIN_SECONDARY_EMAILS)
@@ -2433,7 +2433,7 @@ async function sendAdminSecurityAlert({ email = '', reason = 'admin_login_failed
             <p><b>Reason:</b> ${escapeEmailHtml(reason)}</p>
             <p><b>IP:</b> ${escapeEmailHtml(ip || 'unknown')}</p>
             <p><b>Device:</b> ${escapeEmailHtml(userAgent || 'unknown')}</p>
-            <p style="color:#7a6671;font-size:13px;margin-top:18px;">If this was not you or your employee, keep the email out of ADMIN_EMPLOYEE_EMAILS and rotate passwords.</p>
+            <p style="color:#7a6671;font-size:13px;margin-top:18px;">If this was not you or an approved admin, remove the email from admin access and rotate passwords.</p>
           </div>
         </div>`
     });
@@ -5543,12 +5543,14 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
 function normalizeAdminAccountForResponse(user = {}, extras = {}) {
   const plain = typeof user.toObject === 'function' ? user.toObject() : user;
   const { password, otp, ...safe } = plain || {};
+  const adminEmail = normalizeAdminEmail(plain?.email);
+  const isBuiltInOwner = adminEmail === DEFAULT_OWNER_ADMIN_EMAIL || adminEmail === normalizeAdminEmail(SECONDARY_OWNER_EMAIL);
   return {
     ...safe,
     ...extras,
     id: plain?._id?.toString?.() || plain?.id || extras.id,
-    adminType: plain?.adminType || (normalizeAdminEmail(plain?.email) === DEFAULT_OWNER_ADMIN_EMAIL ? 'owner' : 'employee'),
-    isOwner: normalizeAdminEmail(plain?.email) === DEFAULT_OWNER_ADMIN_EMAIL || plain?.adminType === 'owner',
+    adminType: isBuiltInOwner ? 'owner' : (plain?.adminType || 'employee'),
+    isOwner: isBuiltInOwner || plain?.adminType === 'owner',
     isBlocked: Boolean(plain?.isBlocked),
     loginCount: Number(plain?.loginCount || 0),
     lastLoginAt: plain?.lastLoginAt || null
@@ -5622,9 +5624,8 @@ app.post('/api/admin/admins', requireAdmin, requireOwnerAdmin, async (req, res) 
     const email = normalizeAdminEmail(req.body?.email);
     const password = cleanEnvValue(req.body?.password);
     const phone = cleanEnvValue(req.body?.phone);
-    const adminNotes = cleanEnvValue(req.body?.adminNotes || req.body?.notes);
     if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
-    if (!isValidEmailFormat(email)) return res.status(400).json({ error: 'Enter a valid employee email' });
+    if (!isValidEmailFormat(email)) return res.status(400).json({ error: 'Enter a valid admin email' });
     if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
 
     const actor = req.adminActor || await getAdminActor(req);
@@ -5639,7 +5640,6 @@ app.post('/api/admin/admins', requireAdmin, requireOwnerAdmin, async (req, res) 
         adminType: 'employee',
         createdByAdminId: actor?._id?.toString?.() || actor?.id || '',
         createdByAdminEmail: actor?.email || '',
-        adminNotes,
         authProvider: 'email',
         isVerified: true,
         emailVerifiedAt: new Date(),
@@ -5661,7 +5661,6 @@ app.post('/api/admin/admins', requireAdmin, requireOwnerAdmin, async (req, res) 
       adminType: 'employee',
       createdByAdminId: actor?.id || '',
       createdByAdminEmail: actor?.email || '',
-      adminNotes,
       authProvider: 'email',
       isVerified: true,
       emailVerifiedAt: new Date().toISOString(),
@@ -5680,7 +5679,7 @@ app.put('/api/admin/admins/:id/password', requireAdmin, requireOwnerAdmin, async
     if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
     if (useDB) {
       const admin = await User.findOne({ _id: req.params.id, role: 'admin' });
-      if (!admin) return res.status(404).json({ error: 'Admin employee not found' });
+      if (!admin) return res.status(404).json({ error: 'Admin account not found' });
       if (isOwnerAdminAccount(admin)) return res.status(400).json({ error: 'Owner password must be changed from Account Security' });
       admin.password = await bcrypt.hash(password, 10);
       admin.authProvider = 'email';
@@ -5689,7 +5688,7 @@ app.put('/api/admin/admins/:id/password', requireAdmin, requireOwnerAdmin, async
     }
     const users = readJson(FILES.users);
     const index = users.findIndex(user => String(user.id) === String(req.params.id) && user.role === 'admin');
-    if (index === -1) return res.status(404).json({ error: 'Admin employee not found' });
+    if (index === -1) return res.status(404).json({ error: 'Admin account not found' });
     if (isOwnerAdminAccount(users[index])) return res.status(400).json({ error: 'Owner password must be changed from Account Security' });
     users[index].password = await bcrypt.hash(password, 10);
     writeJson(FILES.users, users);
@@ -5704,7 +5703,7 @@ app.patch('/api/admin/admins/:id/status', requireAdmin, requireOwnerAdmin, async
     if (String(req.params.id) === currentId) return res.status(400).json({ error: 'You cannot disable your own admin account' });
     if (useDB) {
       const admin = await User.findOne({ _id: req.params.id, role: 'admin' });
-      if (!admin) return res.status(404).json({ error: 'Admin employee not found' });
+      if (!admin) return res.status(404).json({ error: 'Admin account not found' });
       if (isOwnerAdminAccount(admin)) return res.status(400).json({ error: 'Owner admin cannot be disabled here' });
       admin.isBlocked = blocked;
       await admin.save();
@@ -5712,7 +5711,7 @@ app.patch('/api/admin/admins/:id/status', requireAdmin, requireOwnerAdmin, async
     }
     const users = readJson(FILES.users);
     const index = users.findIndex(user => String(user.id) === String(req.params.id) && user.role === 'admin');
-    if (index === -1) return res.status(404).json({ error: 'Admin employee not found' });
+    if (index === -1) return res.status(404).json({ error: 'Admin account not found' });
     if (isOwnerAdminAccount(users[index])) return res.status(400).json({ error: 'Owner admin cannot be disabled here' });
     users[index].isBlocked = blocked;
     writeJson(FILES.users, users);
@@ -5726,14 +5725,14 @@ app.delete('/api/admin/admins/:id', requireAdmin, requireOwnerAdmin, async (req,
     if (String(req.params.id) === currentId) return res.status(400).json({ error: 'You cannot remove your own admin account' });
     if (useDB) {
       const admin = await User.findOne({ _id: req.params.id, role: 'admin' });
-      if (!admin) return res.status(404).json({ error: 'Admin employee not found' });
+      if (!admin) return res.status(404).json({ error: 'Admin account not found' });
       if (isOwnerAdminAccount(admin)) return res.status(400).json({ error: 'Owner admin cannot be removed here' });
       await User.deleteOne({ _id: admin._id });
       return res.json({ success: true });
     }
     const users = readJson(FILES.users);
     const index = users.findIndex(user => String(user.id) === String(req.params.id) && user.role === 'admin');
-    if (index === -1) return res.status(404).json({ error: 'Admin employee not found' });
+    if (index === -1) return res.status(404).json({ error: 'Admin account not found' });
     if (isOwnerAdminAccount(users[index])) return res.status(400).json({ error: 'Owner admin cannot be removed here' });
     users.splice(index, 1);
     writeJson(FILES.users, users);

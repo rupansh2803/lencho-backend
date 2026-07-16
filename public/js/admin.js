@@ -1483,31 +1483,30 @@ async function adminStaff() {
   }
   const admins = Array.isArray(response.admins) ? response.admins : [];
   const ownerCount = admins.filter(admin => admin.isOwner).length;
-  const employeeCount = admins.filter(admin => !admin.isOwner).length;
+  const staffAdminCount = admins.filter(admin => !admin.isOwner).length;
   document.getElementById('admin-content').innerHTML = `
     <div class="admin-header" style="align-items:flex-start;gap:1rem;">
       <div>
         <h1 class="admin-page-title">Admin Staff</h1>
-        <p style="margin:.25rem 0 0;color:var(--gray);">Official owner: lencho.official001@gmail.com. Employees added here can login to admin with their own email and password.</p>
+        <p style="margin:.25rem 0 0;color:var(--gray);">Official owner: lencho.official001@gmail.com. Added admins can login with their own email and password.</p>
       </div>
       <button class="btn-outline" onclick="adminActivityLogs()"><i class="fas fa-clipboard-list"></i> Activity Logs</button>
     </div>
     <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));">
       <div class="stat-card"><div class="stat-label">Owner Admins</div><div class="stat-value">${ownerCount}</div></div>
-      <div class="stat-card"><div class="stat-label">Employee Admins</div><div class="stat-value">${employeeCount}</div></div>
+      <div class="stat-card"><div class="stat-label">Staff Admins</div><div class="stat-value">${staffAdminCount}</div></div>
       <div class="stat-card"><div class="stat-label">Disabled</div><div class="stat-value">${admins.filter(admin => admin.isBlocked).length}</div></div>
       <div class="stat-card"><div class="stat-label">Tracked Actions</div><div class="stat-value">${admins.reduce((sum, admin) => sum + Number(admin.actionCount || 0), 0)}</div></div>
     </div>
     <div class="admin-form" style="margin-bottom:1.25rem;">
-      <h3 style="margin:0 0 1rem;font-family:'Cormorant Garamond',serif;font-size:1.6rem;">Add Employee Admin</h3>
+      <h3 style="margin:0 0 1rem;font-family:'Cormorant Garamond',serif;font-size:1.6rem;">Add Admin Login</h3>
       <div class="form-grid">
-        <div class="form-group"><label>Name *</label><input id="staff-name" placeholder="Employee name"/></div>
-        <div class="form-group"><label>Email *</label><input id="staff-email" type="email" placeholder="employee@lencho.in"/></div>
+        <div class="form-group"><label>Name *</label><input id="staff-name" placeholder="Admin name"/></div>
+        <div class="form-group"><label>Email *</label><input id="staff-email" type="email" placeholder="admin@lencho.in"/></div>
         <div class="form-group"><label>Password *</label><input id="staff-password" type="password" placeholder="Minimum 8 characters"/></div>
         <div class="form-group"><label>Phone</label><input id="staff-phone" placeholder="+91"/></div>
       </div>
-      <div class="form-group"><label>Notes</label><textarea id="staff-notes" rows="2" placeholder="Role, responsibility, or access note"></textarea></div>
-      <button class="btn-primary" onclick="createAdminEmployee()"><i class="fas fa-user-plus"></i> Create Employee Login</button>
+      <button class="btn-primary" onclick="createAdminEmployee()"><i class="fas fa-user-plus"></i> Create Admin Login</button>
     </div>
     <div class="admin-table-wrap">
       <table style="min-width:1050px;">
@@ -1517,9 +1516,8 @@ async function adminStaff() {
             <td>
               <div style="font-weight:800;">${adminEscapeHtml(admin.name || 'Admin')}</div>
               <div style="font-size:.78rem;color:var(--gray);">${adminEscapeHtml(admin.email || '')}</div>
-              ${admin.adminNotes ? `<div style="font-size:.72rem;color:var(--rose-dark);margin-top:.25rem;">${adminEscapeHtml(admin.adminNotes)}</div>` : ''}
             </td>
-            <td><span style="padding:4px 10px;border-radius:999px;font-weight:800;font-size:.72rem;background:${admin.isOwner ? '#fff7ed' : '#eef2ff'};color:${admin.isOwner ? '#9a3412' : '#3730a3'};">${admin.isOwner ? 'Owner' : 'Employee'}</span></td>
+            <td><span style="padding:4px 10px;border-radius:999px;font-weight:800;font-size:.72rem;background:${admin.isOwner ? '#fff7ed' : '#eef2ff'};color:${admin.isOwner ? '#9a3412' : '#3730a3'};">${admin.isOwner ? 'Owner' : 'Admin'}</span></td>
             <td>${admin.isBlocked ? '<span style="color:#b91c1c;font-weight:800;">Disabled</span>' : '<span style="color:#166534;font-weight:800;">Active</span>'}</td>
             <td>${Number(admin.loginCount || 0)}</td>
             <td>${admin.lastLoginAt ? new Date(admin.lastLoginAt).toLocaleString('en-IN') : '-'}</td>
@@ -1544,27 +1542,26 @@ async function createAdminEmployee() {
     name: document.getElementById('staff-name')?.value.trim(),
     email: document.getElementById('staff-email')?.value.trim(),
     password: document.getElementById('staff-password')?.value,
-    phone: document.getElementById('staff-phone')?.value.trim(),
-    adminNotes: document.getElementById('staff-notes')?.value.trim()
+    phone: document.getElementById('staff-phone')?.value.trim()
   };
   const response = await api('/api/admin/admins', { method: 'POST', body });
   if (response.error) return toast(response.error, 'error', 5000);
-  toast('Employee admin created', 'success');
+  toast('Admin login created', 'success');
   adminStaff();
 }
 
 async function resetAdminEmployeePassword(id) {
-  const password = prompt('Enter new employee password (minimum 8 characters)');
+  const password = prompt('Enter new admin password (minimum 8 characters)');
   if (!password) return;
   const response = await api(`/api/admin/admins/${id}/password`, { method: 'PUT', body: { password } });
   if (response.error) return toast(response.error, 'error', 5000);
-  toast('Employee password updated', 'success');
+  toast('Admin password updated', 'success');
 }
 
 async function toggleAdminEmployee(id, blocked) {
   const response = await api(`/api/admin/admins/${id}/status`, { method: 'PATCH', body: { blocked } });
   if (response.error) return toast(response.error, 'error', 5000);
-  toast(blocked ? 'Employee admin disabled' : 'Employee admin enabled', 'success');
+  toast(blocked ? 'Admin login disabled' : 'Admin login enabled', 'success');
   adminStaff();
 }
 
@@ -1572,7 +1569,7 @@ async function deleteAdminEmployee(id, email) {
   if (!confirm(`Remove admin access for ${email}?`)) return;
   const response = await api(`/api/admin/admins/${id}`, { method: 'DELETE' });
   if (response.error) return toast(response.error, 'error', 5000);
-  toast('Employee admin removed', 'success');
+  toast('Admin login removed', 'success');
   adminStaff();
 }
 
