@@ -12,12 +12,17 @@ let searchCache = new Map();
 let searchTimeout = null;
 let firebaseClientLoadPromise = null;
 let adminAssetsPromise = null;
+let dashboardAssetsPromise = null;
 const apiGetCache = new Map();
 const API_CACHE_TTL_MS = 2 * 60 * 1000;
 const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const CART_LOCAL_STORAGE_KEY = 'lencho_cart_local_v1';
 const WISHLIST_LOCAL_STORAGE_KEY = 'lencho_wishlist_local_v1';
 const GA4_MEASUREMENT_ID = 'G-RE51HQCTCW';
+const LOCAL_IMAGE_OPTIMIZATIONS = {
+  '/images/woollen_hero.png': '/images/woollen_hero.jpg',
+  '/images/woollen_pattern_bg.png': '/images/woollen_pattern_bg.jpg'
+};
 let lastAnalyticsPageView = '';
 
 try { window.__appLoaded = true; } catch {}
@@ -81,6 +86,17 @@ function ensureAdminAssets() {
       throw error;
     });
   return adminAssetsPromise;
+}
+
+function ensureDashboardAssets() {
+  if (typeof renderDashboard === 'function') return Promise.resolve();
+  if (dashboardAssetsPromise) return dashboardAssetsPromise;
+  dashboardAssetsPromise = loadScriptOnce('/js/dashboard.js?v=4.7', 'lencho-dashboard-js')
+    .catch((error) => {
+      dashboardAssetsPromise = null;
+      throw error;
+    });
+  return dashboardAssetsPromise;
 }
 
 function readLocalCart() {
@@ -253,7 +269,8 @@ function getCategoryImageFallback(category = '') {
 }
 
 function safeImageUrl(url, category = '', fallback = '') {
-  const value = String(url || '').trim();
+  const raw = String(url || '').trim();
+  const value = LOCAL_IMAGE_OPTIMIZATIONS[raw] || raw;
   return value || fallback || getCategoryImageFallback(category);
 }
 
@@ -583,7 +600,12 @@ async function navigate(path, pushState = true) {
     else if (route.startsWith('/checkout-now/')) { renderCheckoutNow(route.split('/checkout-now/')[1]); }
     else if (route === '/track') { renderTrack(); }
     else if (route === '/contact') { renderContact(); }
-    else if (route === '/dashboard') { app.style.paddingTop = '0'; renderDashboard(); }
+    else if (route === '/dashboard') {
+      app.style.paddingTop = '0';
+      await ensureDashboardAssets();
+      if (typeof renderDashboard === 'function') renderDashboard();
+      else app.innerHTML = `<div class="page-wrap"><div class="empty-state"><h3>Dashboard could not load</h3><p>Please refresh once.</p></div></div>`;
+    }
     else if (route === '/wishlist') { renderWishlist(); }
     else if (LEGAL_ROUTE_META[route]) { renderCmsPage(LEGAL_ROUTE_META[route]); }
     else if (isAdmin) {
@@ -2186,7 +2208,7 @@ function renderHomeCollectionCards(container, collections = [], options = {}) {
     : mergeHomeCollections(normalized).slice(0, 3);
   container.innerHTML = cards.map((c, i) => `
     <div class="cat-card reveal" style="animation-delay:${i * 0.05}s" onclick="navigate('/products?category=${c.slug}')">
-      <img class="cat-img" src="${safeImageUrl(c.image, c.slug)}" alt="${c.name}" ${imageFallbackAttr(c.slug)}/>
+      <img class="cat-img" src="${safeImageUrl(c.image, c.slug)}" alt="${c.name}" loading="lazy" decoding="async" ${imageFallbackAttr(c.slug)}/>
       <div class="cat-overlay"></div>
       <div class="cat-content"><div class="cat-name">${c.name}</div><button class="cat-btn">Shop Now</button></div>
     </div>
@@ -2200,9 +2222,9 @@ function renderFallbackCollectionCards(container) {
 function renderFallbackFeaturedCards(container) {
   const fallbackFeatured = shuffleArray([
     { title: 'Crochet Keychains', slug: 'crochet-keychains', image: '/images/woollen_hero.jpg' },
-    { title: 'Soft Scrunchies', slug: 'scrunchies', image: '/images/woollen_pattern_bg.png' },
+    { title: 'Soft Scrunchies', slug: 'scrunchies', image: '/images/woollen_pattern_bg.jpg' },
     { title: 'Baby Gifts', slug: 'baby-gifts', image: '/images/woollen_hero.jpg' },
-    { title: 'Crochet Decor', slug: 'crochet-decor', image: '/images/woollen_pattern_bg.png' },
+    { title: 'Crochet Decor', slug: 'crochet-decor', image: '/images/woollen_pattern_bg.jpg' },
   ]);
 
   container.innerHTML = fallbackFeatured.map((item, i) => `
@@ -2563,8 +2585,8 @@ async function loadHomeWoollenCollection() {
   if (!container) return;
   const fallback = [
     { name: 'Crochet Accessories', slug: 'accessories', image: '/images/woollen_hero.jpg', description: 'Hair clips, bows, and everyday woollen pieces' },
-    { name: 'Baby Gifts', slug: 'baby-gifts', image: '/images/woollen_hero.png', description: 'Soft handmade gifts and baby pieces' },
-    { name: 'Scrunchies', slug: 'scrunchies', image: '/images/woollen_pattern_bg.png', description: 'Soft yarn scrunchies in seasonal colours' }
+    { name: 'Baby Gifts', slug: 'baby-gifts', image: '/images/woollen_hero.jpg', description: 'Soft handmade gifts and baby pieces' },
+    { name: 'Scrunchies', slug: 'scrunchies', image: '/images/woollen_pattern_bg.jpg', description: 'Soft yarn scrunchies in seasonal colours' }
   ].map(normalizeHomeCollectionCard);
 
   const renderCards = (cards, realSlugs = new Set()) => {
@@ -2573,7 +2595,7 @@ async function loadHomeWoollenCollection() {
       const target = realSlugs.has(card.slug) ? `/woollen/category/${card.slug}` : '/woollen';
       return `
         <div class="cat-card reveal woollen-home-card" style="animation-delay:${i * 0.05}s" onclick="navigate('${target}')">
-          <img class="cat-img" src="${safeImageUrl(card.image, card.slug, '/images/woollen_hero.jpg')}" alt="${card.name}" onerror="this.src='/images/woollen_hero.jpg'"/>
+          <img class="cat-img" src="${safeImageUrl(card.image, card.slug, '/images/woollen_hero.jpg')}" alt="${card.name}" loading="lazy" decoding="async" onerror="this.src='/images/woollen_hero.jpg'"/>
           <div class="cat-overlay"></div>
           <div class="cat-content"><div class="cat-name">${card.name}</div><button class="cat-btn">Explore Woollen</button></div>
         </div>

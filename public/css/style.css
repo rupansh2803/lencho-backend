@@ -11729,6 +11729,22 @@ body:not(.admin-mode) #site-footer .footer-bottom {
   background: rgba(255, 255, 255, .72) !important;
 }
 
+@supports (content-visibility: auto) {
+  .home-woollen-premium,
+  .home-bestseller-section,
+  .home-new-arrivals-section,
+  .home-collections-section,
+  .home-woollen-collection-section,
+  .home-promo-compact,
+  .testimonials,
+  .woollen-band,
+  .woollen-featured-band,
+  body:not(.admin-mode) #site-footer {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 760px;
+  }
+}
+
 .home-woollen-entry,
 .home-woollen-premium,
 .home-bestseller-section,
