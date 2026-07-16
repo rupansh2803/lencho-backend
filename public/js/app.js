@@ -16,12 +16,32 @@ const API_CACHE_TTL_MS = 2 * 60 * 1000;
 const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const CART_LOCAL_STORAGE_KEY = 'lencho_cart_local_v1';
 const WISHLIST_LOCAL_STORAGE_KEY = 'lencho_wishlist_local_v1';
+const GA4_MEASUREMENT_ID = 'G-RE51HQCTCW';
+let lastAnalyticsPageView = '';
 
 try { window.__appLoaded = true; } catch {}
 
 function isSyntheticAudit() {
   const ua = navigator.userAgent || '';
   return Boolean(navigator.webdriver) || /lighthouse|pagespeed|headlesschrome/i.test(ua);
+}
+
+function trackAnalyticsPageView(path = location.pathname + location.search) {
+  if (isSyntheticAudit()) return;
+  if (String(path || '').startsWith('/admin')) return;
+  if (typeof window.gtag !== 'function') return;
+
+  const pagePath = path || '/';
+  const pageKey = `${pagePath}|${document.title}`;
+  if (lastAnalyticsPageView === pageKey) return;
+  lastAnalyticsPageView = pageKey;
+
+  window.gtag('event', 'page_view', {
+    send_to: GA4_MEASUREMENT_ID,
+    page_title: document.title,
+    page_location: window.location.href,
+    page_path: pagePath
+  });
 }
 
 function loadScriptOnce(src, id) {
@@ -549,6 +569,7 @@ async function navigate(path, pushState = true) {
   } catch (e) { console.error(e); }
   document.body.classList.add('app-ready');
   if (!isAdmin) applyRouteSeo({ route, category: params.get('category') || '' });
+  if (!isAdmin) trackAnalyticsPageView(location.pathname + location.search);
   window.scrollTo(0, 0);
   initScrollReveal();
 }
