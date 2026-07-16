@@ -15,6 +15,10 @@ const userSchema = new mongoose.Schema({
   addresses: [{ label:String, line1:String, city:String, state:String, pin:String, phone:String }],
   isVerified:{ type: Boolean, default: false },
   isBlocked: { type: Boolean, default: false },
+  adminType: { type: String, enum: ['owner', 'employee'], default: 'employee' },
+  createdByAdminId: { type: String, default: '' },
+  createdByAdminEmail: { type: String, default: '' },
+  adminNotes: { type: String, default: '' },
   emailVerifiedAt: { type: Date, default: null },
   lastLoginAt: { type: Date, default: null },
   lastLoginIp: { type: String, default: '' },
@@ -232,6 +236,9 @@ const inquirySchema = new mongoose.Schema({
   phone:   { type: String, default: '' },
   message: { type: String, required: true },
   status:  { type: String, enum: ['new', 'read', 'replied'], default: 'new' },
+  replyMessage: { type: String, default: '' },
+  repliedBy: { type: String, default: '' },
+  repliedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 // ── LOGIN EVENT (AUDIT LOG) ──────────────────────────────────
@@ -243,7 +250,25 @@ const loginEventSchema = new mongoose.Schema({
   role:      { type: String, default: 'user' },
   ip:        { type: String, default: '' },
   userAgent: { type: String, default: '' },
+  durationSeconds: { type: Number, default: 0 },
 }, { timestamps: true });
+
+// Admin action audit trail: records admin mutations so owners can see who changed what.
+const adminActionSchema = new mongoose.Schema({
+  adminId:    { type: String, default: '' },
+  adminEmail: { type: String, default: '' },
+  adminName:  { type: String, default: '' },
+  action:     { type: String, default: '' },
+  method:     { type: String, default: '' },
+  path:       { type: String, default: '' },
+  statusCode: { type: Number, default: 0 },
+  ip:         { type: String, default: '' },
+  userAgent:  { type: String, default: '' },
+  details:    { type: mongoose.Schema.Types.Mixed, default: {} },
+}, { timestamps: true });
+
+adminActionSchema.index({ adminEmail: 1, createdAt: -1 });
+adminActionSchema.index({ createdAt: -1 });
 
 // ─── MARKETING SUBSCRIBERS / CAMPAIGNS ─────────────────────────────
 const marketingSubscriberSchema = new mongoose.Schema({
@@ -313,6 +338,7 @@ module.exports = {
   Testimonial: mongoose.model('Testimonial', testimonialSchema),
   Inquiry:  mongoose.model('Inquiry',  inquirySchema),
   LoginEvent: mongoose.model('LoginEvent', loginEventSchema),
+  AdminAction: mongoose.model('AdminAction', adminActionSchema),
   MarketingSubscriber: mongoose.model('MarketingSubscriber', marketingSubscriberSchema),
   MarketingCampaign: mongoose.model('MarketingCampaign', marketingCampaignSchema),
   MarketingEmailLog: mongoose.model('MarketingEmailLog', marketingEmailLogSchema),

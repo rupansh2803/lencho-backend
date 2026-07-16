@@ -131,7 +131,7 @@ async function showAdminLogin() {
         <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;margin-bottom:.4rem;">Admin Login</h2>
         <p style="color:var(--gray);font-size:.875rem;">Secure admin access - Capital or small letters</p>
       </div>
-      <div class="form-group"><label>Email Address</label><input type="email" id="adm-email" placeholder="admin@example.com" autofocus/></div>
+      <div class="form-group"><label>Email Address</label><input type="email" id="adm-email" placeholder="lencho.official001@gmail.com" autofocus/></div>
       <div class="form-group"><label>Password</label><input type="password" id="adm-pass" placeholder="Password"/></div>
       
       <div style="background:var(--beige);padding:1rem;border-radius:12px;margin-bottom:1.5rem;border:1px solid rgba(0,0,0,.04);">
@@ -421,7 +421,9 @@ function buildAdminPanel() {
         <div class="admin-menu-item" id="am-users" onclick="adminTab('users')"><i class="fas fa-users" style="width:20px;"></i> Users</div>
         <div class="admin-menu-item" id="am-gst" onclick="adminTab('gst')"><i class="fas fa-file-invoice" style="width:20px;"></i> GST Hub</div>
         <div class="admin-menu-item" id="am-testimonials" onclick="adminTab('testimonials')"><i class="fas fa-comment-dots" style="width:20px;"></i> Testimonials</div>
+        <div class="admin-menu-item" id="am-admin-staff" onclick="adminTab('admin-staff')"><i class="fas fa-user-tie" style="width:20px;"></i> Admin Staff</div>
         <div class="admin-menu-item" id="am-login-logs" onclick="adminTab('login-logs')"><i class="fas fa-user-clock" style="width:20px;"></i> Login Logs</div>
+        <div class="admin-menu-item" id="am-activity-logs" onclick="adminTab('activity-logs')"><i class="fas fa-clipboard-list" style="width:20px;"></i> Activity Logs</div>
         <div class="admin-menu-item" id="am-delivery-manager" onclick="adminTab('delivery-manager')"><i class="fas fa-truck-fast" style="width:20px;"></i> Delivery Manager</div>
         <div class="admin-menu-item" id="am-legal-pages" onclick="adminTab('legal-pages')"><i class="fas fa-balance-scale" style="width:20px;"></i> Legal Pages</div>
         <div class="admin-menu-item" id="am-site-manager" onclick="adminTab('site-manager')"><i class="fas fa-paint-brush" style="width:20px;"></i> Site Manager</div>
@@ -491,7 +493,9 @@ function adminTab(tab) {
   if (tab === 'users') adminUsers();
   if (tab === 'gst') adminGST();
   if (tab === 'testimonials') adminTestimonials();
+  if (tab === 'admin-staff') adminStaff();
   if (tab === 'login-logs') adminLoginLogs();
+  if (tab === 'activity-logs') adminActivityLogs();
   if (tab === 'delivery-manager') adminDeliveryManager();
   if (tab === 'legal-pages') adminLegalPages();
   if (tab === 'site-manager') adminSiteManager();
@@ -558,6 +562,17 @@ async function loadAdminVisitorCounter() {
   }
 }
 
+function formatAdminDuration(seconds = 0) {
+  const total = Math.max(0, Number(seconds) || 0);
+  if (!total) return '-';
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
 async function adminLoginLogs() {
   const logs = await api('/api/admin/login-logs');
   document.getElementById('admin-content').innerHTML = `
@@ -567,7 +582,7 @@ async function adminLoginLogs() {
     </div>
     <div class="admin-table-wrap">
       <table>
-        <thead><tr><th>User</th><th>Method</th><th>Status</th><th>Role</th><th>IP</th><th>Time</th></tr></thead>
+        <thead><tr><th>User</th><th>Method</th><th>Status</th><th>Role</th><th>IP</th><th>Duration</th><th>Time</th></tr></thead>
         <tbody>${(Array.isArray(logs) ? logs : []).map(log => `
           <tr>
             <td>
@@ -578,15 +593,22 @@ async function adminLoginLogs() {
             <td><span style="padding:4px 10px;border-radius:999px;font-size:.75rem;background:${log.status === 'success' ? '#dcfce7' : '#fee2e2'};color:${log.status === 'success' ? '#166534' : '#991b1b'};font-weight:700;">${log.status || 'unknown'}</span></td>
             <td>${log.role || 'user'}</td>
             <td style="font-family:monospace;font-size:.75rem;">${log.ip || '-'}</td>
+            <td>${formatAdminDuration(log.durationSeconds)}</td>
             <td>${log.createdAt ? new Date(log.createdAt).toLocaleString('en-IN') : '-'}</td>
           </tr>
-        `).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--gray);">No login activity yet.</td></tr>'}</tbody>
+        `).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--gray);">No login activity yet.</td></tr>'}</tbody>
       </table>
     </div>`;
 }
 
 async function adminInquiries() {
-  const inquiries = await api('/api/admin/inquiries');
+  const inquiryResponse = await api('/api/admin/inquiries');
+  if (inquiryResponse?.error) {
+    document.getElementById('admin-content').innerHTML = renderAdminAccessPanel(inquiryResponse.error);
+    return;
+  }
+  const inquiries = Array.isArray(inquiryResponse) ? inquiryResponse : [];
+  window.adminInquiryCache = inquiries;
   
   // Tabs for filtering
   const pendingCount = inquiries.filter(i => i.status !== 'replied').length;
@@ -622,7 +644,6 @@ async function adminInquiries() {
           const safeEmail = adminEscapeHtml(iq.email || '');
           const safePhone = adminEscapeHtml(iq.phone || 'No Phone');
           const safeMessage = adminEscapeHtml(iq.message || '');
-          const replyUrl = adminInquiryReplyUrl(iq);
           return `
           <tr>
             <td style="min-width:180px;">
@@ -642,7 +663,7 @@ async function adminInquiries() {
                 <i class="fas fa-${iq.status === 'replied' ? 'undo' : 'check'}"></i>
               </button>
               <button class="btn-sm btn-danger" onclick="deleteInquiry('${iq._id}')"><i class="fas fa-trash"></i></button>
-              <a href="${adminEscapeAttr(replyUrl)}" target="_blank" rel="noopener" class="btn-sm btn-primary" style="text-decoration:none;"><i class="fas fa-reply"></i> Reply</a>
+              <button class="btn-sm btn-primary" onclick="openInquiryReply('${iq._id}')"><i class="fas fa-reply"></i> Reply</button>
             </td>
           </tr>
         `;}).join('')}</tbody>
@@ -675,6 +696,70 @@ function adminInquiryReplyUrl(inquiry = {}) {
   url.searchParams.set('su', subject);
   url.searchParams.set('body', body);
   return url.toString();
+}
+
+function openInquiryReply(id) {
+  const inquiry = (window.adminInquiryCache || []).find(item => String(item._id) === String(id));
+  if (!inquiry) return toast('Inquiry not found. Refresh and try again.', 'error');
+  const name = String(inquiry.name || 'Customer').trim() || 'Customer';
+  const defaultMessage = [
+    `Hi ${name},`,
+    '',
+    'Thank you for contacting Lencho. We have received your message and will help you with this.',
+    '',
+    'Regards,',
+    'Lencho Team'
+  ].join('\n');
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'inquiry-reply-modal';
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width:640px;width:92vw;padding:1.5rem;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1rem;">
+        <div>
+          <h3 style="margin:0 0 .35rem;font-family:'Cormorant Garamond',serif;font-size:1.7rem;">Reply to Inquiry</h3>
+          <div style="font-size:.85rem;color:var(--gray);">From <b>lencho.official001@gmail.com</b> to ${adminEscapeHtml(inquiry.email || '-')}</div>
+        </div>
+        <button type="button" class="admin-modal-close" onclick="this.closest('.modal-overlay').remove()" aria-label="Close">&times;</button>
+      </div>
+      <div style="border:1px solid var(--border);border-radius:14px;padding:1rem;background:#fffafc;margin-bottom:1rem;">
+        <div style="font-weight:800;">${adminEscapeHtml(name)}</div>
+        <div style="font-size:.82rem;color:var(--gray);margin:.2rem 0 .7rem;">${adminEscapeHtml(inquiry.phone || 'No phone')}</div>
+        <div style="font-size:.9rem;line-height:1.5;">${adminEscapeHtml(inquiry.message || '')}</div>
+      </div>
+      <div class="form-group">
+        <label>Reply Message</label>
+        <textarea id="inquiry-reply-message" rows="8" style="resize:vertical;">${adminEscapeHtml(defaultMessage)}</textarea>
+      </div>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
+        <button class="btn-primary" id="inquiry-reply-send" onclick="sendInquiryReply('${adminEscapeAttr(id)}')"><i class="fas fa-paper-plane"></i> Send Reply</button>
+        <button class="btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click', event => {
+    if (event.target === modal) modal.remove();
+  });
+  document.body.appendChild(modal);
+  setTimeout(() => document.getElementById('inquiry-reply-message')?.focus(), 0);
+}
+
+async function sendInquiryReply(id) {
+  const message = String(document.getElementById('inquiry-reply-message')?.value || '').trim();
+  if (!message) return toast('Reply message is required', 'error');
+  const btn = document.getElementById('inquiry-reply-send');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner" style="animation:spin 1s linear infinite;"></i> Sending...';
+  }
+  const response = await api(`/api/admin/inquiries/${id}/reply`, { method: 'POST', body: { message }, timeoutMs: 45000 });
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Reply';
+  }
+  if (response.error) return toast(response.error, 'error', 6000);
+  document.getElementById('inquiry-reply-modal')?.remove();
+  toast('Reply sent from official Lencho email', 'success');
+  adminInquiries();
 }
 function filterInquiries(status) {
   localStorage.setItem('inquiry-filter', status);
@@ -1390,6 +1475,160 @@ async function adminUsers() {
   </div>`;
 }
 
+async function adminStaff() {
+  const response = await api('/api/admin/admins');
+  if (response?.error) {
+    document.getElementById('admin-content').innerHTML = renderAdminAccessPanel(response.error);
+    return;
+  }
+  const admins = Array.isArray(response.admins) ? response.admins : [];
+  const ownerCount = admins.filter(admin => admin.isOwner).length;
+  const employeeCount = admins.filter(admin => !admin.isOwner).length;
+  document.getElementById('admin-content').innerHTML = `
+    <div class="admin-header" style="align-items:flex-start;gap:1rem;">
+      <div>
+        <h1 class="admin-page-title">Admin Staff</h1>
+        <p style="margin:.25rem 0 0;color:var(--gray);">Official owner: lencho.official001@gmail.com. Employees added here can login to admin with their own email and password.</p>
+      </div>
+      <button class="btn-outline" onclick="adminActivityLogs()"><i class="fas fa-clipboard-list"></i> Activity Logs</button>
+    </div>
+    <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));">
+      <div class="stat-card"><div class="stat-label">Owner Admins</div><div class="stat-value">${ownerCount}</div></div>
+      <div class="stat-card"><div class="stat-label">Employee Admins</div><div class="stat-value">${employeeCount}</div></div>
+      <div class="stat-card"><div class="stat-label">Disabled</div><div class="stat-value">${admins.filter(admin => admin.isBlocked).length}</div></div>
+      <div class="stat-card"><div class="stat-label">Tracked Actions</div><div class="stat-value">${admins.reduce((sum, admin) => sum + Number(admin.actionCount || 0), 0)}</div></div>
+    </div>
+    <div class="admin-form" style="margin-bottom:1.25rem;">
+      <h3 style="margin:0 0 1rem;font-family:'Cormorant Garamond',serif;font-size:1.6rem;">Add Employee Admin</h3>
+      <div class="form-grid">
+        <div class="form-group"><label>Name *</label><input id="staff-name" placeholder="Employee name"/></div>
+        <div class="form-group"><label>Email *</label><input id="staff-email" type="email" placeholder="employee@lencho.in"/></div>
+        <div class="form-group"><label>Password *</label><input id="staff-password" type="password" placeholder="Minimum 8 characters"/></div>
+        <div class="form-group"><label>Phone</label><input id="staff-phone" placeholder="+91"/></div>
+      </div>
+      <div class="form-group"><label>Notes</label><textarea id="staff-notes" rows="2" placeholder="Role, responsibility, or access note"></textarea></div>
+      <button class="btn-primary" onclick="createAdminEmployee()"><i class="fas fa-user-plus"></i> Create Employee Login</button>
+    </div>
+    <div class="admin-table-wrap">
+      <table style="min-width:1050px;">
+        <thead><tr><th>Admin</th><th>Type</th><th>Status</th><th>Logins</th><th>Last Login</th><th>Actions Done</th><th>Last Action</th><th>Manage</th></tr></thead>
+        <tbody>${admins.map(admin => `
+          <tr>
+            <td>
+              <div style="font-weight:800;">${adminEscapeHtml(admin.name || 'Admin')}</div>
+              <div style="font-size:.78rem;color:var(--gray);">${adminEscapeHtml(admin.email || '')}</div>
+              ${admin.adminNotes ? `<div style="font-size:.72rem;color:var(--rose-dark);margin-top:.25rem;">${adminEscapeHtml(admin.adminNotes)}</div>` : ''}
+            </td>
+            <td><span style="padding:4px 10px;border-radius:999px;font-weight:800;font-size:.72rem;background:${admin.isOwner ? '#fff7ed' : '#eef2ff'};color:${admin.isOwner ? '#9a3412' : '#3730a3'};">${admin.isOwner ? 'Owner' : 'Employee'}</span></td>
+            <td>${admin.isBlocked ? '<span style="color:#b91c1c;font-weight:800;">Disabled</span>' : '<span style="color:#166534;font-weight:800;">Active</span>'}</td>
+            <td>${Number(admin.loginCount || 0)}</td>
+            <td>${admin.lastLoginAt ? new Date(admin.lastLoginAt).toLocaleString('en-IN') : '-'}</td>
+            <td>${Number(admin.actionCount || 0)}</td>
+            <td>${admin.lastActionAt ? new Date(admin.lastActionAt).toLocaleString('en-IN') : '-'}</td>
+            <td style="display:flex;gap:.4rem;flex-wrap:wrap;">
+              <button class="btn-outline btn-sm" onclick="adminActivityLogs('${adminEscapeAttr(admin.email || '')}')">Activity</button>
+              ${admin.isOwner ? '<span style="color:#888;font-size:.78rem;">Protected</span>' : `
+                <button class="btn-outline btn-sm" onclick="resetAdminEmployeePassword('${adminEscapeAttr(admin.id)}')">Password</button>
+                <button class="btn-outline btn-sm" onclick="toggleAdminEmployee('${adminEscapeAttr(admin.id)}', ${admin.isBlocked ? 'false' : 'true'})">${admin.isBlocked ? 'Enable' : 'Disable'}</button>
+                <button class="btn-danger btn-sm" onclick="deleteAdminEmployee('${adminEscapeAttr(admin.id)}','${adminEscapeAttr(admin.email || '')}')">Remove</button>
+              `}
+            </td>
+          </tr>
+        `).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--gray);">No admins found.</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
+async function createAdminEmployee() {
+  const body = {
+    name: document.getElementById('staff-name')?.value.trim(),
+    email: document.getElementById('staff-email')?.value.trim(),
+    password: document.getElementById('staff-password')?.value,
+    phone: document.getElementById('staff-phone')?.value.trim(),
+    adminNotes: document.getElementById('staff-notes')?.value.trim()
+  };
+  const response = await api('/api/admin/admins', { method: 'POST', body });
+  if (response.error) return toast(response.error, 'error', 5000);
+  toast('Employee admin created', 'success');
+  adminStaff();
+}
+
+async function resetAdminEmployeePassword(id) {
+  const password = prompt('Enter new employee password (minimum 8 characters)');
+  if (!password) return;
+  const response = await api(`/api/admin/admins/${id}/password`, { method: 'PUT', body: { password } });
+  if (response.error) return toast(response.error, 'error', 5000);
+  toast('Employee password updated', 'success');
+}
+
+async function toggleAdminEmployee(id, blocked) {
+  const response = await api(`/api/admin/admins/${id}/status`, { method: 'PATCH', body: { blocked } });
+  if (response.error) return toast(response.error, 'error', 5000);
+  toast(blocked ? 'Employee admin disabled' : 'Employee admin enabled', 'success');
+  adminStaff();
+}
+
+async function deleteAdminEmployee(id, email) {
+  if (!confirm(`Remove admin access for ${email}?`)) return;
+  const response = await api(`/api/admin/admins/${id}`, { method: 'DELETE' });
+  if (response.error) return toast(response.error, 'error', 5000);
+  toast('Employee admin removed', 'success');
+  adminStaff();
+}
+
+function formatAdminActionPath(log = {}) {
+  const method = String(log.method || '').toUpperCase();
+  const path = String(log.path || '').replace(/\?.*$/, '');
+  if (path.includes('/api/products')) return `${method} product`;
+  if (path.includes('/api/admin/categories')) return `${method} collection`;
+  if (path.includes('/api/admin/settings')) return `${method} settings`;
+  if (path.includes('/api/admin/inquiries')) return `${method} inquiry`;
+  if (path.includes('/api/admin/admins')) return `${method} admin staff`;
+  if (path.includes('/api/admin/orders')) return `${method} order`;
+  return log.action || `${method} ${path || '-'}`;
+}
+
+async function adminActivityLogs(email = '') {
+  const query = email ? `?email=${encodeURIComponent(email)}` : '';
+  const response = await api(`/api/admin/activity-logs${query}`);
+  if (response.error) {
+    document.getElementById('admin-content').innerHTML = renderAdminAccessPanel(response.error);
+    return;
+  }
+  const logs = Array.isArray(response.logs) ? response.logs : [];
+  document.getElementById('admin-content').innerHTML = `
+    <div class="admin-header" style="align-items:flex-start;gap:1rem;">
+      <div>
+        <h1 class="admin-page-title">Activity Logs</h1>
+        <p style="margin:.25rem 0 0;color:var(--gray);">${email ? `Filtered: ${adminEscapeHtml(email)}` : 'Product, collection, inquiry, order, staff and settings changes.'}</p>
+      </div>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
+        <button class="btn-outline" onclick="adminStaff()"><i class="fas fa-user-tie"></i> Admin Staff</button>
+        <button class="btn-outline" onclick="adminActivityLogs()"><i class="fas fa-sync"></i> Refresh</button>
+      </div>
+    </div>
+    <div class="admin-table-wrap">
+      <table style="min-width:1050px;">
+        <thead><tr><th>Admin</th><th>Action</th><th>Status</th><th>IP</th><th>Details</th><th>Time</th></tr></thead>
+        <tbody>${logs.map(log => {
+          const body = log.details?.body || {};
+          const detailText = Object.keys(body).length
+            ? Object.entries(body).slice(0, 5).map(([key, value]) => `${key}: ${Array.isArray(value) ? value.length + ' items' : value}`).join(' | ')
+            : '-';
+          return `
+          <tr>
+            <td><div style="font-weight:800;">${adminEscapeHtml(log.adminName || 'Admin')}</div><div style="font-size:.75rem;color:var(--gray);">${adminEscapeHtml(log.adminEmail || '')}</div></td>
+            <td><b>${adminEscapeHtml(formatAdminActionPath(log))}</b><div style="font-size:.72rem;color:var(--gray);">${adminEscapeHtml(log.path || '')}</div></td>
+            <td><span style="padding:4px 10px;border-radius:999px;font-size:.72rem;font-weight:800;background:${Number(log.statusCode || 0) < 400 ? '#dcfce7' : '#fee2e2'};color:${Number(log.statusCode || 0) < 400 ? '#166534' : '#991b1b'};">${log.statusCode || '-'}</span></td>
+            <td style="font-family:monospace;font-size:.75rem;">${adminEscapeHtml(log.ip || '-')}</td>
+            <td style="font-size:.78rem;max-width:360px;line-height:1.45;">${adminEscapeHtml(detailText)}</td>
+            <td style="white-space:nowrap;">${log.createdAt ? new Date(log.createdAt).toLocaleString('en-IN') : '-'}</td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--gray);">No activity logs yet.</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
 function filterAdminUsers() {
   const search = String(document.getElementById('admin-user-search')?.value || '').trim().toLowerCase();
   const status = String(document.getElementById('admin-user-status')?.value || '').toLowerCase();
@@ -1415,7 +1654,7 @@ async function deleteUser(id, name) {
 }
 
 async function toggleUserBlock(id, blocked) {
-  const r = await api('/api/admin/users/' + id + '/block', { method: 'PUT', body: { blocked } });
+  const r = await api('/api/admin/users/' + id + '/block', { method: 'PATCH', body: { blocked } });
   if (r.error) { toast(r.error, 'error'); return; }
   toast(r.blocked ? 'User blocked' : 'User unblocked', 'info');
   adminUsers();
@@ -1663,7 +1902,7 @@ async function adminSettings() {
         </div>
         <div class="form-group">
           <label><i class="fas fa-user" style="color:var(--rose);margin-right:4px;"></i> SMTP Username / Email</label>
-          <input type="email" id="smtp-user" placeholder="your-email@gmail.com" value="${settings.smtpUser || ''}"/>
+          <input type="email" id="smtp-user" placeholder="lencho.official001@gmail.com" value="${settings.smtpUser || ''}"/>
           <small style="color:var(--gray);font-size:.72rem;">The email address used to send OTPs</small>
         </div>
         <div class="form-group">
@@ -2631,7 +2870,7 @@ async function adminSiteManager() {
     <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-shoe-prints"></i> Footer Details</h3>
     <div class="form-grid">
       <div class="form-group"><label>Phone</label><input id="cms-footerPhone" value="${g('footerPhone')}" placeholder="+91 7404217625"/></div>
-      <div class="form-group"><label>Email</label><input id="cms-footerEmail" value="${g('footerEmail')}" placeholder="lencho.official01@gmail.com"/></div>
+      <div class="form-group"><label>Email</label><input id="cms-footerEmail" value="${g('footerEmail')}" placeholder="lencho.official001@gmail.com"/></div>
     </div>
     <div class="form-group"><label>Address</label><input id="cms-footerAddress" value="${g('footerAddress')}" placeholder="197 Sarakpur, Barara, Ambala"/></div>
     <button class="btn-primary" onclick="saveCmsFooter()"><i class="fas fa-save"></i> Save Footer</button>

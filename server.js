@@ -30,6 +30,7 @@ const {
   Category,
   Inquiry,
   LoginEvent,
+  AdminAction,
   MarketingSubscriber,
   MarketingCampaign,
   MarketingEmailLog,
@@ -62,7 +63,9 @@ function parseBooleanEnv(value, fallback = false) {
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
-const DEFAULT_SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || '';
+const PRIMARY_LENCHO_EMAIL = 'lencho.official001@gmail.com';
+const SECONDARY_OWNER_EMAIL = 'rupanshsaini17@gmail.com';
+const DEFAULT_SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || PRIMARY_LENCHO_EMAIL;
 const DEFAULT_SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
 const FRONTEND_URL = readEnvVar('FRONTEND_URL', ['APP_URL', 'PUBLIC_URL'], 'https://lencho.in').replace(/\/+$/, '');
 const SITE_URL = readEnvVar('SITE_URL', ['FRONTEND_URL'], FRONTEND_URL);
@@ -70,7 +73,8 @@ const JWT_SECRET_RESOLVED = readEnvVar('JWT_SECRET', [], 'your-secret-key');
 const SESSION_SECRET_RESOLVED = readEnvVar('SESSION_SECRET', [], 'lencho-secret');
 const MONGODB_URI = readEnvVar('MONGODB_URI', ['MONGO_URI', 'DATABASE_URL']);
 const REQUIRE_MONGODB = true;
-const DEFAULT_OWNER_ADMIN_EMAIL = 'rupanshsaini17@gmail.com';
+const DEFAULT_OWNER_ADMIN_EMAIL = PRIMARY_LENCHO_EMAIL;
+const DEFAULT_INQUIRY_REPLY_EMAIL = cleanEnvValue(process.env.INQUIRY_REPLY_EMAIL) || PRIMARY_LENCHO_EMAIL;
 
 function validateMongoUriForPermanentStorage(uri) {
   let value = cleanEnvValue(uri);
@@ -432,6 +436,7 @@ const FILES = {
   settings: path.join(DATA_DIR, 'settings.json'),
   discounts: path.join(DATA_DIR, 'discounts.json'),
   loginLogs: path.join(DATA_DIR, 'login_logs.json'),
+  adminActions: path.join(DATA_DIR, 'admin_actions.json'),
   subscribers: path.join(DATA_DIR, 'marketing_subscribers.json'),
   campaigns: path.join(DATA_DIR, 'marketing_campaigns.json'),
   campaignLogs: path.join(DATA_DIR, 'marketing_email_logs.json'),
@@ -496,15 +501,15 @@ const DEFAULT_FALLBACK_SETTINGS = {
   gstin: '27XXXXX1234X1ZX',
   hsn: '7117',
   storeName: 'Lencho',
-  storeEmail: 'lencho.official01@gmail.com',
+  storeEmail: PRIMARY_LENCHO_EMAIL,
   storePhone: '+91 7404217625',
   storeAddress: '197 Sarakpur, Barara, Ambala, Haryana',
   legalBusinessName: 'Lencho',
   legalBusinessAddress: '197 Sarakpur, Barara, Ambala, Haryana',
-  legalSupportEmail: 'lencho.official01@gmail.com',
+  legalSupportEmail: PRIMARY_LENCHO_EMAIL,
   legalSupportPhone: '+91 7404217625',
   grievanceOfficerName: '',
-  grievanceOfficerEmail: 'lencho.official01@gmail.com',
+  grievanceOfficerEmail: PRIMARY_LENCHO_EMAIL,
   refundTimeline: '',
   heroTitle: 'Handmade Woollen',
   heroSubtitle: 'Soft, Gift-ready Pieces',
@@ -539,11 +544,12 @@ const DEFAULT_FALLBACK_SETTINGS = {
   smtpPort: 465,
   smtpUser: DEFAULT_SMTP_USER,
   smtpPass: DEFAULT_SMTP_PASS,
+  inquiryReplyEmail: DEFAULT_INQUIRY_REPLY_EMAIL,
   otpSubject: DEFAULT_OTP_SUBJECT,
   otpBody: DEFAULT_OTP_BODY,
   footerAddress: '197 Sarakpur, Barara, Ambala, Haryana',
   footerPhone: '+91 7404217625',
-  footerEmail: 'lencho.official01@gmail.com',
+  footerEmail: PRIMARY_LENCHO_EMAIL,
   bulkOrderWhatsappNumber: '917404217625',
   publicCatalogCacheSeconds: 300,
   publicCatalogEdgeCacheSeconds: 900,
@@ -564,7 +570,7 @@ const DEFAULT_FALLBACK_SETTINGS = {
   socialYoutubeUrl: 'https://youtube.com/lencho_official',
   socialWhatsappUrl: '',
   schemaPhone: '+91 7404217625',
-  schemaEmail: 'lencho.official01@gmail.com',
+  schemaEmail: PRIMARY_LENCHO_EMAIL,
   schemaAddress: '197 Sarakpur, Barara, Ambala, Haryana',
   aiChatEnabled: true,
   aiChatWelcome: 'Namaste! Main Lencho assistant hoon. Woollen products, offers, shipping, ya order help ke liye message bhejiye.',
@@ -1403,6 +1409,7 @@ async function recordLoginActivity(payload) {
     role: payload.role || 'user',
     ip: payload.ip || '',
     userAgent: payload.userAgent || '',
+    durationSeconds: Math.max(0, Number(payload.durationSeconds) || 0),
     createdAt: new Date().toISOString()
   };
 
@@ -1419,6 +1426,96 @@ async function recordLoginActivity(payload) {
   const logs = readJson(FILES.loginLogs);
   logs.unshift(event);
   writeJson(FILES.loginLogs, logs.slice(0, 500));
+}
+
+function sanitizeAuditValue(value) {
+  if (Array.isArray(value)) return value.slice(0, 20).map(sanitizeAuditValue);
+  if (value && typeof value === 'object') return sanitizeAuditBody(value);
+  const text = String(value ?? '');
+  return text.length > 240 ? `${text.slice(0, 240)}...` : value;
+}
+
+function sanitizeAuditBody(body = {}) {
+  const hiddenKeys = /pass|password|token|secret|key|otp|captcha|authorization|smtpPass|currentPassword|newPassword|confirm/i;
+  const output = {};
+  Object.entries(body || {}).forEach(([key, value]) => {
+    output[key] = hiddenKeys.test(key) ? '[hidden]' : sanitizeAuditValue(value);
+  });
+  return output;
+}
+
+function shouldAuditAdminMutation(req) {
+  const method = String(req.method || '').toUpperCase();
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return false;
+  const routePath = String(req.path || '');
+  if (routePath === '/api/admin/login/request-otp' || routePath === '/api/admin/login/verify-otp') return false;
+  return routePath.startsWith('/api/admin/')
+    || routePath.startsWith('/api/products')
+    || routePath.startsWith('/api/profile');
+}
+
+async function resolveAdminAuditUser(req) {
+  const auth = req.auth || getAuthContext(req);
+  if (!auth?.userId || auth.role !== 'admin') return null;
+  try {
+    if (useDB) {
+      const user = await User.findById(auth.userId).select('name email role adminType').lean();
+      if (!user || user.role !== 'admin') return null;
+      return {
+        id: user._id?.toString?.() || auth.userId,
+        email: user.email || '',
+        name: user.name || ''
+      };
+    }
+    const user = readJson(FILES.users).find(item => String(item.id) === String(auth.userId));
+    if (!user || user.role !== 'admin') return null;
+    return { id: user.id, email: user.email || '', name: user.name || '' };
+  } catch {
+    return { id: auth.userId, email: '', name: '' };
+  }
+}
+
+async function recordAdminAction(req, res, details = {}) {
+  try {
+    if (!shouldAuditAdminMutation(req)) return;
+    const admin = await resolveAdminAuditUser(req);
+    if (!admin) return;
+    const event = {
+      adminId: admin.id || '',
+      adminEmail: admin.email || '',
+      adminName: admin.name || '',
+      action: `${String(req.method || '').toUpperCase()} ${String(req.path || '')}`,
+      method: String(req.method || '').toUpperCase(),
+      path: String(req.originalUrl || req.path || ''),
+      statusCode: Number(res?.statusCode || 0),
+      ip: String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || ''),
+      userAgent: String(req.headers['user-agent'] || ''),
+      details: {
+        params: req.params || {},
+        query: req.query || {},
+        body: sanitizeAuditBody(req.body || {}),
+        ...details
+      },
+      createdAt: new Date().toISOString()
+    };
+    if (useDB && AdminAction) {
+      await AdminAction.create(event);
+      return;
+    }
+    const logs = readJson(FILES.adminActions);
+    logs.unshift(event);
+    writeJson(FILES.adminActions, logs.slice(0, 1000));
+  } catch (error) {
+    console.warn('[admin-audit] write failed:', error?.message || error);
+  }
+}
+
+function adminAuditMiddleware(req, res, next) {
+  if (!shouldAuditAdminMutation(req)) return next();
+  res.on('finish', () => {
+    if (res.statusCode < 400) recordAdminAction(req, res);
+  });
+  next();
 }
 
 function syncFallbackAdmins() {
@@ -1511,17 +1608,31 @@ function getConfiguredAdminAccounts() {
     accounts.push({
       email,
       password: cleanEnvValue(record.password),
-      name: cleanEnvValue(record.name) || (email === DEFAULT_OWNER_ADMIN_EMAIL ? 'Rupansh Kumar' : 'Lencho Admin'),
-      phone: cleanEnvValue(record.phone)
+      name: cleanEnvValue(record.name) || (email === DEFAULT_OWNER_ADMIN_EMAIL ? 'Lencho Owner' : 'Lencho Admin'),
+      phone: cleanEnvValue(record.phone),
+      adminType: record.adminType === 'owner' ? 'owner' : 'employee'
     });
   };
 
   addAccount({
     email: readEnvVar('ADMIN_EMAIL', [], DEFAULT_OWNER_ADMIN_EMAIL),
     password: cleanEnvValue(process.env.ADMIN_PASSWORD),
-    name: readEnvVar('ADMIN_NAME', [], 'Rupansh Kumar'),
-    phone: cleanEnvValue(process.env.ADMIN_PHONE)
+    name: readEnvVar('ADMIN_NAME', [], 'Lencho Owner'),
+    phone: cleanEnvValue(process.env.ADMIN_PHONE),
+    adminType: 'owner'
   });
+
+  addAccount({
+    email: SECONDARY_OWNER_EMAIL,
+    name: 'Rupansh Kumar',
+    adminType: 'employee'
+  });
+
+  cleanEnvValue(process.env.ADMIN_SECONDARY_EMAILS)
+    .split(/[,\n;]+/)
+    .map(value => cleanEnvValue(value).toLowerCase())
+    .filter(Boolean)
+    .forEach(email => addAccount({ email, name: 'Secondary Admin', adminType: 'employee' }));
 
   const employeesJson = cleanEnvValue(process.env.ADMIN_EMPLOYEES);
   if (employeesJson) {
@@ -1586,6 +1697,14 @@ function getAdminAlertEmail() {
   return normalizeAdminEmail(readEnvVar('ADMIN_ALERT_EMAIL', ['ADMIN_OWNER_EMAIL'], DEFAULT_OWNER_ADMIN_EMAIL));
 }
 
+function getAdminAlertEmails() {
+  const configured = cleanEnvValue(process.env.ADMIN_ALERT_EMAILS);
+  const list = configured
+    ? configured.split(/[,\n;]+/).map(normalizeAdminEmail).filter(Boolean)
+    : [getAdminAlertEmail(), normalizeAdminEmail(SECONDARY_OWNER_EMAIL)];
+  return [...new Set(list.filter(Boolean))];
+}
+
 async function ensureConfiguredAdmins() {
   if (!useDB) return;
   const accounts = getConfiguredAdminAccounts();
@@ -1608,6 +1727,7 @@ async function ensureConfiguredAdmins() {
         phone: account.phone || '',
         password: await bcrypt.hash(account.password, 10),
         role: 'admin',
+        adminType: account.adminType || 'employee',
         authProvider: 'email',
         isVerified: true,
         emailVerifiedAt: new Date(),
@@ -1620,6 +1740,7 @@ async function ensureConfiguredAdmins() {
 
     let changed = false;
     if (existing.role !== 'admin') { existing.role = 'admin'; changed = true; }
+    if (!existing.adminType || (account.adminType === 'owner' && existing.adminType !== 'owner')) { existing.adminType = account.adminType || 'employee'; changed = true; }
     if (existing.isVerified !== true) { existing.isVerified = true; changed = true; }
     if (!existing.emailVerifiedAt) { existing.emailVerifiedAt = new Date(); changed = true; }
     if (account.name && existing.name !== account.name && !existing.name) { existing.name = account.name; changed = true; }
@@ -1655,7 +1776,7 @@ async function seedSettings() {
       { key: 'shiprocketEmail', value: '', label: 'Shiprocket Email' },
       { key: 'shiprocketPassword', value: '', label: 'Shiprocket Password' },
       { key: 'storeName', value: 'Lencho', label: 'Store Name' },
-      { key: 'storeEmail', value: 'hello@lencho.in', label: 'Store Email' },
+      { key: 'storeEmail', value: PRIMARY_LENCHO_EMAIL, label: 'Store Email' },
       { key: 'storePhone', value: '+91 9876543210', label: 'Store Phone' },
       { key: 'siteVisitorCount', value: 0, label: 'Website Visitor Count' },
       { key: 'storeVisitorCount', value: 0, label: 'Store Visitor Count' },
@@ -1666,6 +1787,7 @@ async function seedSettings() {
       { key: 'smtpPort', value: 465, label: 'SMTP Port' },
       { key: 'smtpUser', value: DEFAULT_SMTP_USER, label: 'SMTP User (Gmail)' },
       { key: 'smtpPass', value: DEFAULT_SMTP_PASS, label: 'SMTP Pass (App Password)' },
+      { key: 'inquiryReplyEmail', value: DEFAULT_INQUIRY_REPLY_EMAIL, label: 'Inquiry Reply Email' },
       { key: 'otpSubject', value: DEFAULT_OTP_SUBJECT, label: 'OTP Email Subject' },
       { key: 'otpBody', value: DEFAULT_OTP_BODY, label: 'OTP Email Body (HTML)' },
       // ── CMS SETTINGS ──
@@ -1698,7 +1820,7 @@ async function seedSettings() {
       { key: 'showProductCardDeliveryBox', value: false, label: 'Show Product Card Delivery Mini Box' },
       { key: 'footerAddress', value: '197 Sarakpur, Barara, Ambala, Haryana', label: 'Footer Address' },
       { key: 'footerPhone', value: '+91 7404217625', label: 'Footer Phone' },
-      { key: 'footerEmail', value: 'lencho.official01@gmail.com', label: 'Footer Email' },
+      { key: 'footerEmail', value: PRIMARY_LENCHO_EMAIL, label: 'Footer Email' },
       { key: 'seoTitleDefault', value: DEFAULT_FALLBACK_SETTINGS.seoTitleDefault, label: 'Default SEO Title' },
       { key: 'seoDescriptionDefault', value: DEFAULT_FALLBACK_SETTINGS.seoDescriptionDefault, label: 'Default SEO Description' },
       { key: 'seoCanonicalBaseUrl', value: DEFAULT_FALLBACK_SETTINGS.seoCanonicalBaseUrl, label: 'Canonical Base URL' },
@@ -1746,7 +1868,7 @@ async function seedSettings() {
       { key: 'storeVisitorCount', value: 0, label: 'Store Visitor Count' },
       { key: 'footerAddress', value: '197 Sarakpur, Barara, Ambala, Haryana', label: 'Footer Address' },
       { key: 'footerPhone', value: '+91 7404217625', label: 'Footer Phone' },
-      { key: 'footerEmail', value: 'lencho.official01@gmail.com', label: 'Footer Email' },
+      { key: 'footerEmail', value: PRIMARY_LENCHO_EMAIL, label: 'Footer Email' },
       { key: 'saleEndDate', value: new Date(Date.now() + 86400000).toISOString(), label: 'Sale End Date (ISO)' },
       { key: 'otpSubject', value: DEFAULT_OTP_SUBJECT, label: 'OTP Email Subject' },
       { key: 'otpBody', value: DEFAULT_OTP_BODY, label: 'OTP Email Body (HTML)' },
@@ -1998,6 +2120,36 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
+async function getAdminActor(req) {
+  const auth = req.auth || getAuthContext(req);
+  if (!auth?.userId || auth.role !== 'admin') return null;
+  if (useDB) {
+    const user = await User.findById(auth.userId).select('-password -otp');
+    if (!user || user.role !== 'admin') return null;
+    return user;
+  }
+  const user = readJson(FILES.users).find(item => String(item.id) === String(auth.userId));
+  return user && user.role === 'admin' ? user : null;
+}
+
+function isOwnerAdminAccount(user = {}) {
+  return user?.role === 'admin' && (
+    user.adminType === 'owner' ||
+    normalizeAdminEmail(user.email) === DEFAULT_OWNER_ADMIN_EMAIL
+  );
+}
+
+async function requireOwnerAdmin(req, res, next) {
+  try {
+    const actor = await getAdminActor(req);
+    if (!isOwnerAdminAccount(actor)) return res.status(403).json({ error: 'Owner admin access only' });
+    req.adminActor = actor;
+    next();
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
 function getRequestUserId(req) {
   return req.auth?.userId || req.session?.userId || null;
 }
@@ -2005,6 +2157,8 @@ function getRequestUserId(req) {
 function getCartCount(items = []) {
   return (items || []).reduce((sum, item) => sum + Math.max(0, Number(item.quantity) || 0), 0);
 }
+
+app.use(adminAuditMiddleware);
 
 // ─── SECURITY HELPERS ─────────────────────────────────────────
 function generateCaptcha() {
@@ -2047,6 +2201,37 @@ async function getAllSettingsObject(options = {}) {
 
 async function getPublicSettingsObject(options = {}) {
   return getPublicSettingsPayload(await getAllSettingsObject(options));
+}
+
+async function getInquiryReplySmtpConfig() {
+  const settings = await getAllSettingsObject({ force: true });
+  const replyEmail = cleanEnvValue(process.env.INQUIRY_REPLY_EMAIL)
+    || cleanEnvValue(settings.inquiryReplyEmail)
+    || DEFAULT_INQUIRY_REPLY_EMAIL;
+  const replyPass = cleanEnvValue(process.env.INQUIRY_REPLY_PASS)
+    || cleanEnvValue(process.env.SMTP_PASS)
+    || cleanEnvValue(process.env.EMAIL_PASS)
+    || cleanEnvValue(settings.smtpPass);
+  return getSmtpConfigFromSettings({
+    smtpHost: settings.smtpHost || process.env.SMTP_HOST || 'smtp.gmail.com',
+    smtpPort: settings.smtpPort || process.env.SMTP_PORT || 465,
+    smtpUser: replyEmail,
+    smtpPass: replyPass,
+    storeName: settings.storeName || DEFAULT_EMAIL_FROM_NAME
+  });
+}
+
+function buildInquiryReplyHtml({ name = 'Customer', message = '', originalMessage = '' } = {}) {
+  return `
+    <div style="font-family:Arial,sans-serif;background:#fff7fb;padding:24px;color:#2b1c27;">
+      <div style="max-width:620px;margin:auto;background:#fff;border:1px solid #f0d7e1;border-radius:18px;padding:26px;box-shadow:0 16px 50px rgba(78,40,61,.08);">
+        <div style="font-size:22px;font-weight:800;color:#7a3e5b;margin-bottom:16px;">Lencho</div>
+        <p style="margin:0 0 14px;">Hi ${escapeEmailHtml(name)},</p>
+        <div style="line-height:1.7;color:#3a2b35;">${escapeEmailHtml(message).replace(/\n/g, '<br>')}</div>
+        ${originalMessage ? `<div style="margin-top:20px;padding:14px;border-radius:12px;background:#fff5f8;border:1px solid #f3d4df;"><b>Your message:</b><br>${escapeEmailHtml(originalMessage).replace(/\n/g, '<br>')}</div>` : ''}
+        <p style="margin-top:24px;color:#6b4a5d;">Regards,<br><b>Lencho Team</b></p>
+      </div>
+    </div>`;
 }
 
 async function getPublicCachePolicy() {
@@ -2223,8 +2408,8 @@ function escapeEmailHtml(value = '') {
 }
 
 async function sendAdminSecurityAlert({ email = '', reason = 'admin_login_failed', ip = '', userAgent = '' } = {}) {
-  const ownerEmail = getAdminAlertEmail();
-  if (!ownerEmail) return { sent: false, skipped: true };
+  const ownerEmails = getAdminAlertEmails();
+  if (!ownerEmails.length) return { sent: false, skipped: true };
 
   try {
     const smtpConfig = getSmtpConfigFromSettings({
@@ -2237,7 +2422,7 @@ async function sendAdminSecurityAlert({ email = '', reason = 'admin_login_failed
     const transporter = await getVerifiedSmtpTransporter(smtpConfig);
     const result = await sendEmailWithRetry(transporter, {
       from: `"${smtpConfig.storeName} Security" <${smtpConfig.user}>`,
-      to: ownerEmail,
+      to: ownerEmails.join(','),
       subject: 'Lencho Admin Security Alert',
       html: `
         <div style="font-family:Arial,sans-serif;background:#fff7fb;padding:24px;color:#2b1c27;">
@@ -2252,7 +2437,7 @@ async function sendAdminSecurityAlert({ email = '', reason = 'admin_login_failed
           </div>
         </div>`
     });
-    console.log(`[Admin Security] Alert sent to ${ownerEmail} | messageId=${result.messageId || 'n/a'}`);
+    console.log(`[Admin Security] Alert sent to ${ownerEmails.join(', ')} | messageId=${result.messageId || 'n/a'}`);
     return { sent: true, messageId: result.messageId };
   } catch (err) {
     console.warn('[Admin Security] Alert email failed:', err?.message || err);
@@ -3913,7 +4098,7 @@ app.post('/api/admin/login/request-otp', async (req, res) => {
     // ── FIRST LOGIN: Require email, password, captcha ──
     if (!email || !password || !captchaAnswer) return res.status(400).json({ error: 'Email, password and CAPTCHA are required' });
 
-    if (!isConfiguredAdminEmail(email)) {
+    if (!useDB && !isConfiguredAdminEmail(email)) {
       await recordLoginActivity({ email, status: 'failed', method: 'admin_otp', role: 'admin', ip, userAgent });
       sendAdminSecurityAlert({ email, reason: 'unapproved_admin_email', ip, userAgent });
       return res.status(400).json({ error: 'Invalid admin credentials' });
@@ -3928,10 +4113,20 @@ app.post('/api/admin/login/request-otp', async (req, res) => {
     let adminUser = null;
     if (useDB) {
       adminUser = await User.findOne({ email });
+      if ((!adminUser || adminUser.role !== 'admin') && !isConfiguredAdminEmail(email)) {
+        await recordLoginActivity({ email, status: 'failed', method: 'admin_otp', role: 'admin', ip, userAgent });
+        sendAdminSecurityAlert({ email, reason: 'unapproved_admin_email', ip, userAgent });
+        return res.status(400).json({ error: 'Invalid admin credentials' });
+      }
       if (!adminUser || adminUser.role !== 'admin' || !await bcrypt.compare(password, adminUser.password)) {
         await recordLoginActivity({ email, name: adminUser?.name || '', status: 'failed', method: 'admin_otp', role: adminUser?.role || 'user', ip, userAgent });
         sendAdminSecurityAlert({ email, reason: 'invalid_admin_credentials', ip, userAgent });
         return res.status(400).json({ error: 'Invalid admin credentials' });
+      }
+      if (adminUser.isBlocked) {
+        await recordLoginActivity({ email, name: adminUser.name, status: 'failed', method: 'admin_otp', role: 'admin', ip, userAgent });
+        sendAdminSecurityAlert({ email, reason: 'blocked_admin_login_attempt', ip, userAgent });
+        return res.status(403).json({ error: 'This admin account is disabled. Contact owner admin.' });
       }
     } else {
       const users = readJson(FILES.users);
@@ -3940,6 +4135,11 @@ app.post('/api/admin/login/request-otp', async (req, res) => {
         await recordLoginActivity({ email, name: adminUser?.name || '', status: 'failed', method: 'admin_otp', role: adminUser?.role || 'user', ip, userAgent });
         sendAdminSecurityAlert({ email, reason: 'invalid_admin_credentials', ip, userAgent });
         return res.status(400).json({ error: 'Invalid admin credentials' });
+      }
+      if (adminUser.isBlocked) {
+        await recordLoginActivity({ email, name: adminUser.name, status: 'failed', method: 'admin_otp', role: 'admin', ip, userAgent });
+        sendAdminSecurityAlert({ email, reason: 'blocked_admin_login_attempt', ip, userAgent });
+        return res.status(403).json({ error: 'This admin account is disabled. Contact owner admin.' });
       }
     }
 
@@ -4036,8 +4236,14 @@ app.post('/api/admin/login/verify-otp', async (req, res) => {
       req.session.userId = user._id.toString();
       req.session.role = user.role;
       req.session.name = user.name;
+      req.session.adminLoginAt = Date.now();
       delete req.session.pendingAdminLogin;
       delete req.session.pendingAdminOTP;
+      user.lastLoginAt = new Date();
+      user.lastLoginIp = String(ip || '');
+      user.lastLoginUserAgent = String(userAgent || '');
+      user.loginCount = (user.loginCount || 0) + 1;
+      await user.save();
       await recordLoginActivity({ email, name: user.name, status: 'success', method: 'admin_otp', role: user.role, ip, userAgent });
       const { password: _, ...safe } = user.toObject();
       return res.json({ success: true, token: generateToken(user._id.toString(), user.role), user: { id: user._id, ...safe } });
@@ -4049,8 +4255,14 @@ app.post('/api/admin/login/verify-otp', async (req, res) => {
     req.session.userId = user.id;
     req.session.role = user.role;
     req.session.name = user.name;
+    req.session.adminLoginAt = Date.now();
     delete req.session.pendingAdminLogin;
     delete req.session.pendingAdminOTP;
+    user.lastLoginAt = new Date().toISOString();
+    user.lastLoginIp = String(ip || '');
+    user.lastLoginUserAgent = String(userAgent || '');
+    user.loginCount = (user.loginCount || 0) + 1;
+    writeJson(FILES.users, users);
     await recordLoginActivity({ email, name: user.name, status: 'success', method: 'admin_otp', role: user.role, ip, userAgent });
     res.json({ success: true, token: generateToken(user.id, user.role), user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -4066,7 +4278,7 @@ app.post('/api/admin/login/simple', async (req, res) => {
     
     if (!email || !password || !captchaAnswer) return res.status(400).json({ error: 'Email, password and CAPTCHA are required' });
 
-    if (!isConfiguredAdminEmail(email)) {
+    if (!useDB && !isConfiguredAdminEmail(email)) {
       await recordLoginActivity({ email, status: 'failed', method: 'admin_simple', role: 'admin', ip, userAgent });
       sendAdminSecurityAlert({ email, reason: 'unapproved_admin_email_simple', ip, userAgent });
       return res.status(400).json({ error: 'Invalid admin credentials' });
@@ -4084,10 +4296,20 @@ app.post('/api/admin/login/simple', async (req, res) => {
     // Try MongoDB first
     if (useDB) {
       adminUser = await User.findOne({ email });
+      if ((!adminUser || adminUser.role !== 'admin') && !isConfiguredAdminEmail(email)) {
+        await recordLoginActivity({ email, status: 'failed', method: 'admin_simple', role: 'admin', ip, userAgent });
+        sendAdminSecurityAlert({ email, reason: 'unapproved_admin_email_simple', ip, userAgent });
+        return res.status(400).json({ error: 'Invalid admin credentials' });
+      }
       if (!adminUser || adminUser.role !== 'admin' || !await bcrypt.compare(password, adminUser.password)) {
         await recordLoginActivity({ email, status: 'failed', method: 'admin_simple', role: adminUser?.role || 'user', ip, userAgent });
         sendAdminSecurityAlert({ email, reason: 'invalid_admin_credentials_simple', ip, userAgent });
         return res.status(400).json({ error: 'Invalid admin credentials' });
+      }
+      if (adminUser.isBlocked) {
+        await recordLoginActivity({ email, name: adminUser.name, status: 'failed', method: 'admin_simple', role: 'admin', ip, userAgent });
+        sendAdminSecurityAlert({ email, reason: 'blocked_admin_login_attempt_simple', ip, userAgent });
+        return res.status(403).json({ error: 'This admin account is disabled. Contact owner admin.' });
       }
     } else {
       // Use JSON fallback
@@ -4097,6 +4319,11 @@ app.post('/api/admin/login/simple', async (req, res) => {
         await recordLoginActivity({ email, status: 'failed', method: 'admin_simple', role: adminUser?.role || 'user', ip, userAgent });
         sendAdminSecurityAlert({ email, reason: 'invalid_admin_credentials_simple', ip, userAgent });
         return res.status(400).json({ error: 'Invalid admin credentials' });
+      }
+      if (adminUser.isBlocked) {
+        await recordLoginActivity({ email, name: adminUser.name, status: 'failed', method: 'admin_simple', role: 'admin', ip, userAgent });
+        sendAdminSecurityAlert({ email, reason: 'blocked_admin_login_attempt_simple', ip, userAgent });
+        return res.status(403).json({ error: 'This admin account is disabled. Contact owner admin.' });
       }
     }
 
@@ -4108,7 +4335,26 @@ app.post('/api/admin/login/simple', async (req, res) => {
     }
     req.session.role = 'admin';
     req.session.name = adminUser.name;
+    req.session.adminLoginAt = Date.now();
     delete req.session.captcha; // Clear CAPTCHA after use
+
+    if (useDB) {
+      adminUser.lastLoginAt = new Date();
+      adminUser.lastLoginIp = String(ip || '');
+      adminUser.lastLoginUserAgent = String(userAgent || '');
+      adminUser.loginCount = (adminUser.loginCount || 0) + 1;
+      await adminUser.save();
+    } else {
+      const users = readJson(FILES.users);
+      const index = users.findIndex(user => String(user.id) === String(adminUser.id));
+      if (index >= 0) {
+        users[index].lastLoginAt = new Date().toISOString();
+        users[index].lastLoginIp = String(ip || '');
+        users[index].lastLoginUserAgent = String(userAgent || '');
+        users[index].loginCount = (users[index].loginCount || 0) + 1;
+        writeJson(FILES.users, users);
+      }
+    }
     
     // Record successful login
     await recordLoginActivity({ email, name: adminUser.name, status: 'success', method: 'admin_simple', role: 'admin', ip, userAgent });
@@ -4266,7 +4512,28 @@ app.post('/api/login', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ success: true }); });
+app.post('/api/logout', async (req, res) => {
+  try {
+    const auth = getAuthContext(req);
+    const adminLoginAt = Number(req.session?.adminLoginAt || 0);
+    if (auth.role === 'admin' && auth.userId) {
+      const actor = await getAdminActor(req);
+      await recordLoginActivity({
+        email: actor?.email || '',
+        name: actor?.name || '',
+        status: 'success',
+        method: 'admin_logout',
+        role: 'admin',
+        ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress || '',
+        userAgent: req.headers['user-agent'] || '',
+        durationSeconds: adminLoginAt ? Math.round((Date.now() - adminLoginAt) / 1000) : 0
+      });
+    }
+  } catch (error) {
+    console.warn('[logout] activity log failed:', error?.message || error);
+  }
+  req.session.destroy(() => res.json({ success: true }));
+});
 
 app.get('/api/me', async (req, res) => {
   const auth = getAuthContext(req);
@@ -4322,7 +4589,7 @@ app.put('/api/profile', requireAuth, async (req, res) => {
 });
 
 // ─── ADMIN USERS MANAGEMENT API ───────────────────────────────
-app.get('/api/admin/users', async (req, res) => {
+app.get('/api/admin/legacy-users', async (req, res) => {
   if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
   try {
     const { search, verified, blocked, page = 1, limit = 50 } = req.query;
@@ -4352,7 +4619,7 @@ app.get('/api/admin/users', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/admin/users/:id/block', async (req, res) => {
+app.put('/api/admin/legacy-users/:id/block', async (req, res) => {
   if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
   try {
     const { id } = req.params;
@@ -4372,7 +4639,7 @@ app.put('/api/admin/users/:id/block', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/admin/users/:id', async (req, res) => {
+app.delete('/api/admin/legacy-users/:id', async (req, res) => {
   if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
   try {
     const { id } = req.params;
@@ -5188,7 +5455,7 @@ app.get('/api/orders/:id/invoice', requireAuth, async (req, res) => {
     if (!order) return res.status(404).json({ error: 'Order not found' });
     const gstin = await getSetting('gstin', '27XXXXX1234X1ZX');
     const storeName = await getSetting('storeName', 'Lencho');
-    const storeEmail = await getSetting('storeEmail', 'hello@lencho.in');
+    const storeEmail = await getSetting('storeEmail', PRIMARY_LENCHO_EMAIL);
     const storePhone = await getSetting('storePhone', '+91 9876543210');
     const invoice = {
       invoiceNo: 'INV-' + (order.id || order._id),
@@ -5273,6 +5540,207 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+function normalizeAdminAccountForResponse(user = {}, extras = {}) {
+  const plain = typeof user.toObject === 'function' ? user.toObject() : user;
+  const { password, otp, ...safe } = plain || {};
+  return {
+    ...safe,
+    ...extras,
+    id: plain?._id?.toString?.() || plain?.id || extras.id,
+    adminType: plain?.adminType || (normalizeAdminEmail(plain?.email) === DEFAULT_OWNER_ADMIN_EMAIL ? 'owner' : 'employee'),
+    isOwner: normalizeAdminEmail(plain?.email) === DEFAULT_OWNER_ADMIN_EMAIL || plain?.adminType === 'owner',
+    isBlocked: Boolean(plain?.isBlocked),
+    loginCount: Number(plain?.loginCount || 0),
+    lastLoginAt: plain?.lastLoginAt || null
+  };
+}
+
+app.get('/api/admin/activity-logs', requireAdmin, async (req, res) => {
+  try {
+    const actor = await getAdminActor(req);
+    const owner = isOwnerAdminAccount(actor);
+    const limit = Math.min(300, Math.max(10, Number(req.query.limit) || 100));
+    const emailFilter = owner ? normalizeAdminEmail(req.query.email || '') : normalizeAdminEmail(actor?.email || '');
+
+    let logs = [];
+    if (useDB && AdminAction) {
+      const query = emailFilter ? { adminEmail: emailFilter } : {};
+      logs = await AdminAction.find(query).sort({ createdAt: -1 }).limit(limit).lean();
+    } else {
+      logs = readJson(FILES.adminActions)
+        .filter(log => !emailFilter || normalizeAdminEmail(log.adminEmail) === emailFilter)
+        .slice(0, limit);
+    }
+
+    res.json({ success: true, logs, owner });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/admins', requireAdmin, async (req, res) => {
+  try {
+    if (useDB) {
+      const admins = await User.find({ role: 'admin' }).select('-password -otp').sort({ adminType: 1, createdAt: -1 }).lean();
+      const emails = admins.map(admin => normalizeAdminEmail(admin.email)).filter(Boolean);
+      const actionRows = AdminAction && emails.length
+        ? await AdminAction.aggregate([
+            { $match: { adminEmail: { $in: emails } } },
+            { $group: { _id: '$adminEmail', actionCount: { $sum: 1 }, lastActionAt: { $max: '$createdAt' } } }
+          ])
+        : [];
+      const actionMap = new Map(actionRows.map(row => [normalizeAdminEmail(row._id), row]));
+      return res.json({
+        success: true,
+        admins: admins.map(admin => {
+          const actionStats = actionMap.get(normalizeAdminEmail(admin.email)) || {};
+          return normalizeAdminAccountForResponse(admin, {
+            actionCount: Number(actionStats.actionCount || 0),
+            lastActionAt: actionStats.lastActionAt || null
+          });
+        })
+      });
+    }
+
+    const actions = readJson(FILES.adminActions);
+    const admins = readJson(FILES.users).filter(user => user.role === 'admin');
+    res.json({
+      success: true,
+      admins: admins.map(user => {
+        const adminEmail = normalizeAdminEmail(user.email);
+        const userActions = actions.filter(action => normalizeAdminEmail(action.adminEmail) === adminEmail);
+        return normalizeAdminAccountForResponse(user, {
+          actionCount: userActions.length,
+          lastActionAt: userActions[0]?.createdAt || null
+        });
+      })
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/admins', requireAdmin, requireOwnerAdmin, async (req, res) => {
+  try {
+    const name = cleanEnvValue(req.body?.name);
+    const email = normalizeAdminEmail(req.body?.email);
+    const password = cleanEnvValue(req.body?.password);
+    const phone = cleanEnvValue(req.body?.phone);
+    const adminNotes = cleanEnvValue(req.body?.adminNotes || req.body?.notes);
+    if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
+    if (!isValidEmailFormat(email)) return res.status(400).json({ error: 'Enter a valid employee email' });
+    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    const actor = req.adminActor || await getAdminActor(req);
+    if (useDB) {
+      if (await User.findOne({ email })) return res.status(400).json({ error: 'This email already exists' });
+      const created = await User.create({
+        name,
+        email,
+        phone,
+        password: await bcrypt.hash(password, 10),
+        role: 'admin',
+        adminType: 'employee',
+        createdByAdminId: actor?._id?.toString?.() || actor?.id || '',
+        createdByAdminEmail: actor?.email || '',
+        adminNotes,
+        authProvider: 'email',
+        isVerified: true,
+        emailVerifiedAt: new Date(),
+        securityQuestion: 'Birthplace',
+        securityAnswer: 'Lencho'
+      });
+      return res.json({ success: true, admin: normalizeAdminAccountForResponse(created) });
+    }
+
+    const users = readJson(FILES.users);
+    if (users.some(user => normalizeAdminEmail(user.email) === email)) return res.status(400).json({ error: 'This email already exists' });
+    const created = {
+      id: uuidv4(),
+      name,
+      email,
+      phone,
+      password: await bcrypt.hash(password, 10),
+      role: 'admin',
+      adminType: 'employee',
+      createdByAdminId: actor?.id || '',
+      createdByAdminEmail: actor?.email || '',
+      adminNotes,
+      authProvider: 'email',
+      isVerified: true,
+      emailVerifiedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      loginCount: 0
+    };
+    users.push(created);
+    writeJson(FILES.users, users);
+    res.json({ success: true, admin: normalizeAdminAccountForResponse(created) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/admin/admins/:id/password', requireAdmin, requireOwnerAdmin, async (req, res) => {
+  try {
+    const password = cleanEnvValue(req.body?.password);
+    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (useDB) {
+      const admin = await User.findOne({ _id: req.params.id, role: 'admin' });
+      if (!admin) return res.status(404).json({ error: 'Admin employee not found' });
+      if (isOwnerAdminAccount(admin)) return res.status(400).json({ error: 'Owner password must be changed from Account Security' });
+      admin.password = await bcrypt.hash(password, 10);
+      admin.authProvider = 'email';
+      await admin.save();
+      return res.json({ success: true });
+    }
+    const users = readJson(FILES.users);
+    const index = users.findIndex(user => String(user.id) === String(req.params.id) && user.role === 'admin');
+    if (index === -1) return res.status(404).json({ error: 'Admin employee not found' });
+    if (isOwnerAdminAccount(users[index])) return res.status(400).json({ error: 'Owner password must be changed from Account Security' });
+    users[index].password = await bcrypt.hash(password, 10);
+    writeJson(FILES.users, users);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/admin/admins/:id/status', requireAdmin, requireOwnerAdmin, async (req, res) => {
+  try {
+    const blocked = Boolean(req.body?.blocked);
+    const currentId = String(req.auth?.userId || req.session?.userId || '');
+    if (String(req.params.id) === currentId) return res.status(400).json({ error: 'You cannot disable your own admin account' });
+    if (useDB) {
+      const admin = await User.findOne({ _id: req.params.id, role: 'admin' });
+      if (!admin) return res.status(404).json({ error: 'Admin employee not found' });
+      if (isOwnerAdminAccount(admin)) return res.status(400).json({ error: 'Owner admin cannot be disabled here' });
+      admin.isBlocked = blocked;
+      await admin.save();
+      return res.json({ success: true, admin: normalizeAdminAccountForResponse(admin) });
+    }
+    const users = readJson(FILES.users);
+    const index = users.findIndex(user => String(user.id) === String(req.params.id) && user.role === 'admin');
+    if (index === -1) return res.status(404).json({ error: 'Admin employee not found' });
+    if (isOwnerAdminAccount(users[index])) return res.status(400).json({ error: 'Owner admin cannot be disabled here' });
+    users[index].isBlocked = blocked;
+    writeJson(FILES.users, users);
+    res.json({ success: true, admin: normalizeAdminAccountForResponse(users[index]) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/admins/:id', requireAdmin, requireOwnerAdmin, async (req, res) => {
+  try {
+    const currentId = String(req.auth?.userId || req.session?.userId || '');
+    if (String(req.params.id) === currentId) return res.status(400).json({ error: 'You cannot remove your own admin account' });
+    if (useDB) {
+      const admin = await User.findOne({ _id: req.params.id, role: 'admin' });
+      if (!admin) return res.status(404).json({ error: 'Admin employee not found' });
+      if (isOwnerAdminAccount(admin)) return res.status(400).json({ error: 'Owner admin cannot be removed here' });
+      await User.deleteOne({ _id: admin._id });
+      return res.json({ success: true });
+    }
+    const users = readJson(FILES.users);
+    const index = users.findIndex(user => String(user.id) === String(req.params.id) && user.role === 'admin');
+    if (index === -1) return res.status(404).json({ error: 'Admin employee not found' });
+    if (isOwnerAdminAccount(users[index])) return res.status(400).json({ error: 'Owner admin cannot be removed here' });
+    users.splice(index, 1);
+    writeJson(FILES.users, users);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // INQUIRY ROUTES
 app.post('/api/contact', async (req, res) => {
   try {
@@ -5302,7 +5770,7 @@ app.post('/api/contact', async (req, res) => {
       const port = await getSetting('smtpPort', 465);
       const user = await getSetting('smtpUser', '');
       const pass = await getSetting('smtpPass', '');
-      const storeEmail = await getSetting('storeEmail', 'rupanshsaini17@gmail.com');
+      const storeEmail = await getSetting('storeEmail', PRIMARY_LENCHO_EMAIL);
 
       if (user && pass) {
         const transporter = nodemailer.createTransport({
@@ -5377,6 +5845,71 @@ app.put('/api/admin/inquiries/:id/status', requireAdmin, async (req, res) => {
 });
 
 // ─── ADMIN TOOLS ──────────────────────────────────────────────
+app.post('/api/admin/inquiries/:id/reply', requireAdmin, async (req, res) => {
+  try {
+    const message = String(req.body?.message || '').trim();
+    if (!message) return res.status(400).json({ error: 'Reply message is required' });
+
+    let inquiry;
+    if (useDB) {
+      inquiry = await Inquiry.findById(req.params.id);
+    } else {
+      inquiry = readJson(FILES.inquiries).find(item => String(item._id) === String(req.params.id));
+    }
+    if (!inquiry) return res.status(404).json({ error: 'Inquiry not found' });
+    if (!isValidEmailFormat(inquiry.email)) return res.status(400).json({ error: 'Customer email is invalid' });
+
+    const smtpConfig = await getInquiryReplySmtpConfig();
+    if (isPlaceholderSMTP(smtpConfig.user) || isPlaceholderSMTP(smtpConfig.pass)) {
+      return res.status(400).json({ error: `Inquiry reply email is not configured. Set INQUIRY_REPLY_EMAIL=${PRIMARY_LENCHO_EMAIL} and INQUIRY_REPLY_PASS app password in .env/Render.` });
+    }
+
+    const transporter = await getVerifiedSmtpTransporter(smtpConfig);
+    const subject = 'Re: Your Lencho inquiry';
+    const text = [
+      `Hi ${inquiry.name || 'Customer'},`,
+      '',
+      message,
+      '',
+      inquiry.message ? `Your message: ${inquiry.message}` : '',
+      '',
+      'Regards,',
+      'Lencho Team'
+    ].filter(line => line !== '').join('\n');
+    const result = await sendEmailWithRetry(transporter, {
+      from: `"Lencho Support" <${smtpConfig.user}>`,
+      replyTo: smtpConfig.user,
+      to: inquiry.email,
+      subject,
+      text,
+      html: buildInquiryReplyHtml({ name: inquiry.name, message, originalMessage: inquiry.message })
+    }, 2);
+
+    const actor = await getAdminActor(req);
+    if (useDB) {
+      inquiry.status = 'replied';
+      inquiry.replyMessage = message;
+      inquiry.repliedBy = actor?.email || '';
+      inquiry.repliedAt = new Date();
+      await inquiry.save();
+      return res.json({ success: true, messageId: result?.messageId || '', inquiry });
+    }
+
+    const inquiries = readJson(FILES.inquiries);
+    const index = inquiries.findIndex(item => String(item._id) === String(req.params.id));
+    if (index >= 0) {
+      inquiries[index].status = 'replied';
+      inquiries[index].replyMessage = message;
+      inquiries[index].repliedBy = actor?.email || '';
+      inquiries[index].repliedAt = new Date().toISOString();
+      writeJson(FILES.inquiries, inquiries);
+    }
+    res.json({ success: true, messageId: result?.messageId || '', inquiry: inquiries[index] || inquiry });
+  } catch (e) {
+    res.status(500).json({ error: toFriendlySmtpError(e) || e.message });
+  }
+});
+
 app.put('/api/admin/clear-data', requireAdmin, async (req, res) => {
   res.status(403).json({
     error: 'Database reset is disabled in production-safe mode. Existing records are preserved across deploys.'
