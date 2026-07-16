@@ -401,12 +401,8 @@ function buildAdminPanel() {
     <aside class="admin-sidebar" id="admin-sidebar">
       <div class="admin-logo">✦ LENCHO<br/><span style="font-size:.7rem;opacity:.6;letter-spacing:.05em;">Admin Panel</span></div>
       <div id="admin-visitor-counter" style="margin:0 .8rem 1rem;padding:.7rem .75rem;border-radius:12px;background:linear-gradient(135deg,rgba(201,106,138,.12),rgba(201,149,76,.12));border:1px solid rgba(201,106,138,.25);font-size:.78rem;color:var(--dark);">
-        <div style="font-weight:700;display:flex;align-items:center;gap:.4rem;"><i class="fas fa-chart-line"></i> Live Visitors</div>
+        <div style="font-weight:700;display:flex;align-items:center;gap:.4rem;"><i class="fas fa-chart-line"></i> Total Visitors</div>
         <div style="margin-top:.2rem;font-size:1.05rem;font-weight:800;color:var(--rose-dark);" id="admin-website-visitors">Loading...</div>
-      </div>
-      <div id="admin-store-counter" style="margin:0 .8rem 1rem;padding:.7rem .75rem;border-radius:12px;background:linear-gradient(135deg,rgba(132,118,206,.12),rgba(147,112,219,.12));border:1px solid rgba(132,118,206,.25);font-size:.78rem;color:var(--dark);">
-        <div style="font-weight:700;display:flex;align-items:center;gap:.4rem;"><i class="fas fa-store"></i> Store Visitors</div>
-        <div style="margin-top:.2rem;font-size:1.05rem;font-weight:800;color:#7c3aed;" id="admin-store-visitors">Loading...</div>
       </div>
       <nav class="admin-menu">
         <div class="admin-menu-item active" id="am-dashboard" onclick="adminTab('dashboard')"><i class="fas fa-chart-line" style="width:20px;"></i> Dashboard</div>
@@ -524,6 +520,9 @@ function adminSafeStats(stats = {}) {
     totalGstCollected: adminSafeNumber(safe.totalGstCollected),
     totalVisitors: adminSafeNumber(safe.totalVisitors),
     storeVisitors: adminSafeNumber(safe.storeVisitors),
+    visitorSource: safe.visitorSource || 'local',
+    visitorSessions: adminSafeNumber(safe.visitorSessions),
+    activeVisitors: adminSafeNumber(safe.activeVisitors),
     statusCounts: safe.statusCounts || {},
     recentOrders: Array.isArray(safe.recentOrders) ? safe.recentOrders : []
   };
@@ -543,22 +542,15 @@ function formatAdminVisitorCount(value) {
 
 async function loadAdminVisitorCounter() {
   const websiteBox = document.getElementById('admin-visitor-counter');
-  const storeBox = document.getElementById('admin-store-counter');
-  if (!websiteBox && !storeBox) return;
+  if (!websiteBox) return;
 
   const stats = await api('/api/admin/stats');
   const safeStats = adminSafeStats(stats);
   const websiteVisits = formatAdminVisitorCount(safeStats.totalVisitors);
-  const storeVisits = formatAdminVisitorCount(safeStats.storeVisitors);
   
   if (websiteBox) {
     const websiteVisitorElem = document.getElementById('admin-website-visitors');
     if (websiteVisitorElem) websiteVisitorElem.textContent = websiteVisits;
-  }
-  
-  if (storeBox) {
-    const storeVisitorElem = document.getElementById('admin-store-visitors');
-    if (storeVisitorElem) storeVisitorElem.textContent = storeVisits;
   }
 }
 
@@ -793,13 +785,16 @@ async function adminDashboard() {
     }
     return count.toLocaleString('en-IN');
   };
+  const visitorSubtext = s.visitorSource === 'ga4'
+    ? `GA4 total users${s.visitorSessions ? ` · ${formatVisitorCount(s.visitorSessions)} sessions` : ''}`
+    : 'GA4 env pending';
   document.getElementById('admin-content').innerHTML = `
   <div class="admin-header"><h1 class="admin-page-title">Dashboard Overview</h1><span style="font-size:.875rem;color:var(--gray);">${new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</span></div>
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-label">Total Revenue</div><div class="stat-value">${formatCurrency(s.totalRevenue)}</div><div class="stat-change">↑ All time</div></div>
     <div class="stat-card"><div class="stat-icon">📦</div><div class="stat-label">Total Orders</div><div class="stat-value">${s.totalOrders}</div><div class="stat-change">Today: ${s.todayOrders}</div></div>
     <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-label">Customers</div><div class="stat-value">${s.totalUsers}</div><div class="stat-change">Registered users</div></div>
-    <div class="stat-card"><div class="stat-icon">👁️</div><div class="stat-label">Website Visitors</div><div class="stat-value">${formatVisitorCount(s.totalVisitors)}</div><div class="stat-change">Total unique sessions</div></div>
+    <div class="stat-card"><div class="stat-icon">👁️</div><div class="stat-label">Total Visitors</div><div class="stat-value">${formatVisitorCount(s.totalVisitors)}</div><div class="stat-change">${visitorSubtext}</div></div>
     <div class="stat-card"><div class="stat-icon">🏷️</div><div class="stat-label">Total GST Collected</div><div class="stat-value">${formatCurrency(s.totalGstCollected)}</div><div class="stat-change">All orders</div></div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2rem;">
@@ -3112,29 +3107,15 @@ async function adminBackupRecovery() {
         </button>
       </div>
 
-      <!-- VISITOR COUNT MANAGEMENT -->
+      <!-- GA4 VISITOR SUMMARY -->
       <div class="admin-form" style="margin-bottom:2rem;">
         <h3 style="color:var(--rose-dark);margin-bottom:1.5rem;">
-          <i class="fas fa-chart-line"></i> Visitor Count Management
+          <i class="fas fa-chart-line"></i> GA4 Visitor Summary
         </h3>
         <p style="color:var(--gray);margin-bottom:1rem;font-size:.9rem;">
-          ⚠️ Your current visitor count: <strong style="color:var(--rose);">${stats.totalVisitors?.toLocaleString() || 0}</strong> visitors | 
-          <strong style="color:var(--rose);">${stats.storeVisitors?.toLocaleString() || 0}</strong> store visitors
+          Total Visitors: <strong style="color:var(--rose);">${stats.totalVisitors?.toLocaleString('en-IN') || 0}</strong>
+          <span style="margin-left:.75rem;color:var(--gray);">Source: ${stats.visitorSource === 'ga4' ? 'Google Analytics 4' : 'GA4 env pending'}</span>
         </p>
-        
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Total Website Visitors</label>
-            <input type="number" id="visitor-total" value="${stats.totalVisitors || 0}" placeholder="1000"/>
-          </div>
-          <div class="form-group">
-            <label>Store Visitors Count</label>
-            <input type="number" id="visitor-store" value="${stats.storeVisitors || 0}" placeholder="500"/>
-          </div>
-        </div>
-        <button class="btn-primary" onclick="saveVisitorCount()">
-          <i class="fas fa-save"></i> Save Visitor Count
-        </button>
       </div>
 
       <!-- CODE BACKUP SECTION -->
@@ -3143,7 +3124,7 @@ async function adminBackupRecovery() {
           <i class="fas fa-database"></i> Create Code Backup
         </h3>
         <p style="color:var(--gray);margin-bottom:1rem;font-size:.9rem;">
-          Create a backup of your code before pushing to GitHub. This protects your visitor count and allows you to restore old versions.
+          Create a backup of your code before pushing to GitHub. This allows you to restore old versions.
         </p>
         <div class="form-group">
           <label>Backup Description (optional)</label>
@@ -3203,7 +3184,6 @@ async function adminBackupRecovery() {
       <div style="margin-top:2rem;padding:1.5rem;background:rgba(201,149,76,.08);border-radius:12px;border-left:4px solid var(--gold);color:var(--dark);font-size:.85rem;">
         <p><strong>📌 How to use Backup & Recovery:</strong></p>
         <ol style="margin:0.5rem 0 0 1.5rem;padding:0;">
-          <li style="margin:.3rem 0;">Update your visitor count if it resets</li>
           <li style="margin:.3rem 0;">Create a backup with description before pushing code to GitHub</li>
           <li style="margin:.3rem 0;">If something breaks, restore from any previous backup</li>
           <li style="margin:.3rem 0;">Backups include code + data files (max 50 kept)</li>
@@ -3218,23 +3198,6 @@ async function adminBackupRecovery() {
         <button class="btn-outline" onclick="adminTab('backup')">Try Again</button>
       </div>
     `;
-  }
-}
-
-async function saveVisitorCount() {
-  const total = Number(document.getElementById('visitor-total').value) || 0;
-  const store = Number(document.getElementById('visitor-store').value) || 0;
-
-  const r = await api('/api/admin/visitor-count', {
-    method: 'PUT',
-    body: { totalVisitors: total, storeVisitors: store }
-  });
-
-  if (r.success) {
-    toast(`✓ Visitor count updated! Total: ${total.toLocaleString()} | Store: ${store.toLocaleString()}`, 'success');
-    loadAdminVisitorCounter();
-  } else {
-    toast('Error updating visitor count: ' + (r.error || 'Unknown'), 'error');
   }
 }
 

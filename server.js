@@ -75,6 +75,10 @@ const MONGODB_URI = readEnvVar('MONGODB_URI', ['MONGO_URI', 'DATABASE_URL']);
 const REQUIRE_MONGODB = true;
 const DEFAULT_OWNER_ADMIN_EMAIL = PRIMARY_LENCHO_EMAIL;
 const DEFAULT_INQUIRY_REPLY_EMAIL = cleanEnvValue(process.env.INQUIRY_REPLY_EMAIL) || PRIMARY_LENCHO_EMAIL;
+const GA4_PROPERTY_ID = readEnvVar('GA4_PROPERTY_ID', [], '539346966');
+const GA4_CACHE_TTL_MS = Math.max(60000, Number(process.env.GA4_CACHE_TTL_MS) || 5 * 60 * 1000);
+let ga4AccessTokenCache = { token: '', expiresAt: 0 };
+let ga4VisitorStatsCache = { data: null, expiresAt: 0 };
 
 function validateMongoUriForPermanentStorage(uri) {
   let value = cleanEnvValue(uri);
@@ -5496,6 +5500,106 @@ function safeVisitorCount(value) {
   const num = Number(value);
   return Number.isFinite(num) && num > 0 ? Math.floor(num) : 0;
 }
+
+function parseGa4ServiceAccountCredentials() {
+  let rawJson = cleanEnvValue(process.env.GA4_SERVICE_ACCOUNT_JSON);
+  const rawBase64 = cleanEnvValue(process.env.GA4_SERVICE_ACCOUNT_JSON_BASE64);
+  if (rawBase64) {
+    try {
+      rawJson = Buffer.from(rawBase64, 'base64').toString('utf8');
+    } catch (e) {
+      console.warn('[GA4] Could not decode GA4_SERVICE_ACCOUNT_JSON_BASE64:', e.message);
+    }
+  }
+
+  let parsed = {};
+  if (rawJson) {
+    try {
+      parsed = JSON.parse(rawJson);
+    } catch (e) {
+      console.warn('[GA4] Could not parse GA4 service account JSON:', e.message);
+    }
+  }
+
+  const clientEmail = cleanEnvValue(process.env.GA4_CLIENT_EMAIL) || cleanEnvValue(parsed.client_email);
+  const privateKey = (cleanEnvValue(process.env.GA4_PRIVATE_KEY) || cleanEnvValue(parsed.private_key)).replace(/\\n/g, '\n');
+  if (!clientEmail || !privateKey) return null;
+  return { clientEmail, privateKey };
+}
+
+async function getGa4AccessToken() {
+  const now = Date.now();
+  if (ga4AccessTokenCache.token && ga4AccessTokenCache.expiresAt > now + 60000) {
+    return ga4AccessTokenCache.token;
+  }
+
+  const credentials = parseGa4ServiceAccountCredentials();
+  if (!credentials) return '';
+
+  const nowSeconds = Math.floor(now / 1000);
+  const assertion = jwt.sign({
+    iss: credentials.clientEmail,
+    scope: 'https://www.googleapis.com/auth/analytics.readonly',
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: nowSeconds + 3600,
+    iat: nowSeconds
+  }, credentials.privateKey, { algorithm: 'RS256' });
+
+  const response = await axios.post(
+    'https://oauth2.googleapis.com/token',
+    new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion
+    }).toString(),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 }
+  );
+
+  ga4AccessTokenCache = {
+    token: response.data?.access_token || '',
+    expiresAt: now + Math.max(300000, Number(response.data?.expires_in || 3600) * 1000)
+  };
+  return ga4AccessTokenCache.token;
+}
+
+async function getGa4VisitorStats() {
+  if (!GA4_PROPERTY_ID) return null;
+  const now = Date.now();
+  if (ga4VisitorStatsCache.data && ga4VisitorStatsCache.expiresAt > now) {
+    return ga4VisitorStatsCache.data;
+  }
+
+  const accessToken = await getGa4AccessToken();
+  if (!accessToken) return null;
+
+  const response = await axios.post(
+    `https://analyticsdata.googleapis.com/v1beta/properties/${GA4_PROPERTY_ID}:runReport`,
+    {
+      dateRanges: [{ startDate: '2020-01-01', endDate: 'today' }],
+      metrics: [
+        { name: 'totalUsers' },
+        { name: 'sessions' },
+        { name: 'activeUsers' }
+      ]
+    },
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      timeout: 10000
+    }
+  );
+
+  const values = response.data?.rows?.[0]?.metricValues || [];
+  const data = {
+    source: 'ga4',
+    propertyId: GA4_PROPERTY_ID,
+    totalVisitors: safeVisitorCount(values[0]?.value),
+    sessions: safeVisitorCount(values[1]?.value),
+    activeUsers: safeVisitorCount(values[2]?.value),
+    updatedAt: new Date().toISOString()
+  };
+  ga4VisitorStatsCache = { data, expiresAt: now + GA4_CACHE_TTL_MS };
+  return data;
+}
+
 app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   try {
     if (useDB) {
@@ -5518,6 +5622,10 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
         acc[row._id || 'placed'] = Number(row.count) || 0;
         return acc;
       }, {});
+      const ga4Stats = await getGa4VisitorStats().catch(e => {
+        console.warn('[GA4] Visitor stats unavailable:', e.response?.data?.error?.message || e.message);
+        return null;
+      });
       return res.json({
         totalOrders,
         totalRevenue: safeAdminAmount(summary.totalRevenue),
@@ -5526,7 +5634,10 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
         totalUsers,
         totalProducts,
         totalGstCollected: safeAdminAmount(summary.totalGstCollected),
-        totalVisitors: safeVisitorCount(visitorCounter?.value),
+        totalVisitors: GA4_PROPERTY_ID ? safeVisitorCount(ga4Stats?.totalVisitors) : safeVisitorCount(visitorCounter?.value),
+        visitorSource: ga4Stats?.source || (GA4_PROPERTY_ID ? 'ga4_pending' : 'local'),
+        visitorSessions: safeVisitorCount(ga4Stats?.sessions),
+        activeVisitors: safeVisitorCount(ga4Stats?.activeUsers),
         storeVisitors: safeVisitorCount(storeVisitorCounter?.value),
         statusCounts,
         recentOrders: recentOrders.map(o => ({ ...o, id: o.id || o._id }))
@@ -5536,7 +5647,11 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
     const today = new Date().toDateString(), todayOrders = orders.filter(o => new Date(o.createdAt).toDateString() === today);
     const statusCounts = orders.reduce((acc, o) => { acc[o.status] = (acc[o.status] || 0) + 1; return acc; }, {});
     const visitorStats = getFallbackVisitorStats();
-    res.json({ totalOrders: orders.length, totalRevenue: orders.reduce((s, o) => s + safeAdminAmount(o.grandTotal), 0), todayOrders: todayOrders.length, todayRevenue: todayOrders.reduce((s, o) => s + safeAdminAmount(o.grandTotal), 0), totalUsers: users.length, totalProducts: products.length, totalGstCollected: orders.reduce((s, o) => s + safeAdminAmount(o.gstTotal), 0), totalVisitors: visitorStats.totalVisitors, storeVisitors: visitorStats.storeVisitors, statusCounts, recentOrders: orders.slice(-5).reverse() });
+    const ga4Stats = await getGa4VisitorStats().catch(e => {
+      console.warn('[GA4] Visitor stats unavailable:', e.response?.data?.error?.message || e.message);
+      return null;
+    });
+    res.json({ totalOrders: orders.length, totalRevenue: orders.reduce((s, o) => s + safeAdminAmount(o.grandTotal), 0), todayOrders: todayOrders.length, todayRevenue: todayOrders.reduce((s, o) => s + safeAdminAmount(o.grandTotal), 0), totalUsers: users.length, totalProducts: products.length, totalGstCollected: orders.reduce((s, o) => s + safeAdminAmount(o.gstTotal), 0), totalVisitors: GA4_PROPERTY_ID ? safeVisitorCount(ga4Stats?.totalVisitors) : visitorStats.totalVisitors, visitorSource: ga4Stats?.source || (GA4_PROPERTY_ID ? 'ga4_pending' : 'local'), visitorSessions: safeVisitorCount(ga4Stats?.sessions), activeVisitors: safeVisitorCount(ga4Stats?.activeUsers), storeVisitors: visitorStats.storeVisitors, statusCounts, recentOrders: orders.slice(-5).reverse() });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -6428,18 +6543,31 @@ if (!fs.existsSync(BACKUPS_DIR)) {
 // Get visitor stats
 app.get('/api/admin/visitor-stats', requireAdmin, async (req, res) => {
   try {
+    const ga4Stats = await getGa4VisitorStats().catch(e => {
+      console.warn('[GA4] Visitor stats unavailable:', e.response?.data?.error?.message || e.message);
+      return null;
+    });
     if (useDB) {
       const [total, store] = await Promise.all([
         Settings.findOne({ key: 'siteVisitorCount' }).lean(),
         Settings.findOne({ key: 'storeVisitorCount' }).lean()
       ]);
       return res.json({
-        totalVisitors: safeVisitorCount(total?.value),
+        totalVisitors: GA4_PROPERTY_ID ? safeVisitorCount(ga4Stats?.totalVisitors) : safeVisitorCount(total?.value),
+        visitorSource: ga4Stats?.source || (GA4_PROPERTY_ID ? 'ga4_pending' : 'local'),
+        visitorSessions: safeVisitorCount(ga4Stats?.sessions),
+        activeVisitors: safeVisitorCount(ga4Stats?.activeUsers),
         storeVisitors: safeVisitorCount(store?.value)
       });
     }
     const stats = getFallbackVisitorStats();
-    res.json(stats);
+    res.json({
+      ...stats,
+      totalVisitors: GA4_PROPERTY_ID ? safeVisitorCount(ga4Stats?.totalVisitors) : stats.totalVisitors,
+      visitorSource: ga4Stats?.source || (GA4_PROPERTY_ID ? 'ga4_pending' : 'local'),
+      visitorSessions: safeVisitorCount(ga4Stats?.sessions),
+      activeVisitors: safeVisitorCount(ga4Stats?.activeUsers)
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
