@@ -18,6 +18,7 @@ const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { generateToken } = require('./middleware/auth');
+const createAdminAiRoutes = require('./routes/admin-ai');
 const {
   User,
   Product,
@@ -2874,6 +2875,10 @@ app.post('/api/admin/test-smtp', requireAdmin, async (req, res) => {
 // ──── AUTH SETTINGS ROUTES ────────────────────────────────────
 const authSettingsRoutes = require('./routes/auth-settings');
 app.use('/api/auth-settings', authSettingsRoutes);
+app.use('/api/admin/ai', createAdminAiRoutes({
+  requireAdmin,
+  models: { User, Product, Order, Category, Settings, AdminAction }
+}));
 
 app.post('/api/admin/upload-media', requireAdmin, upload.any(), async (req, res) => {
   try {

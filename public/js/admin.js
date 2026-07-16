@@ -26,6 +26,32 @@ function clearAdminCache(prefix = '') {
   });
 }
 
+let adminAiScriptPromise = null;
+
+function ensureAdminAiAssistantLoaded() {
+  if (typeof window.renderAdminAiAssistant === 'function') return Promise.resolve();
+  if (adminAiScriptPromise) return adminAiScriptPromise;
+
+  adminAiScriptPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-admin-ai-script="true"]');
+    if (existing) {
+      existing.addEventListener('load', resolve, { once: true });
+      existing.addEventListener('error', reject, { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = '/js/admin-ai.js?v=20260716-ai1';
+    script.defer = true;
+    script.dataset.adminAiScript = 'true';
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('Lencho AI script failed to load'));
+    document.head.appendChild(script);
+  });
+
+  return adminAiScriptPromise;
+}
+
 function renderAdminAccessPanel(message = 'Admin access only') {
   return `
     <div class="admin-access-panel">
@@ -406,6 +432,7 @@ function buildAdminPanel() {
       </div>
       <nav class="admin-menu">
         <div class="admin-menu-item active" id="am-dashboard" onclick="adminTab('dashboard')"><i class="fas fa-chart-line" style="width:20px;"></i> Dashboard</div>
+        <div class="admin-menu-item" id="am-ai-assistant" onclick="adminTab('ai-assistant')"><i class="fas fa-robot" style="width:20px;"></i> Lencho AI</div>
         <div class="admin-menu-item" id="am-orders" onclick="adminTab('orders')"><i class="fas fa-shopping-bag" style="width:20px;"></i> Orders</div>
         <div class="admin-menu-item" id="am-products" onclick="adminTab('products')"><i class="fas fa-gem" style="width:20px;"></i> Jewellery Products</div>
         <div class="admin-menu-item" id="am-collections" onclick="adminTab('collections')"><i class="fas fa-layer-group" style="width:20px;"></i> Jewellery Collections</div>
@@ -476,6 +503,25 @@ function adminTab(tab) {
   const sidebar = document.getElementById('admin-sidebar');
   if (sidebar) sidebar.classList.remove('open'); // Close mobile menu
 
+  if (tab === 'ai-assistant') {
+    const content = document.getElementById('admin-content');
+    if (content) {
+      content.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:center;min-height:300px;">
+          <div style="text-align:center;">
+            <div style="font-size:2rem;margin-bottom:1rem;animation:spin 1s linear infinite;"><i class="fas fa-spinner"></i></div>
+            <div style="font-size:.95rem;color:var(--gray);">Loading Lencho AI...</div>
+          </div>
+        </div>
+      `;
+    }
+    ensureAdminAiAssistantLoaded()
+      .then(() => window.renderAdminAiAssistant())
+      .catch(error => {
+        if (content) content.innerHTML = renderAdminAccessPanel(error.message || 'Lencho AI failed to load');
+      });
+    return;
+  }
   if (tab === 'dashboard') adminDashboard();
   if (tab === 'orders') adminOrders();
   if (tab === 'products') adminProducts();
