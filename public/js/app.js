@@ -11,6 +11,7 @@ let authOtpResendEndsAt = 0;
 let searchCache = new Map();
 let searchTimeout = null;
 let firebaseClientLoadPromise = null;
+let adminAssetsPromise = null;
 const apiGetCache = new Map();
 const API_CACHE_TTL_MS = 2 * 60 * 1000;
 const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -69,6 +70,17 @@ function loadScriptOnce(src, id) {
     script.onerror = () => reject(new Error(`Failed to load ${src}`));
     document.head.appendChild(script);
   });
+}
+
+function ensureAdminAssets() {
+  if (adminAssetsPromise) return adminAssetsPromise;
+  adminAssetsPromise = loadScriptOnce('/js/admin.js?v=6.6', 'lencho-admin-js')
+    .then(() => loadScriptOnce('/js/admin-gst-settings.js?v=4.7', 'lencho-admin-gst-js'))
+    .catch((error) => {
+      adminAssetsPromise = null;
+      throw error;
+    });
+  return adminAssetsPromise;
 }
 
 function readLocalCart() {
@@ -523,15 +535,25 @@ function getHeaderOffset() {
 }
 
 // ── ROUTER ────────────────────────────────────────────────
+function routeLoadingHTML(route = '') {
+  const label = route.startsWith('/admin') ? 'Opening admin panel' : 'Loading Lencho';
+  return `
+    <div class="page-loading-top route-shell-skeleton" role="status" aria-live="polite">
+      <div class="mini-yarn-loader" aria-hidden="true"></div>
+      <div class="loader-logo" aria-label="${label}">Lencho</div>
+      <span class="sr-only">${label}</span>
+    </div>`;
+}
+
 async function navigate(path, pushState = true) {
   if (pushState) history.pushState({}, '', path);
   const app = document.getElementById('app');
   const footer = document.getElementById('site-footer');
   const header = document.getElementById('site-header');
-  app.innerHTML = '<div class="page-loading-top"><div class="loader-logo" aria-label="Loading">Lencho</div></div>';
+  const [route, query] = path.split('?');
+  app.innerHTML = routeLoadingHTML(route);
   window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
-  const [route, query] = path.split('?');
   const params = new URLSearchParams(query || '');
   setPageContext({ route, category: params.get('category') || '' });
 
@@ -564,7 +586,11 @@ async function navigate(path, pushState = true) {
     else if (route === '/dashboard') { app.style.paddingTop = '0'; renderDashboard(); }
     else if (route === '/wishlist') { renderWishlist(); }
     else if (LEGAL_ROUTE_META[route]) { renderCmsPage(LEGAL_ROUTE_META[route]); }
-    else if (isAdmin) { renderAdmin(); }
+    else if (isAdmin) {
+      await ensureAdminAssets();
+      if (typeof renderAdmin === 'function') renderAdmin();
+      else app.innerHTML = `<div class="page-wrap"><div class="empty-state"><h3>Admin panel failed to load</h3><p>Please refresh once.</p></div></div>`;
+    }
     else { app.innerHTML = `<div class="page-wrap" style="text-align:center;padding-top:120px;"><div class="empty-icon">🔍</div><h2 style="font-family:'Cormorant Garamond',serif;font-size:2rem;">Page Not Found</h2><p style="color:var(--gray);margin:1rem 0 2rem;">The page you're looking for doesn't exist.</p><button class="btn-primary" onclick="navigate('/')">Go Home</button></div>`; }
   } catch (e) { console.error(e); }
   document.body.classList.add('app-ready');
@@ -2173,24 +2199,24 @@ function renderFallbackCollectionCards(container) {
 }
 function renderFallbackFeaturedCards(container) {
   const fallbackFeatured = shuffleArray([
-    { title: 'Rose Glow Earrings', slug: 'earrings', image: '/images/earrings.png' },
-    { title: 'Royal Necklace Set', slug: 'necklace', image: '/images/necklace.png' },
-    { title: 'Bridal Ring Collection', slug: 'rings', image: '/images/p1.png' },
-    { title: 'Statement Bangles', slug: 'bangles', image: '/images/p4.png' },
+    { title: 'Crochet Keychains', slug: 'crochet-keychains', image: '/images/woollen_hero.jpg' },
+    { title: 'Soft Scrunchies', slug: 'scrunchies', image: '/images/woollen_pattern_bg.png' },
+    { title: 'Baby Gifts', slug: 'baby-gifts', image: '/images/woollen_hero.jpg' },
+    { title: 'Crochet Decor', slug: 'crochet-decor', image: '/images/woollen_pattern_bg.png' },
   ]);
 
   container.innerHTML = fallbackFeatured.map((item, i) => `
-    <div class="product-card reveal" style="border-radius:16px !important;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08) !important;transition:transform .3s ease,box-shadow .3s ease !important;background:#fff;border:1px solid rgba(201,106,138,.08);" onclick="navigate('/products?category=${item.slug}')">
+    <div class="product-card reveal" style="border-radius:16px !important;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08) !important;transition:transform .3s ease,box-shadow .3s ease !important;background:#fff;border:1px solid rgba(201,106,138,.08);" onclick="navigate('/woollen/products?category=${item.slug}')">
       <div class="product-img-wrap" style="position:relative;overflow:hidden;aspect-ratio:1/1.15;cursor:pointer;">
-        <img class="product-img" src="${safeImageUrl(item.image, item.slug)}" alt="${item.title}" loading="lazy" decoding="async" ${imageFallbackAttr(item.slug)} style="width:100%;height:100%;object-fit:contain;object-position:center;background:#fff;display:block;"/>
-        <span class="product-badge" style="position:absolute;top:12px;left:12px;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;padding:6px 12px;border-radius:8px;font-weight:700;font-size:.75rem;z-index:2;">✦ Featured ✦</span>
+        <img class="product-img" src="${safeImageUrl(item.image, item.slug)}" alt="${item.title}" loading="lazy" decoding="async" ${imageFallbackAttr(item.slug)} style="width:100%;height:100%;object-fit:cover;object-position:center;background:#fff;display:block;"/>
+        <span class="product-badge" style="position:absolute;top:12px;left:12px;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;padding:6px 12px;border-radius:8px;font-weight:700;font-size:.75rem;z-index:2;">Handmade</span>
       </div>
       <div class="product-body" style="padding:1rem 1rem 1.2rem;">
         <div class="product-name" style="font-weight:600;font-size:.95rem;color:var(--dark);line-height:1.3;margin-bottom:.5rem;">${item.title}</div>
         <div class="product-price" style="margin-bottom:.75rem;">
-          <span class="price-current" style="font-size:1.2rem;font-weight:700;color:var(--rose);">Explore Collection</span>
+          <span class="price-current" style="font-size:1.2rem;font-weight:700;color:var(--rose);">Woollen Collection</span>
         </div>
-        <button class="btn-primary btn-sm" style="width:100%;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;font-weight:600;cursor:pointer;">View Collection</button>
+        <button class="btn-primary btn-sm" style="width:100%;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;font-weight:600;cursor:pointer;">View Woollen</button>
       </div>
     </div>
   `).join('');
@@ -2271,6 +2297,12 @@ async function renderHome(options = {}) {
   const heroButton1Text = shortCopy('heroButton1Text', 'Shop Woollen', ['Shop Now', 'Shop Now & Save', '🛍️ Shop Now & Save']);
   const heroButton2Text = shortCopy('heroButton2Text', 'View Products', ['View Collections']);
 
+  const normalizedHeroBadgeText = ['LENCHO WOOLLEN', 'Premium Collection 2026'].includes(heroBadgeText) ? 'HANDMADE WITH CARE' : heroBadgeText;
+  const normalizedHeroTitleText = ['Soft Handmade Woollen', 'Luxury Redefined'].includes(heroTitleText) ? 'Little Handmade Pieces, Made to Make You Smile' : heroTitleText;
+  const normalizedHeroLineText = ['Crochet accessories, gifts and decor.'].includes(heroLineText) ? 'Discover crochet keychains, bouquets and thoughtful handmade gifts crafted with care.' : heroLineText;
+  const normalizedHeroButton1Text = ['Shop Woollen', 'Shop Now', 'Shop Now & Save'].includes(heroButton1Text) ? 'Shop Handmade' : heroButton1Text;
+  const normalizedHeroButton2Text = ['View Products', 'View Collections'].includes(heroButton2Text) ? 'Explore Collections' : heroButton2Text;
+
   // Hero media
   const heroMediaType = g('heroMediaType', 'image');
   const heroImage = g('heroImage', '/images/woollen_hero.jpg');
@@ -2305,16 +2337,24 @@ async function renderHome(options = {}) {
     </div>` : ''}
     
     <div class="hero-p-centered hero-compact-copy reveal" style="position:relative; z-index:2; padding: 48px 5% 0; margin-top:16px; max-width:720px;">
-      <div class="hero-badge">${heroBadgeText}</div>
-      <h1 class="hero-p-title">${heroTitleText}</h1>
-      <p class="hero-p-sub">${heroLineText}</p>
+      <div class="hero-badge">${normalizedHeroBadgeText}</div>
+      <h1 class="hero-p-title">${normalizedHeroTitleText}</h1>
+      <p class="hero-p-sub">${normalizedHeroLineText}</p>
       
       <div class="hero-btns">
-        <button class="btn-gold hero-compact-btn" onclick="navigate('/woollen')"><i class="fas fa-mitten"></i> ${heroButton1Text}</button>
-        <button class="btn-outline hero-compact-btn" onclick="navigate('/woollen/products')"><i class="fas fa-bag-shopping"></i> ${heroButton2Text}</button>
+        <button class="btn-gold hero-compact-btn" onclick="navigate('/woollen/products')"><i class="fas fa-mitten"></i> ${normalizedHeroButton1Text}</button>
+        <button class="btn-outline hero-compact-btn" onclick="navigate('/woollen')"><i class="fas fa-layer-group"></i> ${normalizedHeroButton2Text}</button>
       </div>
     </div>
   </section>
+
+  ${isOn('showTrustHub') ? `<!-- TRUST HUB -->
+  <div class="trust-hub home-trust-strip">
+    <div class="trust-item"><i class="fas fa-hands-holding-circle"></i> <span><strong>Handmade</strong> Products</span></div>
+    <div class="trust-item"><i class="fas fa-box-open"></i> <span><strong>Carefully</strong> Packed</span></div>
+    <div class="trust-item"><i class="fas fa-headset"></i> <span><strong>Direct</strong> Support</span></div>
+    <div class="trust-item"><i class="fas fa-message"></i> <span><strong>Easy</strong> Enquiry</span></div>
+  </div>` : ''}
 
   <section class="home-woollen-entry home-woollen-premium" aria-labelledby="home-woollen-title">
     <div class="woollen-flow-layer subtle" aria-hidden="true">
@@ -2334,15 +2374,6 @@ async function renderHome(options = {}) {
       <img src="/images/woollen_hero.jpg" alt="Handmade woollen hair accessories, crochet flowers, baby pieces and soft decor" width="569" height="569" loading="lazy" decoding="async" fetchpriority="low" onerror="this.src='/images/hero.png'"/>
     </div>
   </section>
-
-  ${isOn('showTrustHub') ? `<!-- TRUST HUB -->
-  <div class="trust-hub" style="background:linear-gradient(135deg, rgba(201,106,138,.08) 0%, rgba(201,149,76,.08) 100%);">
-    <div class="trust-item"><i class="fas fa-truck-fast"></i> <span><strong>Free</strong> Delivery</span></div>
-    <div class="trust-item"><i class="fas fa-wallet"></i> <span><strong>Cash on</strong> Delivery</span></div>
-    <div class="trust-item"><i class="fas fa-rotate-left"></i> <span><strong>7-Day</strong> Returns</span></div>
-    <div class="trust-item"><i class="fas fa-shield-check"></i> <span><strong>Secure</strong> Payment</span></div>
-  </div>` : ''}
-
   ${false && isOn('showPromo') ? `<section class="promo-limited-banner">
     <div class="promo-content reveal-left">
       <div class="hero-badge" style="background:rgba(255,255,255,0.1); border-color:rgba(255,255,255,0.2); color:#fff; margin-bottom:1rem;">✦ LIMITED EDITION 2026 ✦</div>
@@ -2467,12 +2498,21 @@ async function loadTestimonials() {
       return;
     }
     if (!t || t.length === 0) {
-      t = [
-        { name: 'Anjali Sharma', city: 'Delhi', rating: 5, comment: 'The jewelry is absolutely stunning! The finish and quality are even better than in the photos. Highly recommended! ✦' },
-        { name: 'Priya Verma', city: 'Mumbai', rating: 5, comment: 'Ordered a necklace set for a wedding, and I received so many compliments. Fast delivery too! 💎' },
-        { name: 'Surbhi Gupta', city: 'Chandigarh', rating: 5, comment: 'Love the premium packaging and the rounded design. Feels very high-end. Great experience. ✨' },
-        { name: 'Megha Jain', city: 'Jaipur', rating: 4, comment: 'Beautiful earrings, very lightweight and elegant. Will definitely shop again for the bridal collection.' }
-      ];
+      const parentSection = container.closest('.testimonials');
+      if (parentSection) {
+        const eyebrow = parentSection.querySelector('.section-eyebrow');
+        const title = parentSection.querySelector('.section-title');
+        if (eyebrow) eyebrow.textContent = 'Handmade Promise';
+        if (title) title.textContent = 'Why Customers Choose Handmade';
+      }
+      container.innerHTML = `
+        <div class="handmade-promise-grid">
+          <div class="promise-card reveal"><i class="fas fa-gift"></i><h3>Gift-ready feel</h3><p>Small handmade pieces made for thoughtful gifting.</p></div>
+          <div class="promise-card reveal"><i class="fas fa-hand-holding-heart"></i><h3>Made with care</h3><p>Woollen products are handled, packed and listed carefully.</p></div>
+          <div class="promise-card reveal"><i class="fas fa-comments"></i><h3>Direct support</h3><p>Questions about colours, gifting or availability can be asked directly.</p></div>
+        </div>`;
+      initScrollReveal();
+      return;
     }
     const testiHTML = t.map(testi => `
       <div class="testi-card reveal">
@@ -2485,7 +2525,7 @@ async function loadTestimonials() {
       </div>`).join('');
     container.innerHTML = `<div class="testi-marquee-container"><div class="testi-marquee-inner">${testiHTML}${testiHTML}${testiHTML}</div></div>`;
     initScrollReveal();
-  } catch (e) { container.innerHTML = '<div style="text-align:center;color:var(--gray);">Luxury Social Proof Incoming...</div>'; }
+  } catch (e) { container.innerHTML = '<div class="empty-state"><h3>Reviews could not load</h3><p>Please refresh this section later.</p></div>'; }
 }
 
 async function loadHomeCategories() {
@@ -2805,6 +2845,20 @@ function woollenIcon(icon = 'star') {
 
 async function renderWoollen() {
   const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="woollen-store woollen-store-loading">
+      <section class="woollen-hero woollen-hero-skeleton">
+        <div class="woollen-hero-bg"><img src="/images/woollen_hero.jpg" alt="" aria-hidden="true" loading="eager"/></div>
+        <div class="woollen-hero-overlay"></div>
+        <div class="woollen-hero-content">
+          <div class="hero-badge skeleton-pill"></div>
+          <div class="skeleton-line skeleton-title"></div>
+          <div class="skeleton-line skeleton-copy"></div>
+          <div class="hero-btns"><span class="skeleton-button"></span><span class="skeleton-button"></span></div>
+        </div>
+      </section>
+      <section class="woollen-band"><div class="products-grid"><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div></div></section>
+    </div>`;
   const settings = await fetchPublicSettings({ timeoutMs: 2500 });
   const [collectionsRaw, featuredRaw, allRaw] = await Promise.all([
     api('/api/categories?storeType=woollen', { timeoutMs: 3000 }),
