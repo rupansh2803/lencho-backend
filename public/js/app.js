@@ -553,13 +553,7 @@ function getHeaderOffset() {
 
 // ── ROUTER ────────────────────────────────────────────────
 function routeLoadingHTML(route = '') {
-  const label = route.startsWith('/admin') ? 'Opening admin panel' : 'Loading Lencho';
-  return `
-    <div class="page-loading-top route-shell-skeleton" role="status" aria-live="polite">
-      <div class="mini-yarn-loader" aria-hidden="true"></div>
-      <div class="loader-logo" aria-label="${label}">Lencho</div>
-      <span class="sr-only">${label}</span>
-    </div>`;
+  return '';
 }
 
 async function navigate(path, pushState = true) {
