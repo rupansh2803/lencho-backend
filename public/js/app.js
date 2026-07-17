@@ -1578,9 +1578,9 @@ async function addToCart(productId, showToast = true, variantId = '') {
 
   const optimistic = upsertLocalCart(productId, variantId, 1);
   updateCartBadgeOptimistic(getCartQuantity(optimistic));
+  if (showToast) toast('Added to cart!', 'cart');
 
   if (!currentUser) {
-    if (showToast) toast('Added to cart!', 'cart');
     return true;
   }
   
@@ -1593,7 +1593,6 @@ async function addToCart(productId, showToast = true, variantId = '') {
       if (showToast) toast(r.error, 'error');
       return false;
     }
-    if (showToast) toast('Added to cart!', 'cart');
     updateCartBadgeOptimistic(Number(r.count) || getCartQuantity(readLocalCart()));
     await updateCartCount();
     return true;
@@ -1708,9 +1707,10 @@ function applyDiscountPopupSettings() {
 }
 
 function showDiscountPopup() {
-  // Only show once per session using sessionStorage
+  // Only show once for the visitor unless they clear browser data.
   if (isSyntheticAudit()) return;
-  if (sessionStorage.getItem('popupShown')) return;
+  const popupSeen = localStorage.getItem('lenchoDiscountPopupSeen') || sessionStorage.getItem('popupShown');
+  if (popupSeen) return;
   
   const popup = document.getElementById('discount-popup');
   if (!popup) return;
@@ -1718,13 +1718,15 @@ function showDiscountPopup() {
   applyDiscountPopupSettings();
   popup.style.display = 'flex';
   sessionStorage.setItem('popupShown', '1');
+  localStorage.setItem('lenchoDiscountPopupSeen', '1');
 }
 
 function closePopup() {
   const popup = document.getElementById('discount-popup');
   if (!popup) return;
   popup.style.display = 'none';
-  // Don't clear sessionStorage - keep it for this session
+  sessionStorage.setItem('popupShown', '1');
+  localStorage.setItem('lenchoDiscountPopupSeen', '1');
 }
 async function claimDiscount() {
   const email = document.getElementById('popup-email')?.value;
@@ -1806,7 +1808,13 @@ function initHeader() {
     document.getElementById('main-nav').classList.remove('open');
   });
   document.querySelectorAll('.nav-link').forEach(l => {
-    l.addEventListener('click', closeMobileMenu);
+    l.addEventListener('click', (event) => {
+      if (window.innerWidth <= 768 && l.closest('#nav-collections-dd')) {
+        event.preventDefault();
+        return;
+      }
+      closeMobileMenu();
+    });
   });
 
   // Close drawer on all actionable elements inside mobile nav.
@@ -1829,10 +1837,12 @@ function initHeader() {
 
 // ── MOBILE NAV DROPDOWN TOGGLE ────────────────────────────
 function toggleNavDropdown(e) {
+  e.preventDefault?.();
   e.stopPropagation();
   const isMobile = window.innerWidth <= 768;
   const dd = document.getElementById('nav-collections-dd');
   const arrow = document.getElementById('coll-arrow');
+  if (!dd) return;
   if (isMobile) {
     // On mobile: toggle open/close
     const isOpen = dd.classList.contains('mob-open');
@@ -2500,7 +2510,7 @@ async function renderHome(options = {}) {
   if (isOn('showPromo')) startOfferTimer();
   
   // Show discount popup after delay (non-blocking, detached from page load)
-  if (!sessionStorage.getItem('popupShown')) {
+  if (!localStorage.getItem('lenchoDiscountPopupSeen') && !sessionStorage.getItem('popupShown')) {
     setTimeout(() => {
       showDiscountPopup();
     }, 15000);

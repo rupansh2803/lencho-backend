@@ -411,7 +411,7 @@ async function renderProductDetail(id) {
           ${activeMrp ? `<span class="price-mrp" id="product-price-mrp">${formatCurrency(activeMrp)}</span>` : '<span class="price-mrp" id="product-price-mrp" style="display:none;"></span>'}
           ${discountVal ? `<span class="discount-badge">${discountVal}% OFF</span>` : ''}
         </div>
-        ${showProductDeliveryDetails ? `<div class="price-tax-note"><i class="fas fa-receipt"></i> Final price shown. Taxes are included and invoice details stay on the bill.</div>` : ''}
+        ${showProductDeliveryDetails ? `<div class="price-tax-note"><i class="fas fa-receipt"></i> Final customer price shown. Invoice details stay on the bill.</div>` : ''}
 
         ${p.hasVariants ? `
           <div class="variant-panel">
@@ -565,7 +565,7 @@ async function renderProductDetail(id) {
     </div>
 
     <div class="mobile-buy-bar" aria-label="Quick buy controls">
-      <div class="mobile-buy-price"><strong id="mobile-buy-price">${formatCurrency(activePrice)}</strong><span>Tax included</span></div>
+      <div class="mobile-buy-price"><strong id="mobile-buy-price">${formatCurrency(activePrice)}</strong><span>Final price</span></div>
       <button type="button" id="mobile-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '')" ${activeStock<=0?'disabled':''}><i class="fas fa-shopping-bag"></i> ${activeStock <= 0 ? 'Sold Out' : 'Cart'}</button>
       <button type="button" id="mobile-buy-now-btn" class="mobile-buy-now" onclick="buyNow('${p.id}', window.__selectedProductVariant || '')" ${activeStock<=0?'disabled':''}><i class="fas fa-bolt"></i> Buy</button>
     </div>  </div>`;
@@ -760,25 +760,33 @@ async function getLocalCartItemsWithProducts() {
   }).filter(Boolean);
 }
 
-async function renderCart() {
+async function renderCart(options = {}) {
   const app = document.getElementById('app');
-  app.innerHTML = '<div class="page-wrap"><div style="text-align:center;padding:3rem;color:var(--gray);">⏳ Loading your cart...</div></div>';
+  const fastItems = Array.isArray(options.items) ? options.items : null;
+  if (!fastItems && !options.skipLoading) {
+    app.innerHTML = '<div class="page-wrap"><div style="text-align:center;padding:3rem;color:var(--gray);">Loading your cart...</div></div>';
+  }
   
   try {
-    const r = currentUser
-      ? await Promise.race([
-          api('/api/cart'),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
-        ])
-        .catch(() => ({ items: [], count: 0, error: 'cart-timeout' }))
-      : { items: [], count: 0 };
-    
-    let items = r.error ? [] : (r.items || []);
-    if (!items.length) {
-      const localItems = await getLocalCartItemsWithProducts();
-      if (localItems.length) items = localItems;
+    let items = fastItems || [];
+    let totalQty = items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
+    if (!fastItems) {
+      const r = currentUser
+        ? await Promise.race([
+            api('/api/cart'),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
+          ])
+          .catch(() => ({ items: [], count: 0, error: 'cart-timeout' }))
+        : { items: [], count: 0 };
+
+      items = r.error ? [] : (r.items || []);
+      if (!items.length) {
+        const localItems = await getLocalCartItemsWithProducts();
+        if (localItems.length) items = localItems;
+      }
+      totalQty = Number(r.count) || items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
     }
-    const totalQty = Number(r.count) || items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
+    window.__lastCartItems = JSON.parse(JSON.stringify(items));
     if (!items.length) {
       app.innerHTML = `<div class="page-wrap"><h1 class="page-title">My Cart</h1><div class="empty-state"><div class="empty-icon">🛍️</div><h3>Your cart is empty</h3><p>Add soft woollen pieces or selected jewellery to your cart.</p><button class="btn-primary" onclick="navigate('/woollen/products')">Shop Woollen</button></div></div>`;
       return;
@@ -856,25 +864,37 @@ async function updateQty(productId, variantId, qty) {
   }
   
   const before = typeof readLocalCart === 'function' ? readLocalCart() : [];
+  const visualBefore = Array.isArray(window.__lastCartItems) ? JSON.parse(JSON.stringify(window.__lastCartItems)) : null;
   if (typeof setLocalCartQty === 'function') setLocalCartQty(productId, variantId, qty);
-  await updateCartCount();
+  const visualItems = Array.isArray(window.__lastCartItems) ? JSON.parse(JSON.stringify(window.__lastCartItems)) : null;
+  if (visualItems) {
+    const key = `${productId}::${variantId || ''}`;
+    const nextItems = visualItems
+      .map(item => `${item.productId}::${item.variantId || ''}` === key ? { ...item, quantity: qty } : item)
+      .filter(item => Number(item.quantity) > 0);
+    renderCart({ items: nextItems, skipLoading: true });
+  }
+  updateCartCount();
   if (!currentUser) {
-    renderCart();
+    if (!visualItems) renderCart();
     return;
   }
   try {
     const r = await api('/api/cart/update', { method: 'PUT', body: { productId, variantId, quantity: qty } });
     if (r.error) {
       if (typeof writeLocalCart === 'function') writeLocalCart(before);
+      if (visualBefore) renderCart({ items: visualBefore, skipLoading: true });
       toast(r.error, 'error');
+      await updateCartCount();
+      return;
     }
     await updateCartCount();
-    renderCart();
   } catch (e) {
     console.error('Update quantity error:', e);
     if (typeof writeLocalCart === 'function') writeLocalCart(before);
     toast('Could not update quantity. Please try again.', 'error');
-    renderCart();
+    if (visualBefore) renderCart({ items: visualBefore, skipLoading: true });
+    else renderCart();
   }
 }
 
@@ -883,16 +903,21 @@ async function removeFromCart(productId, variantId = '') {
   if (!confirmed) return;
   
   if (typeof setLocalCartQty === 'function') setLocalCartQty(productId, variantId, 0);
-  await updateCartCount();
+  const visualItems = Array.isArray(window.__lastCartItems) ? JSON.parse(JSON.stringify(window.__lastCartItems)) : null;
+  if (visualItems) {
+    const key = `${productId}::${variantId || ''}`;
+    renderCart({ items: visualItems.filter(item => `${item.productId}::${item.variantId || ''}` !== key), skipLoading: true });
+  }
+  updateCartCount();
   try {
     const r = await api(`/api/cart/${productId}?variantId=${encodeURIComponent(variantId || '')}`, { method: 'DELETE' });
     if (r.error) console.warn('Cart remove server sync failed, kept local cart:', r.error);
     await updateCartCount();
-    renderCart();
+    if (!visualItems) renderCart();
     toast('Item removed from cart', 'info');
   } catch (e) {
     console.error('Remove from cart error:', e);
-    renderCart();
+    if (!visualItems) renderCart();
     toast('Item removed from cart', 'info');
   }
 }
@@ -1009,11 +1034,10 @@ async function renderCheckout() {
   const items = r.items || [];
   if (!items.length) { navigate('/cart'); return; }
   const subtotal = items.reduce((s, i) => s + i.product.price * i.quantity, 0);
-  const gst = items.reduce((s, i) => s + (i.product.price * (i.product.gstRate||3)/100 * i.quantity), 0);
   const shipping = subtotal >= 999 ? 0 : 49;
   const couponData = JSON.parse(sessionStorage.getItem('coupon') || 'null');
   const discount = couponData?.discountAmt || 0;
-  const grand = subtotal + gst + shipping - discount;
+  const grand = subtotal + shipping - discount;
   const app = document.getElementById('app');
   app.innerHTML = `
   <div class="page-wrap">
@@ -1056,7 +1080,6 @@ async function renderCheckout() {
             ${items.map(i=>`<div class="co-item"><img src="${i.product.images[0]}" alt="${i.product.name}"/><div class="co-item-info"><div class="co-item-name">${i.product.name}</div><div class="co-item-meta">${i.variant?.label ? `${i.variant.label} • ` : ''}Qty: ${i.quantity}</div></div><div class="co-item-price">${formatCurrency(i.product.price*i.quantity)}</div></div>`).join('')}
           </div>
           <div class="summary-row"><span>Subtotal</span><span>${formatCurrency(subtotal)}</span></div>
-          <div class="summary-row"><span>Taxes</span><span>${formatCurrency(gst)}</span></div>
           <div class="summary-row"><span>Shipping</span><span style="color:${shipping===0?'#22c55e':'inherit'}">${shipping===0?'FREE':formatCurrency(shipping)}</span></div>
           ${discount?`<div class="summary-row" style="color:#22c55e;"><span>Discount (${couponData.code})</span><span>-${formatCurrency(discount)}</span></div>`:''}
           <div class="summary-row"><span class="summary-total">Grand Total</span><span class="summary-total">${formatCurrency(grand)}</span></div>
@@ -1169,9 +1192,8 @@ async function renderCheckoutNow(productId) {
     if (p.error || !p.id) { navigate('/woollen/products'); toast('Product not found', 'error'); return; }
     
     const subtotal = p.price;
-    const gst = (p.price * (p.gstRate || 3) / 100);
     const shipping = subtotal >= 999 ? 0 : 49;
-    const grand = subtotal + gst + shipping;
+    const grand = subtotal + shipping;
     
     app.innerHTML = `
     <div class="page-wrap">
@@ -1221,7 +1243,6 @@ async function renderCheckoutNow(productId) {
               </div>
             </div>
             <div class="summary-row"><span>Subtotal</span><span>${formatCurrency(subtotal)}</span></div>
-            <div class="summary-row"><span>Taxes</span><span>${formatCurrency(gst)}</span></div>
             <div class="summary-row"><span>Shipping</span><span style="color:${shipping===0?'#22c55e':'inherit'}">${shipping===0?'FREE':formatCurrency(shipping)}</span></div>
             <div class="summary-row"><span class="summary-total">Grand Total</span><span class="summary-total">${formatCurrency(grand)}</span></div>
             <button class="btn-gold full-width" style="margin-top:1rem;" onclick="placeOrderNow('${productId}',1)"><i class="fas fa-check-circle"></i> Place Order</button>

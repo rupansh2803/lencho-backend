@@ -118,7 +118,6 @@ async function viewOrderDetail(orderId) {
     <div class="checkout-section">
       <h3>Price Details</h3>
       <div class="summary-row"><span>Subtotal</span><span>${formatCurrency(order.subtotal)}</span></div>
-      <div class="summary-row"><span>GST</span><span>${formatCurrency(order.gstTotal||0)}</span></div>
       <div class="summary-row"><span>Shipping</span><span>${order.shipping===0?'FREE':formatCurrency(order.shipping)}</span></div>
       ${order.discount?`<div class="summary-row" style="color:#22c55e;"><span>Discount</span><span>-${formatCurrency(order.discount)}</span></div>`:''}
       <div class="summary-row"><span class="summary-total">Grand Total</span><span class="summary-total">${formatCurrency(order.grandTotal)}</span></div>

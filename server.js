@@ -5392,8 +5392,8 @@ app.post('/api/orders', requireAuth, async (req, res) => {
       if (requestedQty > snapshot.stock) throw httpError(`Only ${snapshot.stock} left for ${product.name}`);
       const unitPrice = numberOrFallback(variant?.price, product.price);
       const unitMrp = numberOrFallback(variant?.mrp, product.mrp);
-      const gstRate = Number(product.gstRate) || 18;
-      const gstAmt = (unitPrice * gstRate / 100) * requestedQty;
+      const gstRate = 0;
+      const gstAmt = 0;
       subtotal += unitPrice * requestedQty;
       totalGst += gstAmt;
       return {
@@ -5421,7 +5421,7 @@ app.post('/api/orders', requireAuth, async (req, res) => {
     let adminDiscount = globalDiscount > 0 ? Math.round(subtotal * globalDiscount / 100) : 0;
     const discount = couponDiscount + adminDiscount;
     const shipping = subtotal >= freeShipMin ? 0 : shipCharge;
-    const grandTotal = subtotal + totalGst + shipping - discount;
+    const grandTotal = subtotal + shipping - discount;
     const orderId = 'LEN' + Date.now().toString().slice(-8).toUpperCase();
 
     const isCOD = paymentMethod === 'cod';

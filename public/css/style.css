@@ -7564,6 +7564,271 @@ body.woollen-theme #site-footer .footer-bottom {
   }
 }
 
+/* Final customer UX fixes: cart speed visuals, product cards, mobile nav, checkout spacing */
+#app {
+  flex: 0 0 auto !important;
+}
+
+.page-wrap {
+  padding-top: clamp(5.8rem, 8vw, 8rem) !important;
+  padding-bottom: clamp(2.4rem, 5vw, 4rem) !important;
+}
+
+.cart-layout,
+.checkout-layout {
+  align-items: start !important;
+}
+
+.cart-summary {
+  position: sticky !important;
+  top: 96px !important;
+}
+
+.cart-item {
+  min-height: 150px !important;
+  align-items: center !important;
+}
+
+.cart-item-img,
+.co-item img {
+  object-fit: cover !important;
+  background: #fff !important;
+}
+
+.qty-btn {
+  width: 38px !important;
+  height: 38px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.products-grid {
+  align-items: stretch !important;
+}
+
+.woollen-products-page .products-grid,
+.products-page .products-grid {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 320px)) !important;
+  justify-content: start !important;
+  gap: clamp(1rem, 2vw, 1.5rem) !important;
+  max-width: 1120px !important;
+  margin-left: 0 !important;
+  margin-right: auto !important;
+}
+
+.home-bestseller-section .products-grid,
+.home-new-arrivals-section .products-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 340px)) !important;
+  justify-content: center !important;
+  gap: clamp(1.2rem, 2.2vw, 1.8rem) !important;
+}
+
+.product-card,
+.home-bestseller-section .product-card,
+.home-new-arrivals-section .product-card,
+.woollen-products-page .product-card,
+.products-page .product-card {
+  width: 100% !important;
+  max-width: 340px !important;
+  min-height: 0 !important;
+  height: auto !important;
+  border-radius: 16px !important;
+  overflow: hidden !important;
+}
+
+.product-card .product-img-wrap,
+.home-bestseller-section .product-card .product-img-wrap,
+.home-new-arrivals-section .product-card .product-img-wrap,
+.woollen-products-page .product-card .product-img-wrap,
+.products-page .product-card .product-img-wrap {
+  min-height: 250px !important;
+  height: 250px !important;
+  max-height: 250px !important;
+  aspect-ratio: auto !important;
+  background: #fff !important;
+  overflow: hidden !important;
+}
+
+.product-card .product-img,
+.product-card .product-img-wrap img.product-img,
+.product-card .img-hover {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  background: #fff !important;
+}
+
+.product-card .product-body {
+  min-height: 230px !important;
+  padding: .95rem !important;
+}
+
+.product-card .product-name {
+  min-height: 2.8em !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+}
+
+.product-card .product-actions {
+  margin-top: auto !important;
+}
+
+.home-collections-section .cat-card,
+.home-woollen-collection-section .cat-card,
+.categories-grid .cat-card,
+.woollen-collection-card {
+  min-height: 280px !important;
+  height: 280px !important;
+  border-radius: 18px !important;
+  overflow: hidden !important;
+}
+
+.cat-img,
+.cat-card .cat-img,
+.woollen-collection-card img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  background: #fff !important;
+}
+
+.product-detail-container.product-detail-market {
+  padding-top: clamp(6.5rem, 9vw, 8rem) !important;
+  max-width: 1460px !important;
+}
+
+.product-detail-market .product-detail-grid {
+  grid-template-columns: minmax(420px, 560px) minmax(0, 1fr) !important;
+  align-items: start !important;
+}
+
+.product-detail-market .product-gallery {
+  position: sticky !important;
+  top: 104px !important;
+  align-self: start !important;
+}
+
+.product-detail-market .gallery-main {
+  min-height: clamp(480px, 48vw, 640px) !important;
+  max-height: 640px !important;
+}
+
+.product-detail-market .gallery-main img {
+  object-fit: contain !important;
+  object-position: center !important;
+  background: #fff !important;
+}
+
+.market-after-grid {
+  margin-top: clamp(2.5rem, 4vw, 4rem) !important;
+}
+
+#site-header .main-nav .nav-link::before,
+#site-header .main-nav .nav-dropdown > .nav-link::before {
+  content: none !important;
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .page-wrap {
+    padding-top: 5.25rem !important;
+    padding-bottom: 2.25rem !important;
+  }
+
+  .cart-layout,
+  .checkout-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .cart-summary {
+    position: static !important;
+  }
+
+  .woollen-products-page .products-grid,
+  .products-page .products-grid,
+  .home-bestseller-section .products-grid,
+  .home-new-arrivals-section .products-grid {
+    grid-template-columns: 1fr !important;
+    justify-content: center !important;
+    max-width: 100% !important;
+    margin-left: auto !important;
+  }
+
+  .product-card,
+  .home-bestseller-section .product-card,
+  .home-new-arrivals-section .product-card,
+  .woollen-products-page .product-card,
+  .products-page .product-card {
+    max-width: min(100%, 360px) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  .product-card .product-img-wrap,
+  .home-bestseller-section .product-card .product-img-wrap,
+  .home-new-arrivals-section .product-card .product-img-wrap,
+  .woollen-products-page .product-card .product-img-wrap,
+  .products-page .product-card .product-img-wrap {
+    height: clamp(260px, 76vw, 360px) !important;
+    min-height: clamp(260px, 76vw, 360px) !important;
+    max-height: 360px !important;
+  }
+
+  .product-card .product-body {
+    min-height: 220px !important;
+  }
+
+  .home-collections-section .cat-card,
+  .home-woollen-collection-section .cat-card,
+  .categories-grid .cat-card,
+  .woollen-collection-card {
+    height: 260px !important;
+    min-height: 260px !important;
+  }
+
+  .product-detail-market .product-detail-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .product-detail-market .product-gallery {
+    position: static !important;
+  }
+
+  .product-detail-market .gallery-main {
+    min-height: clamp(350px, 88vw, 480px) !important;
+    max-height: none !important;
+  }
+
+  #site-header .nav-dropdown-menu {
+    display: none !important;
+    position: static !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: .75rem 0 0 !important;
+    padding: .75rem .9rem !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: none !important;
+    pointer-events: auto !important;
+  }
+
+  #site-header .nav-dropdown.mob-open .nav-dropdown-menu {
+    display: grid !important;
+    gap: .25rem !important;
+    max-height: 60vh !important;
+    overflow-y: auto !important;
+  }
+
+  #site-header .nav-dropdown.mob-open #coll-arrow {
+    transform: rotate(180deg) !important;
+  }
+}
+
 /* Launch polish: top loading, footer placement, full-fit images, and marketplace detail page */
 html,
 body {
@@ -12643,5 +12908,264 @@ body:not(.admin-mode) #app > *:last-child {
     right: 12px !important;
     bottom: 84px !important;
     width: calc(100vw - 24px) !important;
+  }
+}
+
+/* Customer QA final override: keep after all launch/theme layers. */
+#app {
+  flex: 0 0 auto !important;
+  min-height: auto !important;
+}
+
+.page-wrap,
+.cart-page,
+.checkout-page,
+.products-page,
+.woollen-products-page,
+.product-detail-page {
+  padding-top: clamp(92px, 8vw, 128px) !important;
+  padding-bottom: clamp(42px, 6vw, 82px) !important;
+}
+
+.cart-layout,
+.checkout-layout {
+  align-items: start !important;
+}
+
+.cart-summary,
+.checkout-summary,
+.order-summary-card {
+  position: sticky !important;
+  top: 110px !important;
+  align-self: start !important;
+}
+
+.cart-item {
+  min-height: 142px !important;
+  align-items: center !important;
+}
+
+.cart-item img,
+.cart-item-image {
+  width: 112px !important;
+  height: 112px !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  border-radius: 10px !important;
+}
+
+.qty-btn,
+.cart-qty-btn,
+.quantity-btn {
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  border-radius: 999px !important;
+  display: inline-grid !important;
+  place-items: center !important;
+}
+
+.products-grid,
+.woollen-products-page .products-grid,
+.home-bestseller-section .products-grid,
+.home-new-arrivals-section .products-grid {
+  width: min(100%, 1180px) !important;
+  margin-inline: auto !important;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 310px)) !important;
+  justify-content: center !important;
+  align-items: stretch !important;
+  gap: clamp(1rem, 2vw, 1.45rem) !important;
+}
+
+.product-card {
+  width: 100% !important;
+  max-width: 310px !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.product-card .product-img-wrap,
+.home-bestseller-section .product-card .product-img-wrap,
+.home-new-arrivals-section .product-card .product-img-wrap,
+.woollen-products-page .product-card .product-img-wrap,
+.products-page .product-card .product-img-wrap {
+  width: 100% !important;
+  height: 270px !important;
+  min-height: 270px !important;
+  max-height: 270px !important;
+  aspect-ratio: auto !important;
+  background: #fffaf8 !important;
+  overflow: hidden !important;
+}
+
+.product-card .product-img-wrap img,
+.product-card .product-img-wrap img.product-img,
+.product-card img.product-img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.product-card .product-img-wrap:hover img,
+.product-card:hover .product-img-wrap img {
+  transform: scale(1.035) !important;
+}
+
+.product-card .product-body {
+  flex: 1 1 auto !important;
+  min-height: 216px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: .6rem !important;
+}
+
+.product-card .product-name {
+  min-height: 2.7em !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+}
+
+.product-card .product-actions {
+  margin-top: auto !important;
+}
+
+.home-collections-section .cat-card,
+.collections-grid .cat-card,
+.categories-grid .cat-card,
+.woollen-collections-grid .cat-card {
+  min-height: 280px !important;
+  height: 280px !important;
+  overflow: hidden !important;
+}
+
+.home-collections-section .cat-card img,
+.collections-grid .cat-card img,
+.categories-grid .cat-card img,
+.woollen-collections-grid .cat-card img,
+.cat-card .cat-img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+}
+
+.product-detail-market,
+.product-detail-layout,
+.product-detail-grid {
+  align-items: start !important;
+  padding-top: clamp(24px, 4vw, 48px) !important;
+}
+
+.product-gallery,
+.product-detail-gallery,
+.product-media-column {
+  position: sticky !important;
+  top: 106px !important;
+  align-self: start !important;
+}
+
+.product-main-image,
+.product-gallery-main,
+.product-media-main {
+  min-height: clamp(420px, 58vh, 650px) !important;
+}
+
+.product-main-image img,
+.product-gallery-main img,
+.product-media-main img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  object-position: center !important;
+}
+
+.main-nav .nav-link::before,
+.main-nav a::before,
+.nav-dropdown-trigger::before {
+  content: none !important;
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .page-wrap,
+  .cart-page,
+  .checkout-page,
+  .products-page,
+  .woollen-products-page,
+  .product-detail-page {
+    padding-top: 86px !important;
+    padding-bottom: 44px !important;
+  }
+
+  .products-grid,
+  .woollen-products-page .products-grid,
+  .home-bestseller-section .products-grid,
+  .home-new-arrivals-section .products-grid {
+    grid-template-columns: 1fr !important;
+    width: min(100%, 390px) !important;
+    gap: 1.2rem !important;
+  }
+
+  .product-card {
+    max-width: 100% !important;
+  }
+
+  .product-card .product-img-wrap,
+  .home-bestseller-section .product-card .product-img-wrap,
+  .home-new-arrivals-section .product-card .product-img-wrap,
+  .woollen-products-page .product-card .product-img-wrap,
+  .products-page .product-card .product-img-wrap {
+    height: clamp(260px, 78vw, 350px) !important;
+    min-height: clamp(260px, 78vw, 350px) !important;
+    max-height: 350px !important;
+  }
+
+  .product-card .product-body {
+    min-height: 0 !important;
+  }
+
+  .cart-summary,
+  .checkout-summary,
+  .order-summary-card,
+  .product-gallery,
+  .product-detail-gallery,
+  .product-media-column {
+    position: static !important;
+  }
+
+  .cart-item {
+    grid-template-columns: 92px 1fr !important;
+    min-height: 118px !important;
+  }
+
+  .cart-item img,
+  .cart-item-image {
+    width: 92px !important;
+    height: 92px !important;
+  }
+
+  #nav-collections-dd {
+    display: none !important;
+    position: static !important;
+    width: 100% !important;
+    max-height: 48vh !important;
+    overflow-y: auto !important;
+    margin: .6rem 0 0 !important;
+  }
+
+  #nav-collections-dd.mob-open {
+    display: grid !important;
+  }
+
+  .nav-dropdown-trigger.mob-open i,
+  .nav-dropdown-trigger.mob-open .fa-chevron-down {
+    transform: rotate(180deg) !important;
   }
 }
