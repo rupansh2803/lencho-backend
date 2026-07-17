@@ -3308,16 +3308,39 @@ async function adminCollections() {
 async function handleCategoryImageUpload(event, field) {
   const file = event.target.files?.[0];
   if (!file) return;
+  const status = document.getElementById(`nc-upload-status-${field}`);
+  if (!file.type?.startsWith('image/')) {
+    event.target.value = '';
+    return toast('Please choose a valid image file', 'error');
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    event.target.value = '';
+    return toast('Image must be under 8 MB', 'error');
+  }
+  event.target.disabled = true;
+  if (status) {
+    status.textContent = 'Uploading...';
+    status.style.color = '#b45309';
+  }
   try {
     adminCategoryFormState[field] = await uploadAdminMediaFile(file, `categories/${adminCategoryFormState?.storeType || 'main'}`);
     const img = document.getElementById(`nc-preview-${field}`);
     const wrap = document.getElementById(`nc-preview-wrap-${field}`);
     if (img) { img.src = safeImageUrl(adminCategoryFormState[field], ''); img.style.display = 'block'; }
     if (wrap) wrap.style.display = 'inline-block';
+    if (status) {
+      status.textContent = 'Image ready';
+      status.style.color = '#15803d';
+    }
     toast('Collection image uploaded', 'success');
   } catch (error) {
+    if (status) {
+      status.textContent = 'Upload failed';
+      status.style.color = '#b91c1c';
+    }
     toast(error.message || 'Image upload failed', 'error');
   } finally {
+    event.target.disabled = false;
     event.target.value = '';
   }
 }
@@ -3335,50 +3358,82 @@ function removeCategoryImage(field) {
 
 function renderCategoryImagePicker(field, label) {
   const value = adminCategoryFormState?.[field] || '';
-  return `<div class="form-group"><label>${label}</label><input id="nc-${field}-input" type="file" accept="image/*" onchange="handleCategoryImageUpload(event, '${field}')"/><div id="nc-preview-wrap-${field}" class="admin-category-preview-wrap" style="${value ? '' : 'display:none;'}"><img id="nc-preview-${field}" src="${safeImageUrl(value, '')}" class="admin-category-preview-img" style="${value ? '' : 'display:none;'}"/><button type="button" class="admin-image-remove" onclick="removeCategoryImage('${field}')" aria-label="Remove ${label}" title="Remove image">&times;</button></div></div>`;
+  return `<div class="form-group"><label>${label}</label><input id="nc-${field}-input" type="file" accept="image/*" onchange="handleCategoryImageUpload(event, '${field}')"/><small id="nc-upload-status-${field}" style="display:block;margin-top:.35rem;color:var(--gray);font-size:.78rem;">${value ? 'Image ready' : 'Optional image'}</small><div id="nc-preview-wrap-${field}" class="admin-category-preview-wrap" style="${value ? '' : 'display:none;'}"><img id="nc-preview-${field}" src="${safeImageUrl(value, '')}" class="admin-category-preview-img" style="${value ? '' : 'display:none;'}"/><button type="button" class="admin-image-remove" onclick="removeCategoryImage('${field}')" aria-label="Remove ${label}" title="Remove image">&times;</button></div></div>`;
+}
+
+function closeAdminCategoryModal() {
+  document.querySelectorAll('.admin-category-overlay').forEach(modal => modal.remove());
+  adminCategoryFormState = null;
 }
 
 async function showAddCategory(storeType = 'main', categoryJson = null) {
   const existing = categoryJson ? JSON.parse(categoryJson) : null;
-  adminCategoryFormState = { id: existing?.id || existing?._id || '', name: existing?.name || '', image: existing?.image || '', bannerImage: existing?.bannerImage || '', icon: existing?.icon || 'star', theme: existing?.theme || '', storeType: existing?.storeType || storeType || 'main', description: existing?.description || '' };
+  adminCategoryFormState = { id: existing?.id || existing?._id || '', name: existing?.name || '', image: existing?.image || '', bannerImage: existing?.bannerImage || '', icon: existing?.icon || 'star', theme: existing?.theme || '', storeType: existing?.storeType || storeType || 'main', description: existing?.description || '', saving: false };
   const safeCategoryName = adminProductManagerEscape(adminCategoryFormState.name);
   const safeCategoryDescription = adminProductManagerEscape(adminCategoryFormState.description);
   const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.innerHTML = `<div class="modal-card admin-category-modal"><button type="button" class="admin-modal-close" onclick="this.closest('.modal-overlay').remove()" aria-label="Close collection form">&times;</button><h3>${existing ? 'Edit' : 'Add New'} ${adminCategoryFormState.storeType === 'woollen' ? 'Woollen ' : ''}Collection</h3><div class="form-group"><label>Name</label><input id="nc-name" value="${safeCategoryName}" placeholder="Collection name"/></div><div class="form-grid">${renderCategoryImagePicker('image', 'Collection Image')}${renderCategoryImagePicker('bannerImage', 'Banner Image')}</div><div class="form-grid" style="margin-top:1rem;"><div class="form-group"><label>Icon</label><select id="nc-icon">${['ribbon','flower','butterfly','yarn','star','baby','diamond','heart','gift','sparkles','home','snowflake'].map(v=>`<option value="${v}" ${adminCategoryFormState.icon===v?'selected':''}>${v}</option>`).join('')}</select></div><div class="form-group"><label>Theme</label><select id="nc-theme">${['pastel-pink','lavender','mint','cream','peach','baby-blue','light-yellow','rose-gold','soft-purple','sage'].map(v=>`<option value="${v}" ${adminCategoryFormState.theme===v?'selected':''}>${v}</option>`).join('')}</select></div></div><div class="form-group"><label>Description</label><textarea id="nc-desc" rows="2">${safeCategoryDescription}</textarea></div><div style="display:flex;gap:1rem;flex-wrap:wrap;"><button class="btn-primary" onclick="saveCategory()">${existing ? 'Save Collection' : 'Create Collection'}</button><button class="btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancel</button></div></div>`;
+  modal.className = 'modal-overlay admin-category-overlay';
+  modal.innerHTML = `<div class="modal-card admin-category-modal"><button type="button" class="admin-modal-close" onclick="closeAdminCategoryModal()" aria-label="Close collection form">&times;</button><h3>${existing ? 'Edit' : 'Add New'} ${adminCategoryFormState.storeType === 'woollen' ? 'Woollen ' : ''}Collection</h3><div class="form-group"><label>Name</label><input id="nc-name" value="${safeCategoryName}" placeholder="Collection name"/></div><div class="form-grid">${renderCategoryImagePicker('image', 'Collection Image')}${renderCategoryImagePicker('bannerImage', 'Banner Image')}</div><div class="form-grid" style="margin-top:1rem;"><div class="form-group"><label>Icon</label><select id="nc-icon">${['ribbon','flower','butterfly','yarn','star','baby','diamond','heart','gift','sparkles','home','snowflake'].map(v=>`<option value="${v}" ${adminCategoryFormState.icon===v?'selected':''}>${v}</option>`).join('')}</select></div><div class="form-group"><label>Theme</label><select id="nc-theme">${['pastel-pink','lavender','mint','cream','peach','baby-blue','light-yellow','rose-gold','soft-purple','sage'].map(v=>`<option value="${v}" ${adminCategoryFormState.theme===v?'selected':''}>${v}</option>`).join('')}</select></div></div><div class="form-group"><label>Description</label><textarea id="nc-desc" rows="2">${safeCategoryDescription}</textarea></div><div style="display:flex;gap:1rem;flex-wrap:wrap;"><button class="btn-primary" id="nc-save-button" onclick="saveCategory()">${existing ? 'Save Collection' : 'Create Collection'}</button><button class="btn-outline" onclick="closeAdminCategoryModal()">Cancel</button></div></div>`;
   modal.addEventListener('click', (event) => {
-    if (event.target === modal) modal.remove();
+    if (event.target === modal) closeAdminCategoryModal();
   });
   document.body.appendChild(modal);
+  document.getElementById('nc-name')?.focus();
 }
 
 async function saveCategory() {
+  if (!adminCategoryFormState) return;
+  if (adminCategoryFormState.saving) return;
   const body = { name: document.getElementById('nc-name').value.trim(), image: adminCategoryFormState?.image || '', bannerImage: adminCategoryFormState?.bannerImage || '', icon: document.getElementById('nc-icon')?.value || 'star', theme: document.getElementById('nc-theme')?.value || '', storeType: adminCategoryFormState?.storeType || 'main', description: document.getElementById('nc-desc').value.trim() };
   if (!body.name) return toast('Collection name is required', 'error');
   const endpoint = adminCategoryFormState?.id ? `/api/admin/categories/${adminCategoryFormState.id}` : '/api/admin/categories';
   const method = adminCategoryFormState?.id ? 'PUT' : 'POST';
+  const isEdit = Boolean(adminCategoryFormState?.id);
   const openedFromProductManager = Boolean(document.getElementById('admin-product-submit'));
   const draft = openedFromProductManager ? snapshotAdminProductManagerDraft() : null;
-  const r = await api(endpoint, { method, body });
-  if (r.error) return toast(r.error, 'error');
-  clearAdminCache('/api/categories');
-  clearAdminCache('/api/products');
-  toast(adminCategoryFormState?.id ? 'Collection updated' : 'Collection added', 'success');
-  document.querySelectorAll('.modal-overlay').forEach(modal => modal.remove());
-  const savedCategory = r.category || {};
-  adminCategoryFormState = null;
-  if (openedFromProductManager) {
-    const storeType = body.storeType === 'woollen' ? 'woollen' : 'main';
-    await loadAdminProductManagerData(storeType);
-    adminProductManagerState.editingProduct = {
-      ...(draft || {}),
-      storeType,
-      category: savedCategory.slug || draft?.category || ''
-    };
-    renderAdminProductManager();
-    return;
+  const saveButton = document.getElementById('nc-save-button');
+  const originalButtonHtml = saveButton?.innerHTML || '';
+  let shouldRestoreButton = true;
+  adminCategoryFormState.saving = true;
+  if (saveButton) {
+    saveButton.disabled = true;
+    saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${isEdit ? 'Saving...' : 'Creating...'}`;
   }
-  adminCollections(body.storeType === 'woollen' ? 'woollen' : 'main');
+  try {
+    const r = await api(endpoint, { method, timeoutMs: 20000, body });
+    if (r.error) {
+      const message = /admin access|unauthorized|forbidden/i.test(r.error)
+        ? 'Admin login expired. Please login again, then create the collection.'
+        : r.error;
+      return toast(message, 'error', 6000);
+    }
+    clearAdminCache('/api/categories');
+    clearAdminCache('/api/products');
+    toast(isEdit ? 'Collection updated' : 'Collection added', 'success');
+    const savedCategory = r.category || {};
+    shouldRestoreButton = false;
+    closeAdminCategoryModal();
+    if (openedFromProductManager) {
+      const storeType = body.storeType === 'woollen' ? 'woollen' : 'main';
+      await loadAdminProductManagerData(storeType);
+      adminProductManagerState.editingProduct = {
+        ...(draft || {}),
+        storeType,
+        category: savedCategory.slug || draft?.category || ''
+      };
+      renderAdminProductManager();
+      return;
+    }
+    adminCollections(body.storeType === 'woollen' ? 'woollen' : 'main');
+  } catch (error) {
+    toast(error.message || 'Collection save failed', 'error', 6000);
+  } finally {
+    if (adminCategoryFormState) adminCategoryFormState.saving = false;
+    if (shouldRestoreButton && saveButton) {
+      saveButton.disabled = false;
+      saveButton.innerHTML = originalButtonHtml;
+    }
+  }
 }
 
 async function deleteCategory(id, storeType = '') {
@@ -3536,7 +3591,8 @@ let adminProductManagerState = {
   pageSize: 10,
   keepValues: false,
   editingProduct: null,
-  uploadingCount: 0
+  uploadingCount: 0,
+  saving: false
 };
 
 const ADMIN_PRODUCT_TEMPLATE_STORAGE_KEY = 'lencho_admin_product_templates_v1';
@@ -4416,6 +4472,7 @@ function createAdminDraftFromPayload(payload) {
 }
 
 async function submitAdminProduct(id = '') {
+  if (adminProductManagerState.saving) return;
   if (adminProductManagerState.uploadingCount > 0) {
     return toast('Please wait for image uploads to finish', 'error');
   }
@@ -4424,30 +4481,42 @@ async function submitAdminProduct(id = '') {
   if (validationError) return toast(validationError, 'error');
 
   const button = document.getElementById('admin-product-submit');
+  const originalButtonHtml = button?.innerHTML || '';
+  adminProductManagerState.saving = true;
   if (button) {
     button.disabled = true;
     button.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${id ? 'Saving...' : 'Adding...'}`;
   }
 
-  const response = await api(id ? `/api/products/${id}` : '/api/products', {
-    method: id ? 'PUT' : 'POST',
-    timeoutMs: 20000,
-    body: {
-      ...payload,
-      variants: JSON.stringify(payload.variants),
-      existingImages: JSON.stringify(payload.existingImages),
-      imageOrder: JSON.stringify(payload.imageOrder),
-      removedImages: JSON.stringify([])
-    }
-  });
+  let response;
+  try {
+    response = await api(id ? `/api/products/${id}` : '/api/products', {
+      method: id ? 'PUT' : 'POST',
+      timeoutMs: 20000,
+      body: {
+        ...payload,
+        variants: JSON.stringify(payload.variants),
+        existingImages: JSON.stringify(payload.existingImages),
+        imageOrder: JSON.stringify(payload.imageOrder),
+        removedImages: JSON.stringify([])
+      }
+    });
+  } catch (error) {
+    response = { error: error.message || 'Product save failed' };
+  } finally {
+    adminProductManagerState.saving = false;
+  }
 
   if (button) {
     button.disabled = false;
-    button.innerHTML = id ? 'Save Changes' : 'Add Product ✦';
+    button.innerHTML = originalButtonHtml || (id ? 'Save Changes' : 'Add Product');
   }
 
   if (response.error || !response.product) {
-    return toast(response.error || 'Product save failed', 'error');
+    const message = /admin access|unauthorized|forbidden/i.test(response.error || '')
+      ? 'Admin login expired. Please login again, then add the product.'
+      : (response.error || 'Product save failed');
+    return toast(message, 'error', 6000);
   }
 
   clearAdminCache('/api/products');

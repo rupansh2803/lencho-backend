@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "qa:admin-flow": "node scripts/qa-admin-collection-product-flow.js",
     "migrate:json-to-mongodb": "node scripts/import-json-to-mongodb.js",
     "migrate:json-to-mongodb:dry": "node scripts/import-json-to-mongodb.js --dry-run"
   },

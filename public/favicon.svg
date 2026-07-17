@@ -1,20 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Lencho">
   <defs>
-    <linearGradient id="roseGold" x1="10" y1="8" x2="54" y2="56">
-      <stop offset="0" stop-color="#fff6df"/>
-      <stop offset=".38" stop-color="#d07a98"/>
-      <stop offset="1" stop-color="#9b4065"/>
+    <linearGradient id="bg" x1="8" y1="4" x2="58" y2="62">
+      <stop offset="0" stop-color="#6f3552"/>
+      <stop offset=".52" stop-color="#b56f76"/>
+      <stop offset="1" stop-color="#f6c98c"/>
     </linearGradient>
-    <linearGradient id="ring" x1="8" y1="6" x2="56" y2="58">
-      <stop offset="0" stop-color="#f8df96"/>
-      <stop offset=".55" stop-color="#c9954c"/>
-      <stop offset="1" stop-color="#fff2b8"/>
+    <linearGradient id="shine" x1="18" y1="12" x2="50" y2="52">
+      <stop offset="0" stop-color="#fff9ee"/>
+      <stop offset="1" stop-color="#ffe0a8"/>
     </linearGradient>
   </defs>
-  <rect x="5" y="5" width="54" height="54" rx="16" fill="#fffaf6"/>
-  <rect x="6.5" y="6.5" width="51" height="51" rx="14.5" fill="none" stroke="url(#ring)" stroke-width="3"/>
-  <circle cx="32" cy="31" r="19" fill="url(#roseGold)"/>
-  <path d="M24 43c4.4-8.2 6.6-16.7 6.6-25.4 0-2 1.3-3.2 3.1-3.2 1.9 0 3.2 1.2 3.2 3.2 0 7.2-1.9 14.3-5.7 21.1h10.9c1.8 0 3 1.1 3 2.8s-1.2 2.8-3 2.8H25.6c-1.3 0-2-.5-2-1.4 0-.3.1-.6.4-1Z" fill="#fffaf6"/>
-  <path d="M15 16l1.4 3 3.2.5-2.3 2.2.5 3.2-2.8-1.5-2.8 1.5.5-3.2-2.3-2.2 3.2-.5L15 16Z" fill="#c9954c"/>
-  <path d="M49 39l1.5 3.2 3.5.5-2.5 2.4.6 3.5-3.1-1.6-3.1 1.6.6-3.5-2.5-2.4 3.5-.5L49 39Z" fill="#f0c96a"/>
+  <rect width="64" height="64" rx="14" fill="#3b2030"/>
+  <rect x="4" y="4" width="56" height="56" rx="13" fill="url(#bg)"/>
+  <rect x="8" y="8" width="48" height="48" rx="11" fill="none" stroke="#fff1d7" stroke-opacity=".72" stroke-width="2"/>
+  <path d="M23 15h11v29h17v8H23V15Z" fill="url(#shine)"/>
+  <path d="M18 19l1.4 3 3.2.5-2.3 2.2.6 3.2-2.9-1.5-2.8 1.5.5-3.2-2.3-2.2 3.2-.5L18 19Z" fill="#ffe6b7"/>
+  <circle cx="47" cy="17" r="3.5" fill="#ffd1df"/>
 </svg>

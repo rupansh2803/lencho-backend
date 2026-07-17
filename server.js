@@ -1961,12 +1961,23 @@ app.use(morgan('tiny'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+function isNoDatabaseBypassPath(reqPath = '') {
+  return reqPath === '/health' ||
+    reqPath === '/favicon.svg' ||
+    reqPath === '/favicon.ico';
+}
+
 app.use((req, res, next) => {
   if (useDB) return next();
-  if (req.path === '/health') return next();
+  if (isNoDatabaseBypassPath(req.path)) return next();
   res.status(503).json({
     error: 'MongoDB Atlas is not connected yet. JSON fallback storage is disabled to protect permanent data.'
   });
+});
+
+app.get('/favicon.ico', (req, res) => {
+  res.type('image/svg+xml');
+  res.sendFile(path.join(__dirname, 'public', 'favicon.svg'));
 });
 
 function maintenanceModeEnabled() {
@@ -1976,6 +1987,7 @@ function maintenanceModeEnabled() {
 function isMaintenanceBypassPath(reqPath = '') {
   return reqPath === '/maintenance.html' ||
     reqPath === '/favicon.svg' ||
+    reqPath === '/favicon.ico' ||
     reqPath === '/robots.txt' ||
     reqPath === '/sitemap.xml' ||
     reqPath === '/llms.txt' ||
