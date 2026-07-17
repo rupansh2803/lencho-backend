@@ -1952,7 +1952,7 @@ app.use(helmet({
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   permissionsPolicy: {
     geolocation: [],
-    microphone: [],
+    microphone: ['self'],
     camera: [],
     payment: ['*']
   }

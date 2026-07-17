@@ -41,7 +41,7 @@ function ensureAdminAiAssistantLoaded() {
     }
 
     const script = document.createElement('script');
-    script.src = '/js/admin-ai.js?v=20260716-ai1';
+    script.src = '/js/admin-ai.js?v=20260717-ai2';
     script.defer = true;
     script.dataset.adminAiScript = 'true';
     script.onload = resolve;

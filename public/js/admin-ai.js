@@ -3,7 +3,10 @@
     ready: false,
     busy: false,
     suggestions: [],
-    messages: []
+    messages: [],
+    listening: false,
+    recognition: null,
+    shouldSpeakNext: false
   };
 
   function aiEscape(value) {
@@ -91,6 +94,140 @@
     if (input) input.disabled = isBusy;
   }
 
+  function getSpeechRecognitionCtor() {
+    return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  }
+
+  function updateVoiceUi(message) {
+    const hero = document.querySelector('.lencho-ai-hero');
+    const mascot = document.getElementById('lencho-ai-mascot');
+    const mic = document.getElementById('lencho-ai-mic');
+    const hint = document.getElementById('lencho-ai-voice-hint');
+    const isListening = Boolean(aiState.listening);
+
+    if (hero) hero.classList.toggle('is-listening', isListening);
+    if (mascot) {
+      mascot.classList.toggle('is-listening', isListening);
+      mascot.setAttribute('aria-pressed', isListening ? 'true' : 'false');
+    }
+    if (mic) {
+      mic.classList.toggle('is-listening', isListening);
+      mic.setAttribute('aria-pressed', isListening ? 'true' : 'false');
+      mic.innerHTML = isListening ? '<i class="fas fa-wave-square"></i>' : '<i class="fas fa-microphone"></i>';
+    }
+    if (hint) hint.textContent = message || (isListening ? 'Sun raha hoon... boliye' : 'Bot ya mic dabao, phir boliye');
+  }
+
+  function setupVoiceInput() {
+    const supported = Boolean(getSpeechRecognitionCtor());
+    const mic = document.getElementById('lencho-ai-mic');
+    if (mic) {
+      mic.disabled = false;
+      mic.title = supported ? 'Speak to Lencho AI' : 'Voice not supported in this browser';
+    }
+    updateVoiceUi(supported ? 'Bot ya mic dabao, phir boliye' : 'Voice unsupported hai. Type karke Ask dabao.');
+  }
+
+  function speakAiAnswer(text) {
+    if (!aiState.shouldSpeakNext) return;
+    aiState.shouldSpeakNext = false;
+    if (!('speechSynthesis' in window)) return;
+
+    const cleanText = String(text || '')
+      .replace(/\s+/g, ' ')
+      .replace(/[|*_#`]/g, '')
+      .trim()
+      .slice(0, 420);
+    if (!cleanText) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = 'en-IN';
+    utterance.rate = 0.96;
+    utterance.pitch = 1.04;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function startAdminAiVoice() {
+    if (aiState.busy) return;
+
+    if (aiState.listening && aiState.recognition) {
+      aiState.recognition.stop();
+      return;
+    }
+
+    const SpeechRecognition = getSpeechRecognitionCtor();
+    if (!SpeechRecognition) {
+      aiState.messages.push({
+        role: 'ai',
+        text: 'Voice input is browser me supported nahi hai. Chrome ya Edge me open karo, ya question type karke Ask dabao.'
+      });
+      renderMessages();
+      setupVoiceInput();
+      return;
+    }
+
+    let transcript = '';
+    let lastHeard = '';
+    let hadError = false;
+    const recognition = new SpeechRecognition();
+    aiState.recognition = recognition;
+    aiState.listening = true;
+    aiState.shouldSpeakNext = true;
+
+    recognition.lang = 'en-IN';
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = event => {
+      let interim = '';
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const text = event.results[index][0]?.transcript || '';
+        if (event.results[index].isFinal) transcript += text;
+        else interim += text;
+      }
+      const current = (transcript || interim).trim();
+      lastHeard = current;
+      const input = document.getElementById('lencho-ai-input');
+      if (input && current) input.value = current;
+      updateVoiceUi(current ? `Suna: ${current.slice(0, 46)}` : 'Sun raha hoon... boliye');
+    };
+
+    recognition.onerror = event => {
+      hadError = true;
+      aiState.shouldSpeakNext = false;
+      aiState.messages.push({
+        role: 'ai',
+        text: `Voice input nahi mila: ${event.error || 'try again'}. Mic permission allow karke dobara try karo.`
+      });
+      renderMessages();
+    };
+
+    recognition.onend = () => {
+      const spokenText = (transcript || lastHeard).trim();
+      aiState.listening = false;
+      aiState.recognition = null;
+      updateVoiceUi();
+      if (!hadError && spokenText) sendAdminAiMessage(spokenText);
+    };
+
+    try {
+      recognition.start();
+      updateVoiceUi('Sun raha hoon... boliye');
+    } catch (error) {
+      aiState.listening = false;
+      aiState.recognition = null;
+      aiState.shouldSpeakNext = false;
+      updateVoiceUi();
+      aiState.messages.push({
+        role: 'ai',
+        text: `Voice start nahi hua: ${error.message || 'browser permission issue'}.`
+      });
+      renderMessages();
+    }
+  }
+
   function renderSuggestions() {
     const target = document.getElementById('lencho-ai-suggestions');
     if (!target) return;
@@ -146,9 +283,10 @@
       };
       const data = await api('/api/admin/ai/chat', { method: 'POST', body: payload, timeoutMs: 20000 });
       if (data?.error) throw new Error(data.error);
+      const answerText = data.answer || 'Summary ready hai.';
       aiState.messages.push({
         role: 'ai',
-        text: data.answer || 'Summary ready hai.',
+        text: answerText,
         cards: data.cards || [],
         table: data.table || null,
         secondaryTable: data.secondaryTable || null,
@@ -156,13 +294,16 @@
         meta: `${data.toolName || 'tool'} | ${data.provider || 'local'} | read-only`
       });
       renderMessages();
+      speakAiAnswer(answerText);
     } catch (error) {
+      const errorText = `AI summary nahi aa paya: ${error.message || 'Unknown error'}`;
       aiState.messages.push({
         role: 'ai',
-        text: `AI summary nahi aa paya: ${error.message || 'Unknown error'}`,
+        text: errorText,
         completeness: ['Admin session, MongoDB connection, ya OpenAI env check karo.']
       });
       renderMessages();
+      speakAiAnswer(errorText);
     } finally {
       setBusy(false);
     }
@@ -176,15 +317,31 @@
         <section class="lencho-ai-hero">
           <div>
             <span class="lencho-ai-kicker">Lencho Admin AI</span>
-            <h2>Ask your store in Hinglish, Hindi, or English</h2>
-            <p>Read-only business answers for orders, stock, collections, sales, GST, and website health.</p>
+            <h2>Ask Lencho AI</h2>
+            <p>Orders, stock, sales bol ke pucho.</p>
             <div class="lencho-ai-status" id="lencho-ai-status">
               <span><i class="fas fa-spinner fa-spin"></i> Checking access</span>
             </div>
           </div>
-          <div class="lencho-ai-orb" aria-hidden="true">
-            <span></span>
-            <i class="fas fa-wand-magic-sparkles"></i>
+          <div class="lencho-ai-mascot-card">
+            <button class="lencho-ai-mascot" id="lencho-ai-mascot" type="button" onclick="startAdminAiVoice()" aria-label="Speak to Lencho AI" aria-pressed="false">
+              <span class="mascot-shadow"></span>
+              <span class="mascot-head">
+                <span class="mascot-antenna"></span>
+                <span class="mascot-ear mascot-ear-left"></span>
+                <span class="mascot-ear mascot-ear-right"></span>
+                <span class="mascot-eye mascot-eye-left"></span>
+                <span class="mascot-eye mascot-eye-right"></span>
+                <span class="mascot-mouth"></span>
+              </span>
+              <span class="mascot-body">
+                <span class="mascot-heart"><i class="fas fa-heart"></i></span>
+                <span class="mascot-arm mascot-arm-left"></span>
+                <span class="mascot-arm mascot-arm-right"></span>
+              </span>
+              <span class="mascot-wave"></span>
+            </button>
+            <span class="lencho-ai-voice-hint" id="lencho-ai-voice-hint">Bot ya mic dabao, phir boliye</span>
           </div>
         </section>
 
@@ -209,7 +366,7 @@
           <div class="lencho-ai-messages" id="lencho-ai-messages"></div>
 
           <div class="lencho-ai-compose">
-            <button class="lencho-ai-mic" type="button" title="Voice assistant next phase" disabled><i class="fas fa-microphone"></i></button>
+            <button class="lencho-ai-mic" id="lencho-ai-mic" type="button" title="Speak to Lencho AI" onclick="startAdminAiVoice()" aria-label="Speak to Lencho AI" aria-pressed="false"><i class="fas fa-microphone"></i></button>
             <textarea id="lencho-ai-input" rows="2" placeholder="Example: Haryana se last 7 days me kitne orders aaye?"></textarea>
             <button id="lencho-ai-send" class="btn-primary" type="button" onclick="sendAdminAiMessage()"><i class="fas fa-paper-plane"></i> Ask</button>
           </div>
@@ -219,10 +376,11 @@
 
     aiState.messages = [{
       role: 'ai',
-      text: 'Namaste. Main read-only mode me hoon. Orders, stock, collections, sales aur website health ka answer de sakta hoon. Koi delete/refund/publish action yahan se nahi hoga.'
+      text: 'Namaste. Main read-only Lencho AI hoon. Orders, stock, collections, sales aur website health ka answer de sakta hoon.'
     }];
     renderMessages();
     loadAiStatus();
+    setupVoiceInput();
 
     const input = document.getElementById('lencho-ai-input');
     if (input) {
@@ -251,6 +409,7 @@
 
   window.renderAdminAiAssistant = renderAdminAiAssistant;
   window.sendAdminAiMessage = sendAdminAiMessage;
+  window.startAdminAiVoice = startAdminAiVoice;
   window.runAdminAiSuggestion = runAdminAiSuggestion;
   window.clearAdminAiConversation = clearAdminAiConversation;
 })();
