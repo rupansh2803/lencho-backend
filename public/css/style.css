@@ -4722,7 +4722,8 @@ tr:hover td {
 
 /* ── CAPTCHA / SECURITY CODE FIELD FIX ── */
 #login-captcha-q,
-#signup-captcha-q {
+#signup-captcha-q,
+#contact-captcha-q {
   font-size: 1.1rem !important;
   font-weight: 700 !important;
   color: var(--rose-dark) !important;
@@ -4741,7 +4742,8 @@ tr:hover td {
 }
 
 #login-captcha,
-#signup-captcha {
+#signup-captcha,
+#contact-captcha {
   font-size: 1rem !important;
   font-weight: 600 !important;
   letter-spacing: 2px !important;
@@ -4757,7 +4759,8 @@ tr:hover td {
 }
 
 #login-captcha:focus,
-#signup-captcha:focus {
+#signup-captcha:focus,
+#contact-captcha:focus {
   border-color: var(--rose) !important;
   outline: none !important;
   box-shadow: 0 0 8px rgba(201, 116, 143, 0.2) !important;
@@ -5987,7 +5990,8 @@ label[for="captcha"],
   }
 
   #login-captcha-q,
-  #signup-captcha-q {
+  #signup-captcha-q,
+  #contact-captcha-q {
     font-size: 0.95rem !important;
     padding: 10px 12px !important;
     min-height: 42px !important;
@@ -5998,7 +6002,8 @@ label[for="captcha"],
   }
 
   #login-captcha,
-  #signup-captcha {
+  #signup-captcha,
+  #contact-captcha {
     font-size: 0.95rem !important;
     padding: 12px 14px !important;
     letter-spacing: 2px !important;
@@ -6067,7 +6072,8 @@ label[for="captcha"],
   }
 
   #login-captcha-q,
-  #signup-captcha-q {
+  #signup-captcha-q,
+  #contact-captcha-q {
     font-size: 0.85rem !important;
     padding: 8px 10px !important;
     min-height: 38px !important;
@@ -6076,7 +6082,8 @@ label[for="captcha"],
   }
 
   #login-captcha,
-  #signup-captcha {
+  #signup-captcha,
+  #contact-captcha {
     font-size: 0.85rem !important;
     padding: 10px 12px !important;
     letter-spacing: 1.5px !important;

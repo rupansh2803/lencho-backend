@@ -302,11 +302,13 @@ function getAuthContext(req) {
 
 function getSmtpConfigFromSettings(settings = null) {
   const resolved = settings || {};
+  const envUser = pickSmtpValue(process.env.SMTP_USER, process.env.EMAIL_USER);
+  const envPass = pickSmtpValue(process.env.SMTP_PASS, process.env.EMAIL_PASS);
   return {
-    host: String(resolved.smtpHost || process.env.SMTP_HOST || 'smtp.gmail.com').trim(),
-    port: Number(resolved.smtpPort || process.env.SMTP_PORT || 465),
-    user: String(resolved.smtpUser || DEFAULT_SMTP_USER || process.env.EMAIL_USER || '').trim(),
-    pass: String(resolved.smtpPass || DEFAULT_SMTP_PASS || process.env.EMAIL_PASS || '').trim(),
+    host: cleanEnvValue(process.env.SMTP_HOST) || cleanEnvValue(resolved.smtpHost) || 'smtp.gmail.com',
+    port: Number(process.env.SMTP_PORT || resolved.smtpPort || 465),
+    user: envUser || pickSmtpValue(resolved.smtpUser, DEFAULT_SMTP_USER),
+    pass: envPass || pickSmtpValue(resolved.smtpPass, DEFAULT_SMTP_PASS),
     storeName: sanitizeFromName(resolved.storeName || DEFAULT_EMAIL_FROM_NAME) || DEFAULT_EMAIL_FROM_NAME,
   };
 }
@@ -476,6 +478,18 @@ function isPlaceholderSMTP(value) {
     normalized === 'yourpassword' ||
     normalized.includes('your_') ||
     normalized.includes('your-');
+}
+
+function pickSmtpValue(...values) {
+  for (const value of values) {
+    const cleaned = cleanEnvValue(value);
+    if (cleaned && !isPlaceholderSMTP(cleaned)) return cleaned;
+  }
+  return '';
+}
+
+function normalizeEmailAddress(email = '') {
+  return String(email || '').trim().toLowerCase();
 }
 
 function toFriendlySmtpError(err) {
@@ -2251,6 +2265,40 @@ function buildInquiryReplyHtml({ name = 'Customer', message = '', originalMessag
     </div>`;
 }
 
+function buildInquiryAutoReplyHtml({ name = 'Customer' } = {}) {
+  return `
+    <div style="font-family:Arial,sans-serif;background:#fff7fb;padding:24px;color:#2b1c27;">
+      <div style="max-width:620px;margin:auto;background:#fff;border:1px solid #f0d7e1;border-radius:18px;padding:26px;box-shadow:0 16px 50px rgba(78,40,61,.08);">
+        <div style="font-size:22px;font-weight:800;color:#7a3e5b;margin-bottom:16px;">Lencho</div>
+        <p style="margin:0 0 14px;">Hi ${escapeEmailHtml(name || 'there')},</p>
+        <p style="line-height:1.7;margin:0 0 14px;">Thank you for contacting Lencho. We received your message and our team will reply as soon as possible.</p>
+        <p style="line-height:1.7;margin:0 0 14px;">For urgent order or product questions, you can also message us on WhatsApp at <b>+91 7404217625</b>.</p>
+        <p style="margin-top:24px;color:#6b4a5d;">Regards,<br><b>Lencho Team</b></p>
+      </div>
+    </div>`;
+}
+
+function getRequestOrigin(req) {
+  return cleanEnvValue(req.headers.origin)
+    || cleanEnvValue(process.env.FRONTEND_URL)
+    || cleanEnvValue(process.env.SITE_URL)
+    || 'https://lencho.in';
+}
+
+async function sendInquiryMail({ to, subject, html }) {
+  const smtpConfig = await getInquiryReplySmtpConfig();
+  if (!smtpConfig.user || !smtpConfig.pass || isPlaceholderSMTP(smtpConfig.user) || isPlaceholderSMTP(smtpConfig.pass)) {
+    throw new Error('Inquiry SMTP is not configured');
+  }
+  const transporter = await getVerifiedSmtpTransporter(smtpConfig);
+  return sendEmailWithRetry(transporter, {
+    from: `"${smtpConfig.storeName}" <${smtpConfig.user}>`,
+    to,
+    subject,
+    html
+  });
+}
+
 async function getPublicCachePolicy() {
   const settings = await getAllSettingsObject();
   const freshMode = String(settings.performanceMode || 'scale') === 'fresh';
@@ -2377,8 +2425,12 @@ async function uploadSingleMedia(file, folder) {
 }
 
 async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
+  if (isProduction) {
+    console.log(`[OTP] Sending ${type} OTP to ${targetEmail}`);
+  } else {
   console.log(`[OTP] ──── SENDING OTP ────`);
   console.log(`[OTP] Target: ${targetEmail} | Type: ${type} | OTP: ${otp}`);
+  }
   try {
     console.log(`[OTP] Step 1: Loading SMTP config...`);
     const smtpConfig = getSmtpConfigFromSettings({
@@ -4025,7 +4077,7 @@ app.post('/api/otp/send-email', async (req, res) => {
     }
     try {
       const sendResult = await sendConfiguredEmailOTP(cleanEmail, otp, 'email_login');
-      console.log(`[auth] OTP email sent to ${cleanEmail} | messageId=${sendResult.messageId || 'n/a'} | OTP=${otp}`);
+      console.log(`[auth] OTP email sent to ${cleanEmail} | messageId=${sendResult.messageId || 'n/a'}${isProduction ? '' : ` | OTP=${otp}`}`);
       return res.json({
         success: true,
         message: sendResult.via === 'dev-console' ? `DEV MODE: OTP is ${otp}` : 'OTP sent! Check your inbox.',
@@ -5875,27 +5927,62 @@ app.delete('/api/admin/admins/:id', requireAdmin, requireOwnerAdmin, async (req,
 // INQUIRY ROUTES
 app.post('/api/contact', async (req, res) => {
   try {
-    const { name, email, phone, message } = req.body;
-    fs.appendFileSync('inquiry_debug.log', `${new Date().toISOString()} - Received inquiry from ${email} (${phone || 'No Phone'})\n`);
-    if (!name || !email || !message) return res.status(400).json({ error: 'All fields are required' });
+    const { name, email, phone, message, captchaAnswer } = req.body || {};
+    const cleanName = String(name || '').trim().slice(0, 100);
+    const cleanEmail = normalizeEmailAddress(email);
+    const cleanPhone = String(phone || '').trim().slice(0, 30);
+    const cleanMessage = String(message || '').trim().slice(0, 4000);
+
+    if (!cleanName || !cleanEmail || !cleanMessage) return res.status(400).json({ error: 'Name, email and message are required' });
+    if (!isValidEmailFormat(cleanEmail)) return res.status(400).json({ error: 'Please enter a valid email address' });
+    if (!captchaAnswer) return res.status(400).json({ error: 'Security code is required' });
+    if (String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
+      return res.status(400).json({ error: 'Invalid security code. Please try again.' });
+    }
+    delete req.session.captcha;
+
+    fs.appendFileSync('inquiry_debug.log', `${new Date().toISOString()} - Received inquiry from ${cleanEmail} (${cleanPhone || 'No Phone'})\n`);
     
     if (useDB) {
-      await Inquiry.create({ name, email, phone, message });
+      await Inquiry.create({ name: cleanName, email: cleanEmail, phone: cleanPhone, message: cleanMessage });
     } else {
       const inquiries = readJson(FILES.inquiries);
       inquiries.unshift({
         _id: uuidv4(),
-        name,
-        email,
-        phone: phone || '',
-        message,
+        name: cleanName,
+        email: cleanEmail,
+        phone: cleanPhone,
+        message: cleanMessage,
         status: 'new',
         createdAt: new Date().toISOString(),
       });
       writeJson(FILES.inquiries, inquiries);
     }
 
-    // Notify Admin via Email
+    let adminNotified = false;
+    try {
+      const storeEmail = cleanEnvValue(await getSetting('storeEmail', PRIMARY_LENCHO_EMAIL)) || PRIMARY_LENCHO_EMAIL;
+      await sendInquiryMail({
+        to: storeEmail,
+        subject: 'New Customer Inquiry - Lencho',
+        html: `
+          <div style="font-family:Arial,sans-serif;background:#fff7fb;padding:24px;color:#2b1c27;">
+            <div style="max-width:620px;margin:auto;background:#fff;border:1px solid #f0d7e1;border-radius:18px;padding:26px;">
+              <h2 style="margin:0 0 16px;color:#7a3e5b;">New customer inquiry</h2>
+              <p><b>From:</b> ${escapeEmailHtml(cleanName)} (${escapeEmailHtml(cleanEmail)})</p>
+              <p><b>Phone:</b> ${escapeEmailHtml(cleanPhone || 'Not provided')}</p>
+              <p><b>Message:</b></p>
+              <div style="background:#fff5f8;border:1px solid #f3d4df;padding:14px;border-radius:12px;line-height:1.6;">${escapeEmailHtml(cleanMessage).replace(/\n/g, '<br>')}</div>
+              <p style="margin-top:20px;"><a href="${getRequestOrigin(req).replace(/\/$/, '')}/admin" style="color:#7a3e5b;font-weight:700;text-decoration:none;">View in Admin Panel</a></p>
+            </div>
+          </div>`
+      });
+      adminNotified = true;
+    } catch (err) {
+      console.error('Inquiry Email Notify Error:', err.message);
+    }
+
+    // Notify Admin via legacy SMTP settings only if env SMTP did not send.
     try {
       const host = await getSetting('smtpHost', 'smtp.gmail.com');
       const port = await getSetting('smtpPort', 465);
@@ -5903,7 +5990,7 @@ app.post('/api/contact', async (req, res) => {
       const pass = await getSetting('smtpPass', '');
       const storeEmail = await getSetting('storeEmail', PRIMARY_LENCHO_EMAIL);
 
-      if (user && pass) {
+      if (!adminNotified && user && pass) {
         const transporter = nodemailer.createTransport({
           host, port: +port, secure: +port === 465,
           auth: { user, pass }
@@ -5915,18 +6002,30 @@ app.post('/api/contact', async (req, res) => {
           html: `
             <div style="font-family:sans-serif;padding:2rem;border:1px solid #eee;border-radius:12px;">
               <h2 style="color:#c9748f;">New Message Recieved</h2>
-              <p><b>From:</b> ${name} (${email})</p>
-              <p><b>Phone:</b> ${phone || 'Not provided'}</p>
+              <p><b>From:</b> ${escapeEmailHtml(cleanName)} (${escapeEmailHtml(cleanEmail)})</p>
+              <p><b>Phone:</b> ${escapeEmailHtml(cleanPhone || 'Not provided')}</p>
               <p><b>Message:</b></p>
-              <div style="background:#f9f9f9;padding:1rem;border-radius:8px;">${message}</div>
-              <p style="margin-top:1.5rem;"><a href="${req.headers.origin}/admin" style="color:#c9748f;font-weight:700;text-decoration:none;">View in Admin Panel →</a></p>
+              <div style="background:#f9f9f9;padding:1rem;border-radius:8px;">${escapeEmailHtml(cleanMessage).replace(/\n/g, '<br>')}</div>
+              <p style="margin-top:1.5rem;"><a href="${getRequestOrigin(req).replace(/\/$/, '')}/admin" style="color:#c9748f;font-weight:700;text-decoration:none;">View in Admin Panel →</a></p>
             </div>
           `
         });
       }
     } catch (err) { console.error('Inquiry Email Notify Error:', err.message); }
 
-    res.json({ success: true, message: 'Inquiry received' });
+    let autoReplySent = false;
+    try {
+      await sendInquiryMail({
+        to: cleanEmail,
+        subject: 'We received your message - Lencho',
+        html: buildInquiryAutoReplyHtml({ name: cleanName })
+      });
+      autoReplySent = true;
+    } catch (err) {
+      console.error('Inquiry Auto Reply Error:', err.message);
+    }
+
+    res.json({ success: true, message: 'Inquiry received', autoReplySent, adminNotified });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -6352,8 +6451,9 @@ app.post('/api/auth/firebase/google', async (req, res) => {
     const { email, name, picture, googleId, idToken, firebaseUid } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
+    const requestedEmail = normalizeEmailAddress(email);
 
-    console.log('[GoogleAuth] Request received:', { email, name: name?.slice(0, 20), hasIdToken: !!idToken, hasFirebaseUid: !!firebaseUid });
+    console.log('[GoogleAuth] Request received:', { email: requestedEmail, name: name?.slice(0, 20), hasIdToken: !!idToken, hasFirebaseUid: !!firebaseUid });
 
     // Try to verify the Firebase ID token (returns null if token is missing or unverifiable)
     let verifiedGoogle = null;
@@ -6366,9 +6466,13 @@ app.post('/api/auth/firebase/google', async (req, res) => {
       }
     }
 
-    // Use verified data if available, otherwise trust client-provided Firebase Auth data
-    const finalEmail = verifiedGoogle?.email || email;
-    const finalName = verifiedGoogle?.name || name;
+    const verifiedEmail = normalizeEmailAddress(verifiedGoogle?.email);
+    if (verifiedEmail && requestedEmail && verifiedEmail !== requestedEmail) {
+      return res.status(400).json({ error: 'Google account email mismatch. Please retry login.' });
+    }
+
+    const finalEmail = verifiedEmail || requestedEmail;
+    const finalName = String(verifiedGoogle?.name || name || finalEmail.split('@')[0] || 'User').trim().slice(0, 100);
     const finalPicture = verifiedGoogle?.picture || picture;
     const finalGoogleId = verifiedGoogle?.googleId || firebaseUid || googleId;
 
@@ -6384,14 +6488,23 @@ app.post('/api/auth/firebase/google', async (req, res) => {
       user = await User.findOne({ email: finalEmail }).lean();
       if (!user) {
         console.log('[GoogleAuth] Creating new user:', finalEmail);
+        const now = new Date();
         const newUser = new User({ 
           name: finalName || finalEmail.split('@')[0], 
           email: finalEmail, 
-          password: 'GOOGLE_' + (finalGoogleId || Date.now()),
+          password: `GOOGLE_AUTH_${crypto.randomBytes(24).toString('hex')}`,
           googleId: finalGoogleId,
+          firebaseUid: firebaseUid || '',
           profileImg: finalPicture,
+          avatar: finalPicture,
           role: 'user',
-          verified: true,
+          isVerified: true,
+          authProvider: 'google',
+          emailVerifiedAt: verifiedGoogle?.emailVerified === false ? null : now,
+          lastLoginAt: now,
+          lastLoginIp: String(ip || ''),
+          lastLoginUserAgent: String(userAgent || ''),
+          loginCount: 1,
           phone: ''
         });
         await newUser.save();
@@ -6399,25 +6512,58 @@ app.post('/api/auth/firebase/google', async (req, res) => {
         console.log('[GoogleAuth] New user created:', user._id);
       } else {
         console.log('[GoogleAuth] Existing user found:', user._id);
-        // Update googleId and avatar if missing
-        if ((!user.googleId && finalGoogleId) || (!user.profileImg && finalPicture)) {
-          await User.updateOne({ _id: user._id }, { $set: { googleId: finalGoogleId || user.googleId, profileImg: finalPicture || user.profileImg } });
+        if (user.isBlocked) {
+          await recordLoginActivity({ email: finalEmail, name: user.name, status: 'failed', method: 'google', role: user.role || 'user', ip, userAgent });
+          return res.status(403).json({ error: 'This account is blocked. Please contact support.' });
         }
+        const updates = {
+          googleId: finalGoogleId || user.googleId || '',
+          firebaseUid: firebaseUid || user.firebaseUid || '',
+          profileImg: finalPicture || user.profileImg || '',
+          avatar: finalPicture || user.avatar || user.profileImg || '',
+          authProvider: 'google',
+          isVerified: true,
+          lastLoginAt: new Date(),
+          lastLoginIp: String(ip || ''),
+          lastLoginUserAgent: String(userAgent || '')
+        };
+        if (!user.emailVerifiedAt && verifiedGoogle?.emailVerified !== false) updates.emailVerifiedAt = new Date();
+        await User.updateOne({ _id: user._id }, { $set: updates, $inc: { loginCount: 1 } });
+        user = { ...user, ...updates, loginCount: (Number(user.loginCount) || 0) + 1 };
       }
     } else {
       const users = readJson(FILES.users);
-      user = users.find(u => u.email === finalEmail);
+      user = users.find(u => normalizeEmailAddress(u.email) === finalEmail);
       if (!user) {
         user = { 
           id: Date.now().toString(), 
           name: finalName || finalEmail.split('@')[0], 
           email: finalEmail, googleId: finalGoogleId, 
+          firebaseUid: firebaseUid || '',
           profileImg: finalPicture,
           avatar: finalPicture,
           role: 'user', 
-          verified: true 
+          isVerified: true,
+          authProvider: 'google',
+          createdAt: new Date().toISOString(),
+          lastLoginAt: new Date().toISOString(),
+          loginCount: 1
         };
         users.push(user);
+        writeJson(FILES.users, users);
+      } else {
+        if (user.isBlocked) {
+          await recordLoginActivity({ email: finalEmail, name: user.name, status: 'failed', method: 'google', role: user.role || 'user', ip, userAgent });
+          return res.status(403).json({ error: 'This account is blocked. Please contact support.' });
+        }
+        user.googleId = finalGoogleId || user.googleId || '';
+        user.firebaseUid = firebaseUid || user.firebaseUid || '';
+        user.profileImg = finalPicture || user.profileImg || '';
+        user.avatar = finalPicture || user.avatar || user.profileImg || '';
+        user.authProvider = 'google';
+        user.isVerified = true;
+        user.lastLoginAt = new Date().toISOString();
+        user.loginCount = (Number(user.loginCount) || 0) + 1;
         writeJson(FILES.users, users);
       }
     }

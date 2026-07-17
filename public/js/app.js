@@ -1084,12 +1084,18 @@ async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '') {
   
   if (btn) { btn.disabled = true; btn.textContent = 'Sending OTP... ✦'; }
   let resp = null;
+  const resetOtpRequest = () => {
+    authOtpRequestInFlight = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = currentFormId === 'auth-login-form' ? 'Sign In' : 'Send OTP ✦';
+    }
+  };
   
   try {
     resp = await api('/api/otp/send-email', { method: 'POST', body: { email: email.trim().toLowerCase(), captchaAnswer: captchaAnswer.trim() }, timeoutMs: 45000 });
     
-    authOtpRequestInFlight = false;
-    if (btn) { btn.disabled = false; btn.textContent = currentFormId === 'auth-login-form' ? 'Sign In' : 'Send OTP ✦'; }
+    resetOtpRequest();
     
     if (resp.error) {
       const raw = String(resp.error || '');
@@ -1153,8 +1159,7 @@ async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '') {
   
   document.getElementById('verify-otp-btn').onclick = () => verifyEmailOTP();
   } catch (error) {
-    authOtpRequestInFlight = false;
-    if (btn) { btn.disabled = false; btn.textContent = currentFormId === 'auth-login-form' ? 'Sign In' : 'Send OTP ✦'; }
+    resetOtpRequest();
     err.textContent = 'Network error or timeout. Please try again.';
     toast('Network error or timeout. Please try again.', 'error');
     await loadAuthCaptcha();
@@ -2673,6 +2678,19 @@ async function trackOrder() {
 }
 
 /* ── CONTACT PAGE ─────────────────────────────────────────── */
+async function loadContactCaptcha() {
+  const question = document.getElementById('contact-captcha-q');
+  const answer = document.getElementById('contact-captcha');
+  if (question) question.textContent = 'Loading...';
+  if (answer) answer.value = '';
+  try {
+    const resp = await api('/api/captcha');
+    if (question) question.textContent = resp.question || 'Security code unavailable';
+  } catch (e) {
+    if (question) question.textContent = 'Security code unavailable';
+  }
+}
+
 function renderContact() {
   document.getElementById('app').innerHTML = `
   <div class="container animate-pop-in" style="padding:4rem 0;">
@@ -2699,25 +2717,46 @@ function renderContact() {
         <h3 style="font-family:'Playfair Display',serif;font-size:1.8rem;margin-bottom:1.5rem;">Send an Inquiry</h3>
         <div class="form-group"><label>Full Name</label><input id="contact-name" placeholder="Name"/></div>
         <div class="form-group"><label>Email Address</label><input id="contact-email" type="email" placeholder="example@domain.com"/></div>
+        <div class="form-group"><label>Phone Number (Optional)</label><input id="contact-phone" type="tel" placeholder="+91 00000 00000"/></div>
         <div class="form-group"><label>Your Message</label><textarea id="contact-message" rows="4" placeholder="How can we help?"></textarea></div>
-        <button class="btn-primary full-width" onclick="submitContact()"><i class="fas fa-paper-plane"></i> Send Message</button>
+        <div class="form-group">
+          <label>Security Code</label>
+          <div class="captcha-box" id="contact-captcha-q">Loading...</div>
+          <input id="contact-captcha" placeholder="Enter code above" autocomplete="off"/>
+        </div>
+        <button id="contact-submit-btn" class="btn-primary full-width" onclick="submitContact()"><i class="fas fa-paper-plane"></i> Send Message</button>
       </div>
     </div>
   </div>`;
   initScrollReveal();
+  loadContactCaptcha();
 }
 
 async function submitContact() {
-  const n = document.getElementById('contact-name').value;
-  const e = document.getElementById('contact-email').value;
-  const m = document.getElementById('contact-message').value;
-  if(!n || !e || !m) { toast('Please fill all fields', 'error'); return; }
-  const resp = await api('/api/contact', { method: 'POST', body: { name:n, email:e, message:m } });
-  if(resp.success) {
-    toast('Thank you! Our concierge will contact you within 24 hours. 💌', 'success');
-    navigate('/');
-  } else {
-    toast(resp.error || 'Something went wrong', 'error');
+  const n = document.getElementById('contact-name').value.trim();
+  const e = document.getElementById('contact-email').value.trim().toLowerCase();
+  const p = document.getElementById('contact-phone')?.value.trim() || '';
+  const m = document.getElementById('contact-message').value.trim();
+  const c = document.getElementById('contact-captcha')?.value.trim() || '';
+  const btn = document.getElementById('contact-submit-btn');
+  if(!n || !e || !m) { toast('Please fill name, email and message', 'error'); return; }
+  if(!c) { toast('Please enter the security code', 'error'); return; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...'; }
+  try {
+    const resp = await api('/api/contact', { method: 'POST', body: { name:n, email:e, phone:p, message:m, captchaAnswer:c }, timeoutMs: 15000 });
+    if(resp.success) {
+      toast(resp.autoReplySent ? 'Thank you! Confirmation email sent.' : 'Thank you! We received your message.', 'success');
+      ['contact-name','contact-email','contact-phone','contact-message','contact-captcha'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      await loadContactCaptcha();
+    } else {
+      toast(resp.error || 'Something went wrong', 'error');
+      await loadContactCaptcha();
+    }
+  } catch (error) {
+    toast('Unable to send message right now. Please try again.', 'error');
+    await loadContactCaptcha();
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Message'; }
   }
 }
 

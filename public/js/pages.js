@@ -1388,34 +1388,51 @@ function renderContact() {
         <div class="form-group"><label>Email Address *</label><input type="email" placeholder="example@domain.com" id="contact-email"/></div>
         <div class="form-group"><label>Phone Number (Optional)</label><input type="tel" placeholder="+91 00000 00000" id="contact-phone"/></div>
         <div class="form-group"><label>Your Message *</label><textarea rows="4" placeholder="How can we help you?" id="contact-message" style="resize:vertical;"></textarea></div>
-        <button class="btn-primary full-width" onclick="submitContact()"><i class="fas fa-paper-plane" style="margin-right:.5rem;"></i> Send Message</button>
+        <div class="form-group">
+          <label>Security Code *</label>
+          <div class="captcha-box" id="contact-captcha-q">Loading...</div>
+          <input id="contact-captcha" placeholder="Enter code above" autocomplete="off"/>
+        </div>
+        <button id="contact-submit-btn" class="btn-primary full-width" onclick="submitContact()"><i class="fas fa-paper-plane" style="margin-right:.5rem;"></i> Send Message</button>
       </div>
 
     </div>
   </div>`;
   initScrollReveal();
+  loadContactCaptcha();
 }
 
 async function submitContact() {
   console.log('✦ Inquiry Submitted');
-  const n = document.getElementById('contact-name').value;
-  const e = document.getElementById('contact-email').value;
-  const p = document.getElementById('contact-phone').value;
-  const m = document.getElementById('contact-message').value;
+  const n = document.getElementById('contact-name').value.trim();
+  const e = document.getElementById('contact-email').value.trim().toLowerCase();
+  const p = document.getElementById('contact-phone').value.trim();
+  const m = document.getElementById('contact-message').value.trim();
+  const c = document.getElementById('contact-captcha')?.value.trim() || '';
+  const btn = document.getElementById('contact-submit-btn');
   if(!n || !e || !m) { toast('Please fill in name, email and message.', 'error'); return; }
+  if(!c) { toast('Please enter the security code.', 'error'); return; }
   
-  const b = document.querySelector('.track-page button') || { disabled: false, textContent: '' };
-  const resp = await api('/api/contact', { method: 'POST', body: { name: n, email: e, phone: p, message: m } });
-  
-  if (resp.error) {
-    toast(resp.error, 'error');
-  } else {
-    toast('Your message has been sent successfully! We will get back to you soon. 💌', 'success');
-    // Clear form
-    document.getElementById('contact-name').value = '';
-    document.getElementById('contact-email').value = '';
-    document.getElementById('contact-message').value = '';
-    document.getElementById('contact-phone').value = '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:.5rem;"></i> Sending...'; }
+  try {
+    const resp = await api('/api/contact', { method: 'POST', body: { name: n, email: e, phone: p, message: m, captchaAnswer: c }, timeoutMs: 15000 });
+    if (resp.error) {
+      toast(resp.error, 'error');
+      await loadContactCaptcha();
+    } else {
+      toast(resp.autoReplySent ? 'Your message has been sent. Confirmation email sent.' : 'Your message has been sent successfully.', 'success');
+      document.getElementById('contact-name').value = '';
+      document.getElementById('contact-email').value = '';
+      document.getElementById('contact-message').value = '';
+      document.getElementById('contact-phone').value = '';
+      document.getElementById('contact-captcha').value = '';
+      await loadContactCaptcha();
+    }
+  } catch (error) {
+    toast('Unable to send message right now. Please try again.', 'error');
+    await loadContactCaptcha();
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:.5rem;"></i> Send Message'; }
   }
 }
 
