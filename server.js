@@ -187,10 +187,11 @@ function sanitizeFromName(name) {
 }
 
 const EMAIL_OTP_EXPIRY_MS = 10 * 60 * 1000;
-const SMTP_CONNECTION_TIMEOUT_MS = 25000;
-const SMTP_SOCKET_TIMEOUT_MS = 30000;
-const SMTP_SEND_TIMEOUT_MS = 30000;
+const SMTP_CONNECTION_TIMEOUT_MS = 10000;
+const SMTP_SOCKET_TIMEOUT_MS = 20000;
+const SMTP_SEND_TIMEOUT_MS = 25000;
 const OTP_ACTIVE_REQUEST_TTL_MS = 30000;
+const SMTP_FORCE_IPV4 = parseBooleanEnv(process.env.SMTP_FORCE_IPV4, true);
 let cachedVerifiedSmtpTransporter = null;
 const activeEmailOtpRequests = new Map();
 
@@ -382,9 +383,15 @@ async function createVerifiedSmtpTransporter(config) {
     secure: port === 465,
     requireTLS: port === 587,
     auth: { user: config.user, pass: config.pass },
+    family: SMTP_FORCE_IPV4 ? 4 : undefined,
+    dnsTimeout: SMTP_CONNECTION_TIMEOUT_MS,
     connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
     greetingTimeout: SMTP_CONNECTION_TIMEOUT_MS,
     socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
+    tls: {
+      servername: config.host,
+      minVersion: 'TLSv1.2'
+    }
   });
 
   await transporter.verify();
@@ -414,9 +421,56 @@ async function sendEmailWithRetry(transporter, payload, attempts = 2) {
     } catch (error) {
       lastError = error;
       const message = String(error?.message || '').toLowerCase();
-      const retryable = /timeout|etimedout|eai_again|network|connection|socket|temporary/i.test(message);
+      const retryable = /timeout|etimedout|eai_again|enetunreach|econnrefused|network|connection|socket|temporary/i.test(message);
       if (attempt >= attempts || !retryable) break;
       cachedVerifiedSmtpTransporter = null;
+    }
+  }
+
+  throw lastError || new Error('SMTP send failed');
+}
+
+function isRetryableSmtpNetworkError(error) {
+  const code = String(error?.code || '').toUpperCase();
+  const text = `${code} ${error?.message || ''} ${error?.response || ''}`.toLowerCase();
+  return /smtp_timeout|timeout|timed out|etimedout|eai_again|enetunreach|econnrefused|network|connection|socket|greeting/.test(text);
+}
+
+function getSmtpDeliveryConfigs(config) {
+  const primaryPort = Number(config.port) || 465;
+  const configs = [{ ...config, port: primaryPort }];
+  const host = String(config.host || '').toLowerCase();
+  if (host.includes('gmail.com')) {
+    const fallbackPort = primaryPort === 465 ? 587 : 465;
+    configs.push({ ...config, port: fallbackPort });
+  }
+  return configs;
+}
+
+async function sendEmailWithSmtpFallback(smtpConfig, payload, attempts = 1) {
+  const configs = getSmtpDeliveryConfigs(smtpConfig);
+  let lastError = null;
+
+  for (let i = 0; i < configs.length; i += 1) {
+    const config = configs[i];
+    try {
+      const transporter = await getVerifiedSmtpTransporter(config);
+      const result = await withTimeout(
+        sendEmailWithRetry(transporter, payload, attempts),
+        SMTP_SEND_TIMEOUT_MS,
+        'SMTP_TIMEOUT'
+      );
+      return { ...result, smtpPort: config.port, smtpHost: config.host };
+    } catch (error) {
+      lastError = error;
+      cachedVerifiedSmtpTransporter = null;
+      cachedSmtpSignature = '';
+      const hasFallback = i < configs.length - 1;
+      if (hasFallback && isRetryableSmtpNetworkError(error)) {
+        console.warn(`[SMTP] ${config.host}:${config.port} failed (${error.code || 'ERR'}). Retrying with ${configs[i + 1].host}:${configs[i + 1].port}.`);
+        continue;
+      }
+      throw error;
     }
   }
 
@@ -587,7 +641,7 @@ function classifySmtpError(err) {
       message: 'Email OTP is not configured yet. Please set SMTP_USER and SMTP_PASS in Render.'
     };
   }
-  if (code === 'SMTP_TIMEOUT' || /timeout|timed out|etimedout|socket|greeting/i.test(combined)) {
+  if (code === 'SMTP_TIMEOUT' || /timeout|timed out|etimedout|enetunreach|econnrefused|network unreachable|socket|greeting/i.test(combined)) {
     return {
       code: 'SMTP_TIMEOUT',
       status: 504,
@@ -2588,16 +2642,13 @@ async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
       throw error;
     }
 
-    console.log(`[OTP] Step 3: Creating verified SMTP transporter...`);
-    const transporter = await getVerifiedSmtpTransporter(smtpConfig);
-    console.log(`[OTP] Step 4: Transporter verified. Sending email...`);
-
-    const result = await withTimeout(sendEmailWithRetry(transporter, {
+    console.log(`[OTP] Step 3: Verifying SMTP and sending email...`);
+    const result = await sendEmailWithSmtpFallback(smtpConfig, {
       from: `"${smtpConfig.storeName}" <${smtpConfig.user}>`,
       to: cleanTargetEmail,
       subject: DEFAULT_OTP_SUBJECT.replace('{{otp}}', otp),
       html: DEFAULT_OTP_BODY.replace('{{otp}}', otp)
-    }, 1), SMTP_SEND_TIMEOUT_MS, 'SMTP_TIMEOUT');
+    }, 1);
 
     console.log(`[OTP] ✅ SUCCESS — Email OTP sent to ${targetEmail} | MessageID: ${result.messageId}`);
     return { sent: true, via: 'email', messageId: result.messageId };
@@ -2634,8 +2685,7 @@ async function sendAdminSecurityAlert({ email = '', reason = 'admin_login_failed
       smtpPass: await getMeaningfulSetting('smtpPass', DEFAULT_SMTP_PASS),
       storeName: await getMeaningfulSetting('storeName', DEFAULT_EMAIL_FROM_NAME),
     });
-    const transporter = await getVerifiedSmtpTransporter(smtpConfig);
-    const result = await sendEmailWithRetry(transporter, {
+    const result = await sendEmailWithSmtpFallback(smtpConfig, {
       from: `"${smtpConfig.storeName} Security" <${smtpConfig.user}>`,
       to: ownerEmails.join(','),
       subject: 'Lencho Admin Security Alert',
@@ -3044,33 +3094,19 @@ app.post('/api/admin/test-smtp', requireAdmin, async (req, res) => {
       });
     }
 
-    // Try to create and verify transporter
-    const transporter = nodemailer.createTransport({
-      host: smtpConfig.host,
-      port: Number(smtpConfig.port) || 465,
-      secure: Number(smtpConfig.port) === 465,
-      auth: { user: smtpConfig.user, pass: smtpConfig.pass },
-      connectionTimeout: 10000,
-      socketTimeout: 10000,
-    });
-
-    console.log('[SMTP TEST] Verifying connection...');
-    await transporter.verify();
-
-    console.log('[SMTP TEST] Sending test email...');
-    const result = await transporter.sendMail({
+    console.log('[SMTP TEST] Verifying connection and sending test email...');
+    const result = await sendEmailWithSmtpFallback(smtpConfig, {
       from: `"${smtpConfig.storeName}" <${smtpConfig.user}>`,
       to: testEmail,
-      subject: 'Lencho SMTP Test ✅',
+      subject: 'Lencho SMTP Test',
       html: `<h2>SMTP Configuration Working!</h2><p>Your SMTP settings are configured correctly. OTP emails should now be sent successfully.</p><p>Store: ${smtpConfig.storeName}</p><p>Sent from: ${smtpConfig.user}</p>`
-    });
-
+    }, 1);
     console.log('[SMTP TEST] Success! MessageID:', result.messageId);
     res.json({
       success: true,
       message: 'SMTP test email sent successfully!',
       messageId: result.messageId,
-      config: { host: smtpConfig.host, port: smtpConfig.port, from: smtpConfig.user }
+      config: { host: result.smtpHost || smtpConfig.host, port: result.smtpPort || smtpConfig.port, from: smtpConfig.user }
     });
   } catch (e) {
     console.error('[SMTP TEST] Error:', e.message);

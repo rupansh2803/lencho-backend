@@ -4995,9 +4995,10 @@ label[for="captcha"],
 .otp-error-msg {
   text-align: center;
   font-size: .82rem;
-  color: #ef4444;
+  color: #9b5a34;
   min-height: 22px;
   margin: .5rem 0;
+  font-weight: 700;
   animation: otpFadeIn .3s ease;
 }
 
