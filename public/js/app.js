@@ -705,7 +705,8 @@ async function api(url, opts = {}) {
       }
       
       return {
-        error: (errData && errData.error) || `Server Error: ${res.status}`,
+        ...(errData || {}),
+        error: (errData && (errData.error || errData.message)) || `Server Error: ${res.status}`,
         code: errData && errData.code,
         retryAfter: errData && errData.retryAfter,
         status: res.status
@@ -1102,9 +1103,10 @@ async function handlePhoneLogin() {
 function getEmailOtpErrorMessage(resp = {}) {
   if (resp.code === 'SMTP_NOT_CONFIGURED') return 'Email OTP service is not configured. Please contact Lencho support.';
   if (resp.code === 'SMTP_AUTH_FAILED') return 'Email OTP service login failed. Please contact Lencho support.';
-  if (resp.code === 'SMTP_TIMEOUT') return 'Email OTP service timed out. Please try again in a minute.';
+  if (resp.code === 'SMTP_TIMEOUT') return 'OTP email is taking longer. If it arrives, enter the code below.';
+  if (resp.status === 504) return 'OTP email is taking longer. If it arrives, enter the code below.';
   if (resp.code === 'OTP_RATE_LIMITED' && resp.retryAfter) return `Too many OTP requests. Try again in ${resp.retryAfter} seconds.`;
-  if (resp.code === 'OTP_REQUEST_IN_PROGRESS' && resp.retryAfter) return `OTP request is already in progress. Try again in ${resp.retryAfter} seconds.`;
+  if (resp.code === 'OTP_REQUEST_IN_PROGRESS' && resp.retryAfter) return `OTP request is processing. Wait ${resp.retryAfter} seconds.`;
   return resp.error || 'Unable to send OTP right now. Please try again in a minute.';
 }
 
@@ -1134,6 +1136,40 @@ function beginAuthOtpCountdown() {
   }, 1000);
 }
 
+function showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend = false, notice = '') {
+  beginAuthOtpCountdown();
+
+  const currentForm = document.getElementById(currentFormId);
+  const otpStep = document.getElementById('auth-otp-step');
+  if (currentForm && !isResend) currentForm.style.display = 'none';
+  if (otpStep) otpStep.style.display = 'block';
+
+  const otpError = document.getElementById('otp-error');
+  if (otpError) {
+    otpError.textContent = notice || '';
+    otpError.classList.toggle('otp-soft-notice', Boolean(notice));
+  }
+  const otpInput = document.getElementById('auth-otp-input');
+  if (otpInput) otpInput.value = '';
+  const otpSuccess = document.getElementById('otp-success');
+  if (otpSuccess) otpSuccess.style.display = 'none';
+
+  const otpTitle = document.getElementById('otp-title');
+  if (otpTitle) otpTitle.textContent = 'Verify Your Email';
+  const otpSubtitle = document.getElementById('otp-subtitle');
+  if (otpSubtitle) otpSubtitle.textContent = "We've sent a 6-digit verification code to your email";
+  const emailDisplay = document.getElementById('otp-target-email');
+  if (emailDisplay) emailDisplay.textContent = cleanEmail;
+
+  document.querySelectorAll('#otp-input-row .otp-box').forEach(box => {
+    box.value = '';
+    box.classList.remove('filled', 'error', 'success');
+  });
+  initOtpBoxes();
+  const verifyBtn = document.getElementById('verify-otp-btn');
+  if (verifyBtn) verifyBtn.onclick = () => verifyEmailOTP();
+}
+
 async function sendEmailOTPSafe(email, currentFormId, errorId, captchaAnswer = '') {
   const err = document.getElementById(errorId);
   const isResend = currentFormId === 'auth-otp-step';
@@ -1144,7 +1180,7 @@ async function sendEmailOTPSafe(email, currentFormId, errorId, captchaAnswer = '
   if (err) err.textContent = '';
 
   if (authOtpRequestInFlight) {
-    if (err) err.textContent = 'OTP request is already in progress. Please wait.';
+    toast('OTP request is already processing. Please wait.', 'success');
     return;
   }
   if (!cleanEmail) {
@@ -1167,12 +1203,31 @@ async function sendEmailOTPSafe(email, currentFormId, errorId, captchaAnswer = '
     const resp = await api('/api/otp/send-email', {
       method: 'POST',
       body: { email: cleanEmail, captchaAnswer: String(captchaAnswer || '').trim(), resend: isResend },
-      timeoutMs: 30000,
+      timeoutMs: 65000,
       signal: authOtpAbortController.signal
     });
 
     if (resp.error) {
       const message = getEmailOtpErrorMessage(resp);
+      if (resp.code === 'OTP_REQUEST_IN_PROGRESS') {
+        showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend, `${message} If the email arrives, enter the code here.`);
+        toast(message, 'success');
+        return;
+      }
+      const canEnterDelayedOtp = resp.deliveryPending
+        || resp.code === 'SMTP_TIMEOUT'
+        || resp.status === 504
+        || /timed out|taking longer|request timed out/i.test(message);
+      if (canEnterDelayedOtp) {
+        showAuthEmailOtpEntry(
+          cleanEmail,
+          currentFormId,
+          isResend,
+          'OTP email is taking longer. If it arrives, enter the code here. Resend opens in 60 seconds.'
+        );
+        toast('OTP email is on the way. Check inbox or spam.', 'success');
+        return;
+      }
       if (err) err.textContent = message;
       toast(message, 'error');
       if (!isResend) await loadAuthCaptcha();
@@ -1180,32 +1235,10 @@ async function sendEmailOTPSafe(email, currentFormId, errorId, captchaAnswer = '
     }
 
     toast('OTP sent successfully.', 'success');
-    beginAuthOtpCountdown();
-
-    const currentForm = document.getElementById(currentFormId);
-    const otpStep = document.getElementById('auth-otp-step');
-    if (currentForm && !isResend) currentForm.style.display = 'none';
-    if (otpStep) otpStep.style.display = 'block';
-
-    const otpError = document.getElementById('otp-error');
-    if (otpError) otpError.textContent = '';
-    const otpInput = document.getElementById('auth-otp-input');
-    if (otpInput) otpInput.value = '';
-    const otpSuccess = document.getElementById('otp-success');
-    if (otpSuccess) otpSuccess.style.display = 'none';
-
-    const otpTitle = document.getElementById('otp-title');
-    if (otpTitle) otpTitle.textContent = 'Verify Your Email';
-    const otpSubtitle = document.getElementById('otp-subtitle');
-    if (otpSubtitle) otpSubtitle.textContent = "We've sent a 6-digit verification code to your email";
-    const emailDisplay = document.getElementById('otp-target-email');
-    if (emailDisplay) emailDisplay.textContent = cleanEmail;
-
-    initOtpBoxes();
-    const verifyBtn = document.getElementById('verify-otp-btn');
-    if (verifyBtn) verifyBtn.onclick = () => verifyEmailOTP();
+    showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend, '');
 
     if (resp.debugOTP || resp.devOtp) {
+      const otpError = document.getElementById('otp-error');
       const devMsg = `DEV MODE: Your OTP is ${resp.debugOTP || resp.devOtp}. This will only show in development.`;
       if (otpError) otpError.textContent = devMsg;
       console.log(devMsg);
@@ -2074,8 +2107,7 @@ function initHeader() {
   });
   document.querySelectorAll('.nav-link').forEach(l => {
     l.addEventListener('click', (event) => {
-      if (window.innerWidth <= 768 && l.closest('#nav-collections-dd')) {
-        event.preventDefault();
+      if (window.innerWidth <= 768 && l.classList.contains('nav-dropdown-trigger')) {
         return;
       }
       closeMobileMenu();
@@ -2999,6 +3031,14 @@ function renderContact() {
           <div class="captcha-box" id="contact-captcha-q">Loading...</div>
           <input id="contact-captcha" placeholder="Enter code above" autocomplete="off"/>
         </div>
+        <div id="contact-thankyou" class="contact-thankyou" style="display:none;">
+          <div class="contact-thankyou-icon"><i class="fas fa-face-smile"></i></div>
+          <div>
+            <strong>Thank you!</strong>
+            <span>Your message is saved. Lencho team will reply soon.</span>
+            <small id="contact-reference"></small>
+          </div>
+        </div>
         <button id="contact-submit-btn" class="btn-primary full-width" onclick="submitContact()"><i class="fas fa-paper-plane"></i> Send Message</button>
       </div>
     </div>
@@ -3014,13 +3054,20 @@ async function submitContact() {
   const m = document.getElementById('contact-message').value.trim();
   const c = document.getElementById('contact-captcha')?.value.trim() || '';
   const btn = document.getElementById('contact-submit-btn');
+  const thanks = document.getElementById('contact-thankyou');
+  if (thanks) thanks.style.display = 'none';
   if(!n || !e || !m) { toast('Please fill name, email and message', 'error'); return; }
   if(!c) { toast('Please enter the security code', 'error'); return; }
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...'; }
   try {
-    const resp = await api('/api/contact', { method: 'POST', body: { name:n, email:e, phone:p, message:m, captchaAnswer:c }, timeoutMs: 15000 });
+    const resp = await api('/api/contact', { method: 'POST', body: { name:n, email:e, phone:p, message:m, captchaAnswer:c }, timeoutMs: 10000 });
     if(resp.success) {
-      toast(resp.autoReplySent ? 'Thank you! Confirmation email sent.' : 'Thank you! We received your message.', 'success');
+      toast('Thank you! We received your message.', 'success');
+      if (thanks) {
+        const ref = document.getElementById('contact-reference');
+        if (ref) ref.textContent = resp.inquiryId ? `Reference: ${String(resp.inquiryId).slice(-8).toUpperCase()}` : '';
+        thanks.style.display = 'flex';
+      }
       ['contact-name','contact-email','contact-phone','contact-message','contact-captcha'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       await loadContactCaptcha();
     } else {

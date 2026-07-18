@@ -13209,3 +13209,295 @@ body:not(.admin-mode) #app > *:last-child {
     transition: none !important;
   }
 }
+
+/* Final customer flow polish: OTP/contact clarity, card sizing and header spacing. */
+.otp-soft-notice {
+  color: #7a4d60 !important;
+  background: #fff5e8 !important;
+  border: 1px solid #f2d3b7 !important;
+  border-radius: 12px !important;
+  padding: .75rem .9rem !important;
+  line-height: 1.45 !important;
+}
+
+.contact-thankyou {
+  align-items: center;
+  gap: .85rem;
+  margin: 0 0 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(101, 169, 135, .25);
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f1fff8, #fff7ee);
+  color: #385b48;
+}
+
+.contact-thankyou-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 42px;
+  border-radius: 50%;
+  background: #dff8ea;
+  color: #2f8a5b;
+}
+
+.contact-thankyou span {
+  display: block;
+  color: #6c615f;
+  font-size: .95rem;
+}
+
+.contact-thankyou small {
+  display: block;
+  margin-top: .18rem;
+  color: #7a4d60;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+body:not(.admin-mode) .contact-page,
+body:not(.admin-mode) .contact-section,
+body:not(.admin-mode) .page-wrap {
+  padding-top: clamp(118px, 9vw, 150px) !important;
+}
+
+body:not(.admin-mode) .product-detail-page,
+body:not(.admin-mode) .product-detail-market,
+body:not(.admin-mode) .checkout-page,
+body:not(.admin-mode) .cart-page {
+  padding-top: clamp(124px, 9vw, 160px) !important;
+}
+
+body:not(.admin-mode) .announcement-bar,
+body:not(.admin-mode) .promo-bar,
+body:not(.admin-mode) .offer-strip,
+body:not(.admin-mode) .top-offer-bar {
+  display: none !important;
+}
+
+body:not(.admin-mode) .products-grid,
+body:not(.admin-mode) .woollen-products-grid,
+body:not(.admin-mode) .home-product-grid {
+  align-items: stretch !important;
+}
+
+body:not(.admin-mode) .product-card,
+body:not(.admin-mode) .woollen-product-card {
+  height: auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+body:not(.admin-mode) .product-card .product-img-wrap,
+body:not(.admin-mode) .product-image,
+body:not(.admin-mode) .woollen-product-card .product-image {
+  height: clamp(230px, 24vw, 320px) !important;
+  min-height: 230px !important;
+  max-height: 320px !important;
+  background: #fff !important;
+  overflow: hidden !important;
+}
+
+body:not(.admin-mode) .product-card .product-img-wrap img,
+body:not(.admin-mode) .product-image img,
+body:not(.admin-mode) .woollen-product-card img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+}
+
+body:not(.admin-mode) .product-card .product-body,
+body:not(.admin-mode) .woollen-product-card .product-body {
+  min-height: 168px !important;
+  flex: 1 1 auto !important;
+}
+
+body:not(.admin-mode) .woollen-collection-card,
+body:not(.admin-mode) .collection-card,
+body:not(.admin-mode) .category-card {
+  min-height: 0 !important;
+  height: auto !important;
+}
+
+body:not(.admin-mode) .woollen-collection-card > div:first-child,
+body:not(.admin-mode) .collection-card .category-img,
+body:not(.admin-mode) .category-card .category-img {
+  height: clamp(210px, 25vw, 300px) !important;
+  aspect-ratio: auto !important;
+  overflow: hidden !important;
+}
+
+body:not(.admin-mode) .woollen-collection-card img,
+body:not(.admin-mode) .collection-card img,
+body:not(.admin-mode) .category-card img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+}
+
+body:not(.admin-mode) #site-footer,
+body:not(.admin-mode) .footer {
+  margin-bottom: 0 !important;
+}
+
+@media (min-width: 769px) {
+  body:not(.admin-mode) #site-header .header-inner {
+    width: min(100%, 1720px) !important;
+    max-width: none !important;
+    padding: 0 clamp(28px, 4vw, 92px) !important;
+    gap: clamp(1rem, 2vw, 2.5rem) !important;
+  }
+
+  body:not(.admin-mode) #site-header .logo {
+    flex: 0 0 auto !important;
+  }
+
+  body:not(.admin-mode) #site-header .main-nav {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    justify-content: center !important;
+    gap: clamp(.7rem, 1.55vw, 2rem) !important;
+  }
+
+  body:not(.admin-mode) #site-header .header-actions {
+    flex: 0 0 auto !important;
+    margin-left: auto !important;
+    gap: .7rem !important;
+  }
+
+  body:not(.admin-mode) #site-header .nav-link {
+    white-space: nowrap !important;
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 769px) {
+  body:not(.admin-mode) #site-header .header-inner {
+    padding: 0 28px !important;
+    gap: .8rem !important;
+  }
+
+  body:not(.admin-mode) #site-header .main-nav {
+    gap: .85rem !important;
+  }
+
+  body:not(.admin-mode) #site-header .nav-link {
+    font-size: .92rem !important;
+  }
+
+  body:not(.admin-mode) #site-header .icon-btn {
+    width: 44px !important;
+    height: 44px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  body:not(.admin-mode) .contact-page,
+  body:not(.admin-mode) .contact-section,
+  body:not(.admin-mode) .page-wrap,
+  body:not(.admin-mode) .product-detail-page,
+  body:not(.admin-mode) .product-detail-market {
+    padding-top: 94px !important;
+  }
+
+  body:not(.admin-mode) #site-header .main-nav .nav-link::before,
+  body:not(.admin-mode) #site-header .main-nav a::before {
+    content: none !important;
+    display: none !important;
+  }
+
+  body:not(.admin-mode) #site-header #nav-collections-dd {
+    display: none !important;
+    position: static !important;
+    width: 100% !important;
+    max-height: 46vh !important;
+    overflow-y: auto !important;
+    margin: .7rem 0 0 !important;
+    padding: .75rem !important;
+  }
+
+  body:not(.admin-mode) #site-header #nav-collections-dd.mob-open {
+    display: grid !important;
+  }
+
+  body:not(.admin-mode) #site-header #nav-collections-dd a {
+    min-height: 42px !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+
+  body:not(.admin-mode) .product-card .product-img-wrap,
+  body:not(.admin-mode) .product-image,
+  body:not(.admin-mode) .woollen-product-card .product-image {
+    height: clamp(250px, 76vw, 340px) !important;
+    min-height: 250px !important;
+  }
+
+  body:not(.admin-mode) .woollen-collection-card > div:first-child,
+  body:not(.admin-mode) .collection-card .category-img,
+  body:not(.admin-mode) .category-card .category-img {
+    height: clamp(220px, 68vw, 300px) !important;
+  }
+
+  .contact-thankyou {
+    align-items: flex-start;
+  }
+}
+
+/* Mobile drawer final override: keep Collections visible, toggle only its submenu. */
+@media (max-width: 768px) {
+  body:not(.admin-mode) #site-header #nav-collections-dd,
+  body:not(.admin-mode) #main-nav #nav-collections-dd {
+    display: block !important;
+    position: relative !important;
+    width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body:not(.admin-mode) #site-header #nav-collections-dd > .nav-dropdown-trigger,
+  body:not(.admin-mode) #main-nav #nav-collections-dd > .nav-dropdown-trigger {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    min-height: 48px !important;
+  }
+
+  body:not(.admin-mode) #site-header #nav-collections-dd > .nav-dropdown-menu,
+  body:not(.admin-mode) #main-nav #nav-collections-dd > .nav-dropdown-menu {
+    display: none !important;
+    position: static !important;
+    width: 100% !important;
+    max-height: 42vh !important;
+    overflow-y: auto !important;
+    margin: .55rem 0 0 !important;
+    padding: .7rem !important;
+    border-radius: 14px !important;
+    background: rgba(255, 255, 255, .08) !important;
+    box-shadow: none !important;
+  }
+
+  body:not(.admin-mode) #site-header #nav-collections-dd.mob-open > .nav-dropdown-menu,
+  body:not(.admin-mode) #main-nav #nav-collections-dd.mob-open > .nav-dropdown-menu {
+    display: grid !important;
+  }
+
+  body:not(.admin-mode) #site-header #nav-collections-dd > .nav-dropdown-menu a,
+  body:not(.admin-mode) #main-nav #nav-collections-dd > .nav-dropdown-menu a {
+    min-height: 42px !important;
+    display: flex !important;
+    align-items: center !important;
+    color: rgba(255, 255, 255, .92) !important;
+  }
+
+  body:not(.admin-mode) #site-header #nav-collections-dd.mob-open #coll-arrow,
+  body:not(.admin-mode) #main-nav #nav-collections-dd.mob-open #coll-arrow {
+    transform: rotate(180deg) !important;
+  }
+}

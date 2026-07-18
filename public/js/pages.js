@@ -1439,6 +1439,14 @@ function renderContact() {
           <div class="captcha-box" id="contact-captcha-q">Loading...</div>
           <input id="contact-captcha" placeholder="Enter code above" autocomplete="off"/>
         </div>
+        <div id="contact-thankyou" class="contact-thankyou" style="display:none;">
+          <div class="contact-thankyou-icon"><i class="fas fa-face-smile"></i></div>
+          <div>
+            <strong>Thank you!</strong>
+            <span>We received your message. Lencho will reply soon.</span>
+            <small id="contact-reference"></small>
+          </div>
+        </div>
         <button id="contact-submit-btn" class="btn-primary full-width" onclick="submitContact()"><i class="fas fa-paper-plane" style="margin-right:.5rem;"></i> Send Message</button>
       </div>
 
@@ -1456,17 +1464,24 @@ async function submitContact() {
   const m = document.getElementById('contact-message').value.trim();
   const c = document.getElementById('contact-captcha')?.value.trim() || '';
   const btn = document.getElementById('contact-submit-btn');
+  const thanks = document.getElementById('contact-thankyou');
   if(!n || !e || !m) { toast('Please fill in name, email and message.', 'error'); return; }
   if(!c) { toast('Please enter the security code.', 'error'); return; }
   
+  if (thanks) thanks.style.display = 'none';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:.5rem;"></i> Sending...'; }
   try {
-    const resp = await api('/api/contact', { method: 'POST', body: { name: n, email: e, phone: p, message: m, captchaAnswer: c }, timeoutMs: 15000 });
+    const resp = await api('/api/contact', { method: 'POST', body: { name: n, email: e, phone: p, message: m, captchaAnswer: c }, timeoutMs: 10000 });
     if (resp.error) {
       toast(resp.error, 'error');
       await loadContactCaptcha();
     } else {
-      toast(resp.autoReplySent ? 'Your message has been sent. Confirmation email sent.' : 'Your message has been sent successfully.', 'success');
+      toast('Thank you! We received your message.', 'success');
+      if (thanks) {
+        const ref = document.getElementById('contact-reference');
+        if (ref) ref.textContent = resp.inquiryId ? `Reference: ${String(resp.inquiryId).slice(-8).toUpperCase()}` : '';
+        thanks.style.display = 'flex';
+      }
       document.getElementById('contact-name').value = '';
       document.getElementById('contact-email').value = '';
       document.getElementById('contact-message').value = '';

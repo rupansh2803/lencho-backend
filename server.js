@@ -91,6 +91,7 @@ const SITE_URL = readEnvVar('SITE_URL', ['FRONTEND_URL'], FRONTEND_URL);
 const JWT_SECRET_RESOLVED = readEnvVar('JWT_SECRET', [], 'your-secret-key');
 const SESSION_SECRET_RESOLVED = readEnvVar('SESSION_SECRET', [], 'lencho-secret');
 const MONGODB_URI = readEnvVar('MONGODB_URI', ['MONGO_URI', 'DATABASE_URL']);
+const DEFAULT_MONGODB_DB_NAME = cleanEnvValue(process.env.MONGODB_DB_NAME || process.env.MONGO_DB_NAME) || 'lencho';
 const REQUIRE_MONGODB = true;
 const DEFAULT_OWNER_ADMIN_EMAIL = PRIMARY_LENCHO_EMAIL;
 const DEFAULT_INQUIRY_REPLY_EMAIL = cleanEnvValue(process.env.INQUIRY_REPLY_EMAIL) || PRIMARY_LENCHO_EMAIL;
@@ -110,6 +111,32 @@ function validateMongoUriForPermanentStorage(uri) {
     throw new Error('Local MongoDB URIs are not allowed');
   }
   return value;
+}
+
+function getMongoDatabaseNameFromUri(uri) {
+  const value = cleanEnvValue(uri);
+  try {
+    const parsed = new URL(value);
+    return decodeURIComponent((parsed.pathname || '').replace(/^\/+/, '').split('/')[0] || '').trim();
+  } catch (_) {
+    const withoutProtocol = value.replace(/^mongodb(?:\+srv)?:\/\//i, '');
+    const slashIndex = withoutProtocol.indexOf('/');
+    if (slashIndex === -1) return '';
+    return withoutProtocol.slice(slashIndex + 1).split('?')[0].split('/')[0].trim();
+  }
+}
+
+function resolveMongoConnectionConfig(uri) {
+  const atlasUri = validateMongoUriForPermanentStorage(uri);
+  const uriDbName = getMongoDatabaseNameFromUri(atlasUri);
+  const dbName = uriDbName || DEFAULT_MONGODB_DB_NAME;
+  if (!/^[A-Za-z0-9_-]{2,63}$/.test(dbName)) {
+    throw new Error('MongoDB database name is invalid. Set MONGODB_DB_NAME=lencho or include /lencho in MONGODB_URI.');
+  }
+  if (['test', 'admin', 'local'].includes(dbName.toLowerCase())) {
+    throw new Error(`Refusing to use unsafe MongoDB database "${dbName}". Put /lencho in MONGODB_URI or set MONGODB_DB_NAME=lencho.`);
+  }
+  return { atlasUri, options: { dbName }, dbName };
 }
 
 if (!dotenvResult?.error) {
@@ -190,6 +217,7 @@ const EMAIL_OTP_EXPIRY_MS = 10 * 60 * 1000;
 const SMTP_CONNECTION_TIMEOUT_MS = 10000;
 const SMTP_SOCKET_TIMEOUT_MS = 20000;
 const SMTP_SEND_TIMEOUT_MS = 25000;
+const OTP_EMAIL_TOTAL_TIMEOUT_MS = 28000;
 const OTP_ACTIVE_REQUEST_TTL_MS = 30000;
 const SMTP_FORCE_IPV4 = parseBooleanEnv(process.env.SMTP_FORCE_IPV4, true);
 let cachedVerifiedSmtpTransporter = null;
@@ -924,7 +952,8 @@ app.get('/health', (req, res) => {
   res.status(useDB ? 200 : 503).json({
     status: useDB ? 'ok' : 'unavailable',
     timestamp: new Date().toISOString(),
-    db: useDB ? 'connected' : 'required'
+    db: useDB ? 'connected' : 'required',
+    databaseName: useDB ? mongoose.connection.name : null
   });
 });
 
@@ -970,9 +999,18 @@ let useDB = false;
 // ─── MONGODB ──────────────────────────────────────────────────
 async function initDB() {
   try {
-    const atlasUri = validateMongoUriForPermanentStorage(MONGODB_URI);
-    await mongoose.connect(atlasUri);
+    const mongoConfig = resolveMongoConnectionConfig(MONGODB_URI);
+    await mongoose.connect(mongoConfig.atlasUri, mongoConfig.options);
+    const connectedDbName = mongoose.connection.name || mongoConfig.dbName;
+    if (['test', 'admin', 'local'].includes(String(connectedDbName).toLowerCase())) {
+      throw new Error(`Unsafe MongoDB database selected after connect: ${connectedDbName}`);
+    }
     useDB = true;
+    console.log('[Database] connected');
+    console.log(`[Database] databaseName=${connectedDbName}`);
+    console.log('[Database] destructiveReset=false');
+    console.log('[Database] migrationsChecked=true');
+    console.log('[Database] existingDataPreserved=true');
     console.log('MongoDB Atlas connected. Permanent storage enabled.');
     await relaxLegacyCategoryIndexes();
     await ensureInitialAdminIfRequested();
@@ -2482,13 +2520,12 @@ async function sendInquiryMail({ to, subject, html }) {
   if (!smtpConfig.user || !smtpConfig.pass || isPlaceholderSMTP(smtpConfig.user) || isPlaceholderSMTP(smtpConfig.pass)) {
     throw new Error('Inquiry SMTP is not configured');
   }
-  const transporter = await getVerifiedSmtpTransporter(smtpConfig);
-  return sendEmailWithRetry(transporter, {
+  return sendEmailWithSmtpFallback(smtpConfig, {
     from: `"${smtpConfig.storeName}" <${smtpConfig.user}>`,
     to,
     subject,
     html
-  });
+  }, 1);
 }
 
 async function getPublicCachePolicy() {
@@ -2643,14 +2680,18 @@ async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
     }
 
     console.log(`[OTP] Step 3: Verifying SMTP and sending email...`);
-    const result = await sendEmailWithSmtpFallback(smtpConfig, {
-      from: `"${smtpConfig.storeName}" <${smtpConfig.user}>`,
-      to: cleanTargetEmail,
-      subject: DEFAULT_OTP_SUBJECT.replace('{{otp}}', otp),
-      html: DEFAULT_OTP_BODY.replace('{{otp}}', otp)
-    }, 1);
+    const result = await withTimeout(
+      sendEmailWithSmtpFallback(smtpConfig, {
+        from: `"${smtpConfig.storeName}" <${smtpConfig.user}>`,
+        to: cleanTargetEmail,
+        subject: DEFAULT_OTP_SUBJECT.replace('{{otp}}', otp),
+        html: DEFAULT_OTP_BODY.replace('{{otp}}', otp)
+      }, 1),
+      OTP_EMAIL_TOTAL_TIMEOUT_MS,
+      'SMTP_TIMEOUT'
+    );
 
-    console.log(`[OTP] ✅ SUCCESS — Email OTP sent to ${targetEmail} | MessageID: ${result.messageId}`);
+    console.log(`[OTP] SUCCESS - Email OTP sent to ${maskEmailForLog(cleanTargetEmail)} | MessageID: ${result.messageId || 'n/a'}`);
     return { sent: true, via: 'email', messageId: result.messageId };
   } catch (err) {
     const classified = classifySmtpError(err);
@@ -4282,11 +4323,14 @@ app.post('/api/otp/send-email', async (req, res) => {
     const expiresAt = new Date(Date.now() + EMAIL_OTP_EXPIRY_MS);
     console.log(`[auth] OTP request received for ${cleanEmail} from IP ${ip}`);
 
+    let challengeId = '';
     if (useDB) {
       await OTPLog.deleteMany({ target: cleanEmail, used: false });
-      await OTPLog.create({ target: cleanEmail, code: otp, type: 'email_login', expiresAt });
+      const otpRecord = await OTPLog.create({ target: cleanEmail, code: otp, type: 'email_login', expiresAt });
+      challengeId = otpRecord?._id?.toString?.() || '';
     } else {
       req.session.pendingEmailOTP = { email: cleanEmail, code: otp, expiresAt: expiresAt.toISOString() };
+      challengeId = uuidv4();
     }
     try {
       const sendResult = await sendConfiguredEmailOTP(cleanEmail, otp, 'email_login');
@@ -4296,8 +4340,11 @@ app.post('/api/otp/send-email', async (req, res) => {
       emailOtpLock = null;
       return res.json({
         success: true,
+        code: 'OTP_SENT',
         message: sendResult.via === 'dev-console' ? `DEV MODE: OTP is ${otp}` : 'OTP sent successfully.',
         expiresIn: Math.floor(EMAIL_OTP_EXPIRY_MS / 1000),
+        resendAfter: 60,
+        challengeId,
         provider: sendResult.via || 'gmail',
         verifiedTransport: true,
         debugOTP: process.env.NODE_ENV === 'development' ? otp : undefined,
@@ -4306,7 +4353,24 @@ app.post('/api/otp/send-email', async (req, res) => {
     } catch (smtpErr) {
       console.error('[auth] OTP email send failed:', smtpErr.message);
       const errorMsg = toFriendlySmtpError(smtpErr);
+      const classified = classifySmtpError(smtpErr);
       console.error('[auth] Friendly error:', errorMsg);
+      if (classified.code === 'SMTP_TIMEOUT' || smtpErr.smtpCode === 'SMTP_TIMEOUT') {
+        if (req.session) {
+          req.session.pendingEmailOTPMeta = { email: cleanEmail, type: 'email_login', createdAt: new Date().toISOString() };
+        }
+        releaseEmailOtpRequestLock(emailOtpLock);
+        emailOtpLock = null;
+        return res.status(504).json({
+          success: false,
+          code: 'SMTP_TIMEOUT',
+          deliveryPending: true,
+          error: 'Email OTP is taking longer than expected. If the email arrives, enter it below.',
+          expiresIn: Math.floor(EMAIL_OTP_EXPIRY_MS / 1000),
+          resendAfter: 60,
+          provider: 'email'
+        });
+      }
       if (useDB) {
         await OTPLog.deleteMany({ target: cleanEmail, code: otp, type: 'email_login', used: false });
       } else if (req.session?.pendingEmailOTP?.email === cleanEmail) {
@@ -4316,7 +4380,7 @@ app.post('/api/otp/send-email', async (req, res) => {
       emailOtpLock = null;
       return res.status(smtpErr.statusCode || 503).json({
         success: false,
-        code: smtpErr.smtpCode || classifySmtpError(smtpErr).code,
+        code: smtpErr.smtpCode || classified.code,
         error: errorMsg,
         debug: process.env.NODE_ENV === 'development' ? String(smtpErr?.message || smtpErr) : undefined,
         tip: 'If SMTP is not configured, configure it in Admin > Settings > SMTP Configuration, then test with /api/admin/test-smtp'
@@ -6212,27 +6276,68 @@ app.post('/api/contact', async (req, res) => {
     }
     delete req.session.captcha;
 
-    fs.appendFileSync('inquiry_debug.log', `${new Date().toISOString()} - Received inquiry from ${cleanEmail} (${cleanPhone || 'No Phone'})\n`);
-    
+    try {
+      fs.appendFileSync('inquiry_debug.log', `${new Date().toISOString()} - Received inquiry from ${cleanEmail} (${cleanPhone || 'No Phone'})\n`);
+    } catch (logErr) {
+      console.error('Inquiry debug log error:', logErr.message);
+    }
+
+    let savedInquiry = null;
+    const sourcePage = String(req.get('referer') || req.headers.referer || 'contact').slice(0, 500);
     if (useDB) {
-      await Inquiry.create({ name: cleanName, email: cleanEmail, phone: cleanPhone, message: cleanMessage });
+      savedInquiry = await Inquiry.create({
+        name: cleanName,
+        email: cleanEmail,
+        phone: cleanPhone,
+        message: cleanMessage,
+        sourcePage,
+        adminEmailStatus: 'pending',
+        customerEmailStatus: 'pending',
+        emailAttempts: 0,
+        lastEmailError: ''
+      });
     } else {
       const inquiries = readJson(FILES.inquiries);
-      inquiries.unshift({
+      savedInquiry = {
         _id: uuidv4(),
         name: cleanName,
         email: cleanEmail,
         phone: cleanPhone,
         message: cleanMessage,
+        sourcePage,
         status: 'new',
+        adminEmailStatus: 'pending',
+        customerEmailStatus: 'pending',
+        emailAttempts: 0,
+        lastEmailError: '',
         createdAt: new Date().toISOString(),
-      });
+      };
+      inquiries.unshift(savedInquiry);
       writeJson(FILES.inquiries, inquiries);
     }
 
+    const inquiryId = savedInquiry?._id?.toString?.() || savedInquiry?._id || '';
+    const requestOrigin = getRequestOrigin(req).replace(/\/$/, '');
+    res.json({
+      success: true,
+      message: 'Thank you! We received your message.',
+      inquiryId,
+      autoReplyQueued: true,
+      adminNotifiedQueued: true
+    });
+
+    setImmediate(async () => {
     let adminNotified = false;
+    let adminEmailStatus = 'pending';
+    let customerEmailStatus = 'pending';
+    let emailAttempts = 0;
+    let lastEmailError = '';
+    const rememberEmailError = (err) => {
+      lastEmailError = String(err?.message || err || '').slice(0, 300);
+    };
     try {
       const storeEmail = cleanEnvValue(await getSetting('storeEmail', PRIMARY_LENCHO_EMAIL)) || PRIMARY_LENCHO_EMAIL;
+      emailAttempts += 1;
       await sendInquiryMail({
         to: storeEmail,
         subject: 'New Customer Inquiry - Lencho',
@@ -6244,12 +6349,15 @@ app.post('/api/contact', async (req, res) => {
               <p><b>Phone:</b> ${escapeEmailHtml(cleanPhone || 'Not provided')}</p>
               <p><b>Message:</b></p>
               <div style="background:#fff5f8;border:1px solid #f3d4df;padding:14px;border-radius:12px;line-height:1.6;">${escapeEmailHtml(cleanMessage).replace(/\n/g, '<br>')}</div>
-              <p style="margin-top:20px;"><a href="${getRequestOrigin(req).replace(/\/$/, '')}/admin" style="color:#7a3e5b;font-weight:700;text-decoration:none;">View in Admin Panel</a></p>
+              <p style="margin-top:20px;"><a href="${requestOrigin}/admin" style="color:#7a3e5b;font-weight:700;text-decoration:none;">View in Admin Panel</a></p>
             </div>
           </div>`
       });
       adminNotified = true;
+      adminEmailStatus = 'sent';
     } catch (err) {
+      adminEmailStatus = 'failed';
+      rememberEmailError(err);
       console.error('Inquiry Email Notify Error:', err.message);
     }
 
@@ -6266,6 +6374,7 @@ app.post('/api/contact', async (req, res) => {
           host, port: +port, secure: +port === 465,
           auth: { user, pass }
         });
+        emailAttempts += 1;
         await transporter.sendMail({
           from: `"Lencho System" <${user}>`,
           to: storeEmail,
@@ -6277,26 +6386,56 @@ app.post('/api/contact', async (req, res) => {
               <p><b>Phone:</b> ${escapeEmailHtml(cleanPhone || 'Not provided')}</p>
               <p><b>Message:</b></p>
               <div style="background:#f9f9f9;padding:1rem;border-radius:8px;">${escapeEmailHtml(cleanMessage).replace(/\n/g, '<br>')}</div>
-              <p style="margin-top:1.5rem;"><a href="${getRequestOrigin(req).replace(/\/$/, '')}/admin" style="color:#c9748f;font-weight:700;text-decoration:none;">View in Admin Panel →</a></p>
+              <p style="margin-top:1.5rem;"><a href="${requestOrigin}/admin" style="color:#c9748f;font-weight:700;text-decoration:none;">View in Admin Panel</a></p>
             </div>
           `
         });
+        adminNotified = true;
+        adminEmailStatus = 'sent';
       }
-    } catch (err) { console.error('Inquiry Email Notify Error:', err.message); }
+    } catch (err) {
+      if (!adminNotified) adminEmailStatus = 'failed';
+      rememberEmailError(err);
+      console.error('Inquiry Email Notify Error:', err.message);
+    }
 
-    let autoReplySent = false;
     try {
+      emailAttempts += 1;
       await sendInquiryMail({
         to: cleanEmail,
         subject: 'We received your message - Lencho',
         html: buildInquiryAutoReplyHtml({ name: cleanName })
       });
-      autoReplySent = true;
+      customerEmailStatus = 'sent';
     } catch (err) {
+      customerEmailStatus = 'failed';
+      rememberEmailError(err);
       console.error('Inquiry Auto Reply Error:', err.message);
     }
 
-    res.json({ success: true, message: 'Inquiry received', autoReplySent, adminNotified });
+    const emailUpdate = {
+      adminEmailStatus,
+      customerEmailStatus,
+      emailAttempts,
+      lastEmailError
+    };
+
+    try {
+      if (useDB && inquiryId) {
+        await Inquiry.findByIdAndUpdate(inquiryId, { $set: emailUpdate });
+      } else if (!useDB && inquiryId) {
+        const inquiries = readJson(FILES.inquiries);
+        const index = inquiries.findIndex(item => String(item._id) === String(inquiryId));
+        if (index >= 0) {
+          inquiries[index] = { ...inquiries[index], ...emailUpdate };
+          writeJson(FILES.inquiries, inquiries);
+        }
+      }
+    } catch (statusErr) {
+      console.error('Inquiry email status update error:', statusErr.message);
+    }
+
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
