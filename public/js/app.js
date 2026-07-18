@@ -6,6 +6,7 @@ let cachedPublicSettings = null;
 let publicSettingsPromise = null;
 let loginType = 'email'; // Track current login type (email or phone)
 let authOtpRequestInFlight = false;
+let authOtpAbortController = null;
 let authOtpResendTimer = null;
 let authOtpResendEndsAt = 0;
 let searchCache = new Map();
@@ -657,6 +658,12 @@ function openBulkOrderWhatsApp(source = 'home') {
 async function api(url, opts = {}) {
   const timeoutMs = Number(opts.timeoutMs || 6000);
   const controller = new AbortController();
+  const externalSignal = opts.signal || null;
+  const abortFromExternalSignal = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener('abort', abortFromExternalSignal, { once: true });
+  }
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const method = String(opts.method || 'GET').toUpperCase();
@@ -697,7 +704,12 @@ async function api(url, opts = {}) {
         clearAuth();
       }
       
-      return { error: (errData && errData.error) || `Server Error: ${res.status}` };
+      return {
+        error: (errData && errData.error) || `Server Error: ${res.status}`,
+        code: errData && errData.code,
+        retryAfter: errData && errData.retryAfter,
+        status: res.status
+      };
     }
     
     const data = await res.json();
@@ -713,6 +725,7 @@ async function api(url, opts = {}) {
     return { error: 'Connection lost. Please restart your local server (npm start).' };
   } finally {
     clearTimeout(timeoutId);
+    if (externalSignal) externalSignal.removeEventListener('abort', abortFromExternalSignal);
   }
 }
 // ── TOAST ─────────────────────────────────────────────────
@@ -964,6 +977,10 @@ function switchToSignup() {
 }
 
 function resetAuthModalState() {
+  if (authOtpAbortController) {
+    authOtpAbortController.abort();
+    authOtpAbortController = null;
+  }
   authOtpRequestInFlight = false;
   googleAuthInFlight = false;
   window.pendingAuth = null;
@@ -1082,7 +1099,135 @@ async function handlePhoneLogin() {
   if (err) err.textContent = 'Phone login is disabled. Please use Email login.';
 }
 
+function getEmailOtpErrorMessage(resp = {}) {
+  if (resp.code === 'SMTP_NOT_CONFIGURED') return 'Email OTP service is not configured. Please contact Lencho support.';
+  if (resp.code === 'SMTP_AUTH_FAILED') return 'Email OTP service login failed. Please contact Lencho support.';
+  if (resp.code === 'SMTP_TIMEOUT') return 'Email OTP service timed out. Please try again in a minute.';
+  if (resp.code === 'OTP_RATE_LIMITED' && resp.retryAfter) return `Too many OTP requests. Try again in ${resp.retryAfter} seconds.`;
+  if (resp.code === 'OTP_REQUEST_IN_PROGRESS' && resp.retryAfter) return `OTP request is already in progress. Try again in ${resp.retryAfter} seconds.`;
+  return resp.error || 'Unable to send OTP right now. Please try again in a minute.';
+}
+
+function beginAuthOtpCountdown() {
+  authOtpResendEndsAt = Date.now() + 60000;
+  const resendBtn = document.getElementById('resend-otp-btn');
+  if (resendBtn) resendBtn.disabled = true;
+
+  if (authOtpResendTimer) clearInterval(authOtpResendTimer);
+  authOtpResendTimer = setInterval(() => {
+    const remaining = Math.max(0, Math.ceil((authOtpResendEndsAt - Date.now()) / 1000));
+    const resendNode = document.getElementById('resend-otp-btn');
+    const countdownNode = document.getElementById('otp-countdown');
+    const timerNode = document.getElementById('otp-timer-display');
+    if (!resendNode) return;
+
+    if (remaining <= 0) {
+      resendNode.disabled = false;
+      resendNode.innerHTML = '<i class="fas fa-redo-alt"></i> Resend OTP';
+      if (timerNode) timerNode.style.display = 'none';
+      clearInterval(authOtpResendTimer);
+      authOtpResendTimer = null;
+      return;
+    }
+    if (countdownNode) countdownNode.textContent = remaining;
+    if (timerNode) timerNode.style.display = '';
+  }, 1000);
+}
+
+async function sendEmailOTPSafe(email, currentFormId, errorId, captchaAnswer = '') {
+  const err = document.getElementById(errorId);
+  const isResend = currentFormId === 'auth-otp-step';
+  const btnId = isResend ? 'resend-otp-btn' : (currentFormId === 'auth-login-form' ? 'login-btn' : 'signup-btn');
+  const btn = document.getElementById(btnId);
+  const originalButtonText = btn ? btn.innerHTML || btn.textContent : '';
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if (err) err.textContent = '';
+
+  if (authOtpRequestInFlight) {
+    if (err) err.textContent = 'OTP request is already in progress. Please wait.';
+    return;
+  }
+  if (!cleanEmail) {
+    if (err) err.textContent = 'Please enter email address';
+    return;
+  }
+  if (!isResend && (!captchaAnswer || !captchaAnswer.trim())) {
+    if (err) err.textContent = 'Please enter the security code';
+    return;
+  }
+
+  authOtpRequestInFlight = true;
+  authOtpAbortController = new AbortController();
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Sending OTP...';
+  }
+
+  try {
+    const resp = await api('/api/otp/send-email', {
+      method: 'POST',
+      body: { email: cleanEmail, captchaAnswer: String(captchaAnswer || '').trim(), resend: isResend },
+      timeoutMs: 30000,
+      signal: authOtpAbortController.signal
+    });
+
+    if (resp.error) {
+      const message = getEmailOtpErrorMessage(resp);
+      if (err) err.textContent = message;
+      toast(message, 'error');
+      if (!isResend) await loadAuthCaptcha();
+      return;
+    }
+
+    toast('OTP sent successfully.', 'success');
+    beginAuthOtpCountdown();
+
+    const currentForm = document.getElementById(currentFormId);
+    const otpStep = document.getElementById('auth-otp-step');
+    if (currentForm && !isResend) currentForm.style.display = 'none';
+    if (otpStep) otpStep.style.display = 'block';
+
+    const otpError = document.getElementById('otp-error');
+    if (otpError) otpError.textContent = '';
+    const otpInput = document.getElementById('auth-otp-input');
+    if (otpInput) otpInput.value = '';
+    const otpSuccess = document.getElementById('otp-success');
+    if (otpSuccess) otpSuccess.style.display = 'none';
+
+    const otpTitle = document.getElementById('otp-title');
+    if (otpTitle) otpTitle.textContent = 'Verify Your Email';
+    const otpSubtitle = document.getElementById('otp-subtitle');
+    if (otpSubtitle) otpSubtitle.textContent = "We've sent a 6-digit verification code to your email";
+    const emailDisplay = document.getElementById('otp-target-email');
+    if (emailDisplay) emailDisplay.textContent = cleanEmail;
+
+    initOtpBoxes();
+    const verifyBtn = document.getElementById('verify-otp-btn');
+    if (verifyBtn) verifyBtn.onclick = () => verifyEmailOTP();
+
+    if (resp.debugOTP || resp.devOtp) {
+      const devMsg = `DEV MODE: Your OTP is ${resp.debugOTP || resp.devOtp}. This will only show in development.`;
+      if (otpError) otpError.textContent = devMsg;
+      console.log(devMsg);
+    }
+  } catch (error) {
+    const message = error?.name === 'AbortError' ? 'OTP request cancelled.' : 'Network error or timeout. Please try again.';
+    if (err) err.textContent = message;
+    if (error?.name !== 'AbortError') toast(message, 'error');
+    if (!isResend) await loadAuthCaptcha();
+  } finally {
+    authOtpRequestInFlight = false;
+    authOtpAbortController = null;
+    if (btn) {
+      btn.disabled = false;
+      if (originalButtonText) btn.innerHTML = originalButtonText;
+      else btn.textContent = isResend ? 'Resend OTP' : (currentFormId === 'auth-login-form' ? 'Sign In' : 'Send OTP');
+    }
+  }
+}
+
 async function sendEmailOTP(email, currentFormId, errorId, captchaAnswer = '') {
+  return sendEmailOTPSafe(email, currentFormId, errorId, captchaAnswer);
   const err = document.getElementById(errorId);
   const btnId = currentFormId === 'auth-login-form' ? 'login-btn' : 'signup-btn';
   const btn = document.getElementById(btnId);

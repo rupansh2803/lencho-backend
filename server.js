@@ -42,7 +42,25 @@ function cleanEnvValue(value) {
   if (value === undefined || value === null) return '';
   const str = String(value).trim();
   if (!str) return '';
-  return str.replace(/^['"]|['"]$/g, '').trim();
+  const cleaned = str.replace(/^['"]|['"]$/g, '').trim();
+  if (/^(undefined|null|none|false)$/i.test(cleaned)) return '';
+  return cleaned;
+}
+
+function cleanSmtpPasswordValue(value) {
+  const cleaned = cleanEnvValue(value);
+  return cleaned ? cleaned.replace(/\s+/g, '') : '';
+}
+
+function cleanSmtpUserValue(value) {
+  return cleanEnvValue(value).toLowerCase();
+}
+
+function maskEmailForLog(email = '') {
+  const value = String(email || '');
+  const [name = '', domain = ''] = value.split('@');
+  if (!name || !domain) return value ? '***' : '';
+  return `${name.slice(0, 2)}***@${domain}`;
 }
 
 function readEnvVar(primaryKey, aliasKeys = [], fallback = '') {
@@ -66,8 +84,8 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
 const PRIMARY_LENCHO_EMAIL = 'lencho.official001@gmail.com';
 const SECONDARY_OWNER_EMAIL = 'rupanshsaini17@gmail.com';
-const DEFAULT_SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || PRIMARY_LENCHO_EMAIL;
-const DEFAULT_SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
+const DEFAULT_SMTP_USER = cleanSmtpUserValue(process.env.SMTP_USER || process.env.EMAIL_USER || PRIMARY_LENCHO_EMAIL);
+const DEFAULT_SMTP_PASS = cleanSmtpPasswordValue(process.env.SMTP_PASS || process.env.EMAIL_PASS || '');
 const FRONTEND_URL = readEnvVar('FRONTEND_URL', ['APP_URL', 'PUBLIC_URL'], 'https://lencho.in').replace(/\/+$/, '');
 const SITE_URL = readEnvVar('SITE_URL', ['FRONTEND_URL'], FRONTEND_URL);
 const JWT_SECRET_RESOLVED = readEnvVar('JWT_SECRET', [], 'your-secret-key');
@@ -171,7 +189,10 @@ function sanitizeFromName(name) {
 const EMAIL_OTP_EXPIRY_MS = 10 * 60 * 1000;
 const SMTP_CONNECTION_TIMEOUT_MS = 25000;
 const SMTP_SOCKET_TIMEOUT_MS = 30000;
+const SMTP_SEND_TIMEOUT_MS = 30000;
+const OTP_ACTIVE_REQUEST_TTL_MS = 30000;
 let cachedVerifiedSmtpTransporter = null;
+const activeEmailOtpRequests = new Map();
 
 // ─── RATE LIMITING (in-memory) ────────────────────────────────
 const otpRateLimits = new Map(); // key → { count, firstAt }
@@ -192,6 +213,35 @@ function checkRateLimit(key, max) {
   if (entry.count >= max) return false;
   entry.count++;
   return true;
+}
+
+function getRateLimitRetryAfter(key) {
+  const entry = otpRateLimits.get(key);
+  if (!entry) return 0;
+  return Math.max(1, Math.ceil((OTP_RATE_WINDOW_MS - (Date.now() - entry.firstAt)) / 1000));
+}
+
+function acquireEmailOtpRequestLock(email, purpose = 'email_login') {
+  const key = `${purpose}:${normalizeEmailAddress(email)}`;
+  const now = Date.now();
+  const existing = activeEmailOtpRequests.get(key);
+  if (existing && existing.expiresAt > now) {
+    return {
+      acquired: false,
+      key,
+      retryAfter: Math.max(1, Math.ceil((existing.expiresAt - now) / 1000))
+    };
+  }
+
+  const token = crypto.randomBytes(8).toString('hex');
+  activeEmailOtpRequests.set(key, { token, expiresAt: now + OTP_ACTIVE_REQUEST_TTL_MS });
+  return { acquired: true, key, token };
+}
+
+function releaseEmailOtpRequestLock(lock) {
+  if (!lock?.acquired) return;
+  const existing = activeEmailOtpRequests.get(lock.key);
+  if (!existing || existing.token === lock.token) activeEmailOtpRequests.delete(lock.key);
 }
 
 function checkLoginLock(email) {
@@ -216,6 +266,7 @@ setInterval(() => {
   const now = Date.now();
   for (const [k, v] of otpRateLimits) { if ((now - v.firstAt) > OTP_RATE_WINDOW_MS) otpRateLimits.delete(k); }
   for (const [k, v] of LOGIN_FAIL_LIMITS) { if (v.lockedUntil && now >= v.lockedUntil) LOGIN_FAIL_LIMITS.delete(k); }
+  for (const [k, v] of activeEmailOtpRequests) { if (v.expiresAt <= now) activeEmailOtpRequests.delete(k); }
 }, 15 * 60 * 1000);
 
 // ─── DISPOSABLE EMAIL BLOCKLIST ───────────────────────────────
@@ -302,13 +353,13 @@ function getAuthContext(req) {
 
 function getSmtpConfigFromSettings(settings = null) {
   const resolved = settings || {};
-  const envUser = pickSmtpValue(process.env.SMTP_USER, process.env.EMAIL_USER);
-  const envPass = pickSmtpValue(process.env.SMTP_PASS, process.env.EMAIL_PASS);
+  const envUser = pickSmtpUserValue(process.env.SMTP_USER, process.env.EMAIL_USER);
+  const envPass = pickSmtpPassValue(process.env.SMTP_PASS, process.env.EMAIL_PASS);
   return {
     host: cleanEnvValue(process.env.SMTP_HOST) || cleanEnvValue(resolved.smtpHost) || 'smtp.gmail.com',
     port: Number(process.env.SMTP_PORT || resolved.smtpPort || 465),
-    user: envUser || pickSmtpValue(resolved.smtpUser, DEFAULT_SMTP_USER),
-    pass: envPass || pickSmtpValue(resolved.smtpPass, DEFAULT_SMTP_PASS),
+    user: envUser || pickSmtpUserValue(resolved.smtpUser, DEFAULT_SMTP_USER),
+    pass: envPass || pickSmtpPassValue(resolved.smtpPass, DEFAULT_SMTP_PASS),
     storeName: sanitizeFromName(resolved.storeName || DEFAULT_EMAIL_FROM_NAME) || DEFAULT_EMAIL_FROM_NAME,
   };
 }
@@ -319,13 +370,17 @@ function getSmtpSignature(config) {
 
 async function createVerifiedSmtpTransporter(config) {
   if (isPlaceholderSMTP(config.user) || isPlaceholderSMTP(config.pass)) {
-    throw new Error('SMTP credentials not configured');
+    const error = new Error('SMTP credentials not configured');
+    error.code = 'SMTP_NOT_CONFIGURED';
+    throw error;
   }
 
+  const port = Number(config.port) || 465;
   const transporter = nodemailer.createTransport({
     host: config.host,
-    port: Number(config.port) || 465,
-    secure: Number(config.port) === 465,
+    port,
+    secure: port === 465,
+    requireTLS: port === 587,
     auth: { user: config.user, pass: config.pass },
     connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
     greetingTimeout: SMTP_CONNECTION_TIMEOUT_MS,
@@ -422,10 +477,24 @@ async function verifyGoogleIdToken(idToken) {
 }
 
 async function warmupSmtpTransporter() {
+  const smtpConfig = getSmtpConfigFromSettings();
+  const startupInfo = {
+    host: smtpConfig.host,
+    port: smtpConfig.port,
+    user: maskEmailForLog(smtpConfig.user),
+    credentialsLoaded: Boolean(smtpConfig.user && smtpConfig.pass)
+  };
   try {
-    await getVerifiedSmtpTransporter();
+    await getVerifiedSmtpTransporter(smtpConfig);
+    console.log('[SMTP] Startup verify success:', startupInfo);
     console.log('✅ SMTP transporter verified on startup');
   } catch (error) {
+    const classified = classifySmtpError(error);
+    console.warn('[SMTP] Startup verify failed:', {
+      ...startupInfo,
+      code: classified.code,
+      message: classified.message
+    });
     console.warn('⚠️ SMTP transporter verification failed on startup:', error.message);
   }
 }
@@ -472,17 +541,30 @@ function isPlaceholderSMTP(value) {
   if (value === undefined || value === null) return true;
   const normalized = String(value).trim().toLowerCase();
   return !normalized ||
+    normalized === 'undefined' ||
+    normalized === 'null' ||
+    normalized === 'none' ||
     normalized === 'lencho' ||
     normalized === 'your-gmail@gmail.com' ||
     normalized === 'your-app-password' ||
+    normalized === 'your-16-char-app-password' ||
+    normalized === 'app-password-here' ||
     normalized === 'yourpassword' ||
     normalized.includes('your_') ||
     normalized.includes('your-');
 }
 
-function pickSmtpValue(...values) {
+function pickSmtpUserValue(...values) {
   for (const value of values) {
-    const cleaned = cleanEnvValue(value);
+    const cleaned = cleanSmtpUserValue(value);
+    if (cleaned && !isPlaceholderSMTP(cleaned)) return cleaned;
+  }
+  return '';
+}
+
+function pickSmtpPassValue(...values) {
+  for (const value of values) {
+    const cleaned = cleanSmtpPasswordValue(value);
     if (cleaned && !isPlaceholderSMTP(cleaned)) return cleaned;
   }
   return '';
@@ -492,8 +574,44 @@ function normalizeEmailAddress(email = '') {
   return String(email || '').trim().toLowerCase();
 }
 
+function classifySmtpError(err) {
+  const code = String(err?.code || '').toUpperCase();
+  const msg = String(err?.message || '').toLowerCase();
+  const response = String(err?.response || '').toLowerCase();
+  const combined = `${code} ${msg} ${response}`;
+
+  if (code === 'SMTP_NOT_CONFIGURED' || combined.includes('smtp credentials not configured') || combined.includes('smtp not configured')) {
+    return {
+      code: 'SMTP_NOT_CONFIGURED',
+      status: 503,
+      message: 'Email OTP is not configured yet. Please set SMTP_USER and SMTP_PASS in Render.'
+    };
+  }
+  if (code === 'SMTP_TIMEOUT' || /timeout|timed out|etimedout|socket|greeting/i.test(combined)) {
+    return {
+      code: 'SMTP_TIMEOUT',
+      status: 504,
+      message: 'Email OTP service timed out. Please try again in a minute.'
+    };
+  }
+  if (code === 'EAUTH' || combined.includes('535') || combined.includes('badcredentials') || combined.includes('invalid login') || combined.includes('username and password not accepted')) {
+    return {
+      code: 'SMTP_AUTH_FAILED',
+      status: 503,
+      message: 'Email OTP temporarily unavailable. SMTP login failed. Please update the Gmail App Password in Render.'
+    };
+  }
+  return {
+    code: 'SMTP_SEND_FAILED',
+    status: 503,
+    message: 'Unable to send OTP right now. Please try again in a minute.'
+  };
+}
+
 function toFriendlySmtpError(err) {
   const msg = String(err?.message || '').toLowerCase();
+  const classified = classifySmtpError(err);
+  if (classified?.message) return classified.message;
   if (msg.includes('535') || msg.includes('badcredentials') || msg.includes('invalid login') || msg.includes('username and password not accepted')) {
     return 'Email OTP temporarily unavailable. SMTP login failed. Please update SMTP credentials in Admin > SMTP Settings.';
   }
@@ -501,6 +619,18 @@ function toFriendlySmtpError(err) {
     return 'Email OTP is not configured yet. Please set SMTP User and App Password in Admin > SMTP Settings.';
   }
   return 'Unable to send OTP right now. Please try again in a minute.';
+}
+
+function withTimeout(promise, timeoutMs, code = 'SMTP_TIMEOUT') {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error('SMTP request timed out');
+      error.code = code;
+      reject(error);
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
 }
 
 const rzp = new Razorpay({
@@ -2433,8 +2563,9 @@ async function uploadSingleMedia(file, folder) {
 }
 
 async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
+  const cleanTargetEmail = normalizeEmailAddress(targetEmail);
   if (isProduction) {
-    console.log(`[OTP] Sending ${type} OTP to ${targetEmail}`);
+    console.log(`[OTP] Sending ${type} OTP to ${maskEmailForLog(cleanTargetEmail)}`);
   } else {
   console.log(`[OTP] ──── SENDING OTP ────`);
   console.log(`[OTP] Target: ${targetEmail} | Type: ${type} | OTP: ${otp}`);
@@ -2452,23 +2583,30 @@ async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
 
     if (!smtpConfig.user || !smtpConfig.pass) {
       console.error(`[OTP] FATAL: SMTP credentials missing! User=${smtpConfig.user || 'EMPTY'} Pass=${smtpConfig.pass ? 'SET' : 'EMPTY'}`);
-      throw new Error('SMTP credentials not configured');
+      const error = new Error('SMTP credentials not configured');
+      error.code = 'SMTP_NOT_CONFIGURED';
+      throw error;
     }
 
     console.log(`[OTP] Step 3: Creating verified SMTP transporter...`);
     const transporter = await getVerifiedSmtpTransporter(smtpConfig);
     console.log(`[OTP] Step 4: Transporter verified. Sending email...`);
 
-    const result = await sendEmailWithRetry(transporter, {
+    const result = await withTimeout(sendEmailWithRetry(transporter, {
       from: `"${smtpConfig.storeName}" <${smtpConfig.user}>`,
-      to: targetEmail,
+      to: cleanTargetEmail,
       subject: DEFAULT_OTP_SUBJECT.replace('{{otp}}', otp),
       html: DEFAULT_OTP_BODY.replace('{{otp}}', otp)
-    });
+    }, 1), SMTP_SEND_TIMEOUT_MS, 'SMTP_TIMEOUT');
 
     console.log(`[OTP] ✅ SUCCESS — Email OTP sent to ${targetEmail} | MessageID: ${result.messageId}`);
     return { sent: true, via: 'email', messageId: result.messageId };
   } catch (err) {
+    const classified = classifySmtpError(err);
+    err.smtpCode = classified.code;
+    err.statusCode = classified.status;
+    err.publicMessage = classified.message;
+    console.error(`[OTP] FAILED - ${classified.code}: ${classified.message}`);
     console.error(`[OTP] ❌ FAILED — ${err?.message || err}`);
     console.error(`[OTP] Error Code: ${err?.code || 'N/A'} | Response: ${err?.response || 'N/A'}`);
     throw err;
@@ -4038,22 +4176,33 @@ app.post('/api/otp/verify', async (req, res) => {
 });
 
 app.post('/api/otp/send-email', async (req, res) => {
+  let emailOtpLock = null;
   try {
-    const { email, captchaAnswer } = req.body;
+    const { email, captchaAnswer, resend } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     if (!email) return res.status(400).json({ error: 'Email required' });
+    const cleanEmail = normalizeEmailAddress(email);
+    const resendRequested = Boolean(resend);
+
+    if (!isValidEmailFormat(cleanEmail)) {
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
+
+    if (isDisposableEmail(cleanEmail)) {
+      return res.status(400).json({ error: 'Temporary/disposable email addresses are not allowed. Please use a real email.' });
+    }
 
     // ── CAPTCHA validation ──
-    if (!captchaAnswer) {
+    const canResendWithoutCaptcha = resendRequested && req.session?.pendingEmailOTPMeta?.email === cleanEmail;
+    if (!canResendWithoutCaptcha && !captchaAnswer) {
       return res.status(400).json({ error: 'Security code is required.' });
     }
-    if (String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
+    if (!canResendWithoutCaptcha && String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
       return res.status(400).json({ error: 'Invalid security code. Please try again.' });
     }
-    delete req.session.captcha; // one-time use
+    if (!canResendWithoutCaptcha) delete req.session.captcha; // one-time use
 
     // ── Email format validation ──
-    const cleanEmail = String(email).trim().toLowerCase();
     if (!isValidEmailFormat(cleanEmail)) {
       return res.status(400).json({ error: 'Please enter a valid email address.' });
     }
@@ -4065,10 +4214,30 @@ app.post('/api/otp/send-email', async (req, res) => {
 
     // ── Rate limiting ──
     if (!checkRateLimit(`email:${cleanEmail}`, OTP_MAX_PER_EMAIL)) {
-      return res.status(429).json({ error: 'Too many OTP requests for this email. Please wait 10 minutes.' });
+      return res.status(429).json({
+        success: false,
+        code: 'OTP_RATE_LIMITED',
+        error: 'Too many OTP requests for this email. Please wait before trying again.',
+        retryAfter: getRateLimitRetryAfter(`email:${cleanEmail}`)
+      });
     }
     if (!checkRateLimit(`ip:${ip}`, OTP_MAX_PER_IP)) {
-      return res.status(429).json({ error: 'Too many requests from your network. Please wait a few minutes.' });
+      return res.status(429).json({
+        success: false,
+        code: 'OTP_RATE_LIMITED',
+        error: 'Too many requests from your network. Please wait a few minutes.',
+        retryAfter: getRateLimitRetryAfter(`ip:${ip}`)
+      });
+    }
+
+    emailOtpLock = acquireEmailOtpRequestLock(cleanEmail, 'email_login');
+    if (!emailOtpLock.acquired) {
+      return res.status(409).json({
+        success: false,
+        code: 'OTP_REQUEST_IN_PROGRESS',
+        error: 'OTP request is already in progress. Please wait.',
+        retryAfter: emailOtpLock.retryAfter
+      });
     }
 
     if (req.session) delete req.session.verifiedEmailOTP;
@@ -4085,10 +4254,13 @@ app.post('/api/otp/send-email', async (req, res) => {
     }
     try {
       const sendResult = await sendConfiguredEmailOTP(cleanEmail, otp, 'email_login');
-      console.log(`[auth] OTP email sent to ${cleanEmail} | messageId=${sendResult.messageId || 'n/a'}${isProduction ? '' : ` | OTP=${otp}`}`);
+      console.log(`[auth] OTP email sent to ${maskEmailForLog(cleanEmail)} | messageId=${sendResult.messageId || 'n/a'}${isProduction ? '' : ` | OTP=${otp}`}`);
+      if (req.session) req.session.pendingEmailOTPMeta = { email: cleanEmail, type: 'email_login', createdAt: new Date().toISOString() };
+      releaseEmailOtpRequestLock(emailOtpLock);
+      emailOtpLock = null;
       return res.json({
         success: true,
-        message: sendResult.via === 'dev-console' ? `DEV MODE: OTP is ${otp}` : 'OTP sent! Check your inbox.',
+        message: sendResult.via === 'dev-console' ? `DEV MODE: OTP is ${otp}` : 'OTP sent successfully.',
         expiresIn: Math.floor(EMAIL_OTP_EXPIRY_MS / 1000),
         provider: sendResult.via || 'gmail',
         verifiedTransport: true,
@@ -4099,13 +4271,30 @@ app.post('/api/otp/send-email', async (req, res) => {
       console.error('[auth] OTP email send failed:', smtpErr.message);
       const errorMsg = toFriendlySmtpError(smtpErr);
       console.error('[auth] Friendly error:', errorMsg);
-      return res.status(500).json({
+      if (useDB) {
+        await OTPLog.deleteMany({ target: cleanEmail, code: otp, type: 'email_login', used: false });
+      } else if (req.session?.pendingEmailOTP?.email === cleanEmail) {
+        delete req.session.pendingEmailOTP;
+      }
+      releaseEmailOtpRequestLock(emailOtpLock);
+      emailOtpLock = null;
+      return res.status(smtpErr.statusCode || 503).json({
+        success: false,
+        code: smtpErr.smtpCode || classifySmtpError(smtpErr).code,
         error: errorMsg,
         debug: process.env.NODE_ENV === 'development' ? String(smtpErr?.message || smtpErr) : undefined,
         tip: 'If SMTP is not configured, configure it in Admin > Settings > SMTP Configuration, then test with /api/admin/test-smtp'
       });
     }
-  } catch (e) { res.status(500).json({ error: toFriendlySmtpError(e) }); }
+  } catch (e) {
+    releaseEmailOtpRequestLock(emailOtpLock);
+    const classified = classifySmtpError(e);
+    res.status(e.statusCode || classified.status || 500).json({
+      success: false,
+      code: e.smtpCode || classified.code || 'OTP_SEND_FAILED',
+      error: e.publicMessage || toFriendlySmtpError(e)
+    });
+  }
 });
 
 app.post('/api/otp/verify-email', async (req, res) => {
