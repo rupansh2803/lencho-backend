@@ -1041,14 +1041,22 @@ function getCartProductSnapshot(product, variantId = '') {
 }
 
 function cartLineProductPayload(product, variant = null) {
+  const images = variant?.images?.length ? variant.images : product.images;
+  const mainImage = variant?.images?.[0] || product.image || images?.[0] || '';
   return {
-    ...product,
+    id: String(product.id || product._id || ''),
+    _id: product._id,
+    name: product.name || 'Product',
+    category: product.category || '',
+    storeType: product.storeType || 'main',
+    slug: product.slug || '',
     price: numberOrFallback(variant?.price, product.price),
     mrp: numberOrFallback(variant?.mrp, product.mrp),
+    discount: numberOrFallback(product.discount, 0),
     stock: variant ? numberOrFallback(variant.stock, 0) : numberOrFallback(product.stock, 0),
     sku: String(variant?.sku || product.sku || ''),
-    image: variant?.images?.[0] || product.image,
-    images: variant?.images?.length ? variant.images : product.images
+    image: mainImage,
+    images: mainImage ? [mainImage] : []
   };
 }
 
@@ -5177,8 +5185,16 @@ app.get('/api/cart', requireAuth, async (req, res) => {
     const uid = getRequestUserId(req);
     if (useDB) {
       const cart = await Cart.findOne({ userId: uid }) || { items: [] };
-      const enriched = await Promise.all((cart.items || []).map(async item => {
-        const p = await Product.findById(item.productId).lean();
+      const rawItems = cart.items || [];
+      const productIds = [...new Set(rawItems.map(item => String(item.productId || '')).filter(id => mongoose.Types.ObjectId.isValid(id)))];
+      const productRows = productIds.length
+        ? await Product.find({ _id: { $in: productIds } })
+            .select('name category storeType slug price mrp discount stock sku image images status variants')
+            .lean()
+        : [];
+      const productMap = new Map(productRows.map(p => [String(p._id), { ...p, id: p._id }]));
+      const enriched = rawItems.map(item => {
+        const p = productMap.get(String(item.productId));
         if (!p) return null;
         const snapshot = getCartProductSnapshot(p, item.variantId);
         const variant = snapshot.variant;
@@ -5190,7 +5206,7 @@ app.get('/api/cart', requireAuth, async (req, res) => {
           variant,
           product: cartLineProductPayload(product, variant)
         };
-      }));
+      });
       const items = enriched.filter(Boolean);
       return res.json({ items, count: getCartCount(items), lineCount: items.length });
     }
@@ -5236,7 +5252,14 @@ app.post('/api/cart/add', requireAuth, async (req, res) => {
       if (idx > -1) cart.items[idx].quantity = nextQty;
       else cart.items.push({ productId, variantId: String(variantId || ''), quantity: qty });
       await cart.save();
-      return res.json({ success: true, count: getCartCount(cart.items), lineCount: cart.items.length, items: cart.items });
+      const count = getCartCount(cart.items);
+      return res.json({
+        success: true,
+        count,
+        lineCount: cart.items.length,
+        cartItem: { productId, variantId: String(variantId || ''), quantity: nextQty, unitPrice: numberOrFallback(snapshot.variant?.price, snapshot.product.price), lineTotal: numberOrFallback(snapshot.variant?.price, snapshot.product.price) * nextQty },
+        cartSummary: { itemCount: count }
+      });
     }
     const products = readJson(FILES.products);
     const rawProduct = products.find(p => String(p.id || p._id) === String(productId));
@@ -5255,7 +5278,14 @@ app.post('/api/cart/add', requireAuth, async (req, res) => {
     if (ii > -1) carts[ci].items[ii].quantity = nextQty;
     else carts[ci].items.push({ productId, variantId: String(variantId || ''), quantity: qty });
     writeJson(FILES.carts, carts);
-    res.json({ success: true, count: getCartCount(carts[ci].items), lineCount: carts[ci].items.length, items: carts[ci].items });
+    const count = getCartCount(carts[ci].items);
+    res.json({
+      success: true,
+      count,
+      lineCount: carts[ci].items.length,
+      cartItem: { productId, variantId: String(variantId || ''), quantity: nextQty, unitPrice: numberOrFallback(snapshot.variant?.price, snapshot.product.price), lineTotal: numberOrFallback(snapshot.variant?.price, snapshot.product.price) * nextQty },
+      cartSummary: { itemCount: count }
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -5279,7 +5309,15 @@ app.put('/api/cart/update', requireAuth, async (req, res) => {
         const idx = cart.items.findIndex(i => String(i.productId) === String(productId) && String(i.variantId || '') === String(variantId || ''));
         if (idx > -1) cart.items[idx].quantity = qty;
       }
-      await cart.save(); return res.json({ success: true, count: getCartCount(cart.items), lineCount: cart.items.length });
+      await cart.save();
+      const count = getCartCount(cart.items);
+      return res.json({
+        success: true,
+        count,
+        lineCount: cart.items.length,
+        cartItem: { productId, variantId: String(variantId || ''), quantity: qty },
+        cartSummary: { itemCount: count }
+      });
     }
     const carts = readJson(FILES.carts);
     const ci = carts.findIndex(c => c.userId === uid);
@@ -5297,7 +5335,15 @@ app.put('/api/cart/update', requireAuth, async (req, res) => {
       const ii = carts[ci].items.findIndex(i => String(i.productId) === String(productId) && String(i.variantId || '') === String(variantId || ''));
       if (ii > -1) carts[ci].items[ii].quantity = qty;
     }
-    writeJson(FILES.carts, carts); res.json({ success: true, count: getCartCount(carts[ci].items), lineCount: carts[ci].items.length });
+    writeJson(FILES.carts, carts);
+    const count = getCartCount(carts[ci].items);
+    res.json({
+      success: true,
+      count,
+      lineCount: carts[ci].items.length,
+      cartItem: { productId, variantId: String(variantId || ''), quantity: qty },
+      cartSummary: { itemCount: count }
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

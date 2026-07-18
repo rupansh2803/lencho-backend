@@ -9,6 +9,7 @@ async function renderProductDetail(id) {
   const activeMrp = Number(selectedVariant?.mrp) || p.mrp;
   const activeStock = selectedVariant ? finiteClientNumber(selectedVariant.stock, 0) : finiteClientNumber(p.stock, 0);
   const discountVal = activeMrp ? Math.round(((activeMrp - activePrice) / activeMrp) * 100) : 0;
+  rememberClientProduct(p);
   currentPageContext = { route: `/product/${p.id}`, category: p.category, product: p };
   window.__selectedProductVariant = selectedVariant ? selectedVariant.id : '';
 
@@ -91,7 +92,7 @@ async function renderProductDetail(id) {
         </div>
 
         <div class="product-actions">
-          <button class="btn-add-to-cart" id="product-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '')" ${activeStock<=0?'disabled':''}>
+          <button class="btn-add-to-cart" id="product-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '', this)" ${activeStock<=0?'disabled':''}>
             <i class="fas fa-shopping-bag"></i> ${activeStock <= 0 ? 'Out of Stock' : 'Add to Cart'}
           </button>
           <button class="btn-buy-now-large" onclick="buyNow('${p.id}', window.__selectedProductVariant || '')" ${activeStock<=0?'disabled':''}>
@@ -370,6 +371,7 @@ async function renderProductDetail(id) {
   const showProductRatings = publicFlagEnabled('showProductRatings', false);
   const showProductDeliveryDetails = publicFlagEnabled('showProductDeliveryDetails', false);
   const showProductAvailability = publicFlagEnabled('showProductAvailability', false);
+  rememberClientProduct(p);
   currentPageContext = { route: `/product/${p.id}`, category: p.category, product: p };
   window.__selectedProductVariant = selectedVariant ? selectedVariant.id : '';
 
@@ -465,7 +467,7 @@ async function renderProductDetail(id) {
         </div>` : ''}
 
         <div class="product-actions">
-          <button class="btn-add-to-cart" id="product-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '')" ${activeStock<=0?'disabled':''}>
+          <button class="btn-add-to-cart" id="product-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '', this)" ${activeStock<=0?'disabled':''}>
             <i class="fas fa-shopping-bag"></i> ${activeStock <= 0 ? 'Out of Stock' : 'Add to Cart'}
           </button>
           <button class="btn-buy-now-large" id="product-buy-now-btn" onclick="buyNow('${p.id}', window.__selectedProductVariant || '')" ${activeStock<=0?'disabled':''}>
@@ -566,7 +568,7 @@ async function renderProductDetail(id) {
 
     <div class="mobile-buy-bar" aria-label="Quick buy controls">
       <div class="mobile-buy-price"><strong id="mobile-buy-price">${formatCurrency(activePrice)}</strong><span>Final price</span></div>
-      <button type="button" id="mobile-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '')" ${activeStock<=0?'disabled':''}><i class="fas fa-shopping-bag"></i> ${activeStock <= 0 ? 'Sold Out' : 'Cart'}</button>
+      <button type="button" id="mobile-add-cart-btn" onclick="addToCart('${p.id}', true, window.__selectedProductVariant || '', this)" ${activeStock<=0?'disabled':''}><i class="fas fa-shopping-bag"></i> ${activeStock <= 0 ? 'Sold Out' : 'Cart'}</button>
       <button type="button" id="mobile-buy-now-btn" class="mobile-buy-now" onclick="buyNow('${p.id}', window.__selectedProductVariant || '')" ${activeStock<=0?'disabled':''}><i class="fas fa-bolt"></i> Buy</button>
     </div>  </div>`;
 
@@ -732,6 +734,14 @@ async function buyNow(productId, variantId = '') {
   navigate('/checkout');
 }
 
+const cartQtySyncTimers = new Map();
+const cartQtySyncVersions = new Map();
+const CART_QTY_SYNC_DELAY_MS = 220;
+
+function cartLineKey(productId, variantId = '') {
+  return `${productId}::${variantId || ''}`;
+}
+
 /* ── CART PAGE ────────────────────────────────────────────── */
 async function getLocalCartItemsWithProducts() {
   if (typeof readLocalCart !== 'function') return [];
@@ -815,9 +825,9 @@ async function renderCart(options = {}) {
                 ${i.variant?.label ? `<div class="cart-item-cat" style="color:var(--rose);font-weight:600;">${i.variant.label}</div>` : ''}
                 <div class="cart-item-price-unit" style="font-size:0.85rem;color:var(--gold);font-weight:600;margin:.5rem 0;">₹${price}</div>
                 <div class="qty-control" style="margin-top:.5rem;display:flex;align-items:center;gap:0.5rem;">
-                  <button class="qty-btn" onclick="updateQty('${i.productId}','${i.variantId || ''}',Math.max(1,${qty-1}))"><i class="fas fa-minus" style="font-size:.7rem;"></i></button>
+                  <button class="qty-btn" aria-label="Decrease quantity of ${escapeHtml(i.product.name || 'product')}" onclick="updateQty('${i.productId}','${i.variantId || ''}',${qty-1})"><i class="fas fa-minus" style="font-size:.7rem;"></i></button>
                   <span class="qty-num" style="min-width:2rem;text-align:center;">${qty}</span>
-                  <button class="qty-btn" onclick="updateQty('${i.productId}','${i.variantId || ''}',${qty+1})" ${qty >= stock ? 'disabled title="No more stock available"' : ''}><i class="fas fa-plus" style="font-size:.7rem;"></i></button>
+                  <button class="qty-btn" aria-label="Increase quantity of ${escapeHtml(i.product.name || 'product')}" onclick="updateQty('${i.productId}','${i.variantId || ''}',${qty+1})" ${qty >= stock ? 'disabled title="No more stock available"' : ''}><i class="fas fa-plus" style="font-size:.7rem;"></i></button>
                 </div>
                 ${stock <= 0 ? '<div class="cart-item-cat" style="color:#ef4444;font-weight:700;">Out of stock</div>' : qty >= stock ? `<div class="cart-item-cat" style="color:var(--gold);font-weight:700;">Only ${stock} left</div>` : ''}
                 <button class="cart-remove" onclick="removeFromCart('${i.productId}','${i.variantId || ''}')"><i class="fas fa-trash" style="font-size:.8rem;"></i> Remove</button>
@@ -857,20 +867,15 @@ async function renderCart(options = {}) {
 }
 
 async function updateQty(productId, variantId, qty) {
-  if (qty <= 0) {
-    // Show confirmation for removal
-    const confirmed = confirm('Remove this item from cart?');
-    if (!confirmed) return;
-  }
-  
+  const requestedQty = Math.max(0, Number(qty) || 0);
   const before = typeof readLocalCart === 'function' ? readLocalCart() : [];
   const visualBefore = Array.isArray(window.__lastCartItems) ? JSON.parse(JSON.stringify(window.__lastCartItems)) : null;
-  if (typeof setLocalCartQty === 'function') setLocalCartQty(productId, variantId, qty);
+  if (typeof setLocalCartQty === 'function') setLocalCartQty(productId, variantId, requestedQty);
   const visualItems = Array.isArray(window.__lastCartItems) ? JSON.parse(JSON.stringify(window.__lastCartItems)) : null;
+  const key = cartLineKey(productId, variantId);
   if (visualItems) {
-    const key = `${productId}::${variantId || ''}`;
     const nextItems = visualItems
-      .map(item => `${item.productId}::${item.variantId || ''}` === key ? { ...item, quantity: qty } : item)
+      .map(item => cartLineKey(item.productId, item.variantId) === key ? { ...item, quantity: requestedQty } : item)
       .filter(item => Number(item.quantity) > 0);
     renderCart({ items: nextItems, skipLoading: true });
   }
@@ -879,46 +884,66 @@ async function updateQty(productId, variantId, qty) {
     if (!visualItems) renderCart();
     return;
   }
-  try {
-    const r = await api('/api/cart/update', { method: 'PUT', body: { productId, variantId, quantity: qty } });
-    if (r.error) {
+
+  const version = (cartQtySyncVersions.get(key) || 0) + 1;
+  cartQtySyncVersions.set(key, version);
+  clearTimeout(cartQtySyncTimers.get(key));
+  cartQtySyncTimers.set(key, setTimeout(async () => {
+    try {
+      const r = await api('/api/cart/update', { method: 'PUT', body: { productId, variantId, quantity: requestedQty } });
+      if (cartQtySyncVersions.get(key) !== version) return;
+      if (r.error) {
+        if (typeof writeLocalCart === 'function') writeLocalCart(before);
+        if (visualBefore) renderCart({ items: visualBefore, skipLoading: true });
+        toast(r.error, 'error');
+        updateCartCount();
+        return;
+      }
+      updateCartBadgeOptimistic(Number(r.count) || getCartQuantity(readLocalCart()));
+    } catch (e) {
+      if (cartQtySyncVersions.get(key) !== version) return;
+      console.error('Update quantity error:', e);
       if (typeof writeLocalCart === 'function') writeLocalCart(before);
       if (visualBefore) renderCart({ items: visualBefore, skipLoading: true });
-      toast(r.error, 'error');
-      await updateCartCount();
-      return;
+      else renderCart();
+      toast('Could not update quantity. Please try again.', 'error');
+      updateCartCount();
+    } finally {
+      if (cartQtySyncVersions.get(key) === version) {
+        cartQtySyncTimers.delete(key);
+      }
     }
-    await updateCartCount();
-  } catch (e) {
-    console.error('Update quantity error:', e);
-    if (typeof writeLocalCart === 'function') writeLocalCart(before);
-    toast('Could not update quantity. Please try again.', 'error');
-    if (visualBefore) renderCart({ items: visualBefore, skipLoading: true });
-    else renderCart();
-  }
+  }, CART_QTY_SYNC_DELAY_MS));
 }
 
 async function removeFromCart(productId, variantId = '') {
-  const confirmed = confirm('Remove this item from cart?');
-  if (!confirmed) return;
-  
+  const before = typeof readLocalCart === 'function' ? readLocalCart() : [];
   if (typeof setLocalCartQty === 'function') setLocalCartQty(productId, variantId, 0);
   const visualItems = Array.isArray(window.__lastCartItems) ? JSON.parse(JSON.stringify(window.__lastCartItems)) : null;
   if (visualItems) {
-    const key = `${productId}::${variantId || ''}`;
-    renderCart({ items: visualItems.filter(item => `${item.productId}::${item.variantId || ''}` !== key), skipLoading: true });
+    const key = cartLineKey(productId, variantId);
+    renderCart({ items: visualItems.filter(item => cartLineKey(item.productId, item.variantId) !== key), skipLoading: true });
   }
   updateCartCount();
   try {
     const r = await api(`/api/cart/${productId}?variantId=${encodeURIComponent(variantId || '')}`, { method: 'DELETE' });
-    if (r.error) console.warn('Cart remove server sync failed, kept local cart:', r.error);
-    await updateCartCount();
+    if (r.error) {
+      if (typeof writeLocalCart === 'function') writeLocalCart(before);
+      if (visualItems) renderCart({ items: visualItems, skipLoading: true });
+      toast(r.error, 'error');
+      updateCartCount();
+      return;
+    }
+    updateCartBadgeOptimistic(Number(r.count) || getCartQuantity(readLocalCart()));
     if (!visualItems) renderCart();
     toast('Item removed from cart', 'info');
   } catch (e) {
     console.error('Remove from cart error:', e);
-    if (!visualItems) renderCart();
-    toast('Item removed from cart', 'info');
+    if (typeof writeLocalCart === 'function') writeLocalCart(before);
+    if (visualItems) renderCart({ items: visualItems, skipLoading: true });
+    else renderCart();
+    updateCartCount();
+    toast('Could not remove item. Please try again.', 'error');
   }
 }
 
@@ -975,7 +1000,7 @@ async function renderWishlist() {
               <span style="font-weight:700;color:var(--rose);">${formatCurrency(p.price)}</span>
               ${p.mrp ? `<span style="font-size:.85rem;color:var(--gray);text-decoration:line-through;">${formatCurrency(p.mrp)}</span>` : ''}
             </div>
-            <button class="btn-primary full-width" onclick="event.stopPropagation(); addToCart('${p.id||p._id}')" style="padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;font-weight:600;cursor:pointer;font-size:.9rem;"><i class="fas fa-shopping-bag" style="margin-right:.5rem;"></i>Add to Cart</button>
+            <button class="btn-primary full-width" onclick="event.stopPropagation(); addToCart('${p.id||p._id}', true, '', this)" style="padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;font-weight:600;cursor:pointer;font-size:.9rem;"><i class="fas fa-shopping-bag" style="margin-right:.5rem;"></i>Add to Cart</button>
           </div>
         </div>`;
         }).join('')}

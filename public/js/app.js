@@ -19,6 +19,8 @@ const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const CART_LOCAL_STORAGE_KEY = 'lencho_cart_local_v1';
 const WISHLIST_LOCAL_STORAGE_KEY = 'lencho_wishlist_local_v1';
 const GA4_MEASUREMENT_ID = 'G-RE51HQCTCW';
+const clientProductCache = new Map();
+const pendingAddCartKeys = new Set();
 const LOCAL_IMAGE_OPTIMIZATIONS = {
   '/images/woollen_hero.png': '/images/woollen_hero.jpg',
   '/images/woollen_pattern_bg.png': '/images/woollen_pattern_bg.jpg'
@@ -554,6 +556,23 @@ function getHeaderOffset() {
 // ── ROUTER ────────────────────────────────────────────────
 function routeLoadingHTML(route = '') {
   return '';
+}
+
+function rememberClientProduct(product) {
+  const normalized = normalizeClientProduct(product);
+  const id = normalized && String(normalized.id || normalized._id || '');
+  if (!id) return normalized;
+  clientProductCache.set(id, normalized);
+  return normalized;
+}
+
+function getCachedClientProduct(productId) {
+  const id = String(productId || '');
+  const cached = clientProductCache.get(id);
+  if (cached) return cached;
+  const contextProduct = currentPageContext?.product;
+  if (contextProduct && String(contextProduct.id || contextProduct._id || '') === id) return contextProduct;
+  return null;
 }
 
 async function navigate(path, pushState = true) {
@@ -1536,51 +1555,146 @@ async function updateCartCount() {
 function updateCartBadgeOptimistic(newCount) {
   cartCount = Math.max(0, newCount);
   const badge = document.getElementById('cart-count');
-  if (badge) badge.textContent = cartCount;
+  if (badge) {
+    badge.textContent = cartCount;
+    badge.classList.remove('cart-badge-pulse');
+    void badge.offsetWidth;
+    badge.classList.add('cart-badge-pulse');
+  }
 }
 
-// Add to cart after validating live stock.
-async function addToCart(productId, showToast = true, variantId = '') {
-  const before = readLocalCart();
-  const variantKey = String(variantId || '');
+function setAddToCartButtonState(button, state) {
+  if (!button) return;
+  const original = button.dataset.originalLabel || button.innerHTML;
+  button.dataset.originalLabel = original;
+  if (state === 'adding') {
+    button.disabled = true;
+    button.classList.add('is-adding');
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...';
+  } else if (state === 'added') {
+    button.disabled = true;
+    button.classList.remove('is-adding');
+    button.classList.add('is-added');
+    button.innerHTML = '<i class="fas fa-check"></i> Added';
+    setTimeout(() => {
+      button.disabled = false;
+      button.classList.remove('is-added');
+      button.innerHTML = button.dataset.originalLabel || original;
+    }, 700);
+  } else {
+    button.disabled = false;
+    button.classList.remove('is-adding', 'is-added');
+    button.innerHTML = button.dataset.originalLabel || original;
+  }
+}
 
+function animateAddToCart(productId, triggerEl = null) {
   try {
-    const productResponse = await api(`/api/products/${productId}`, { timeoutMs: 5000 });
-    if (productResponse?.error || !productResponse?.id) {
-      if (showToast) toast('Product not found', 'error');
-      return false;
-    }
-    const snapshot = getClientProductStock(productResponse, variantKey);
-    if (variantKey && !snapshot.variant) {
-      if (showToast) toast('Selected variant is not available', 'error');
-      return false;
-    }
-    if (String(snapshot.product.status || 'published') !== 'published') {
-      if (showToast) toast('Product is not available', 'error');
-      return false;
-    }
-    const existingQty = before
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const button = triggerEl || null;
+    const source = button?.closest?.('.product-card, .product-detail-container, .product-detail-page')?.querySelector?.('img.product-img, .gallery-main img, #main-product-img')
+      || document.querySelector(`#main-product-img`)
+      || null;
+    const cartTarget = document.querySelector('[onclick*="/cart"], .cart-icon, #cart-count') || document.getElementById('cart-count');
+    if (!source || !cartTarget) return;
+    const from = source.getBoundingClientRect();
+    const to = cartTarget.getBoundingClientRect();
+    if (!from.width || !from.height || !to.width || !to.height) return;
+    const clone = document.createElement('img');
+    clone.className = 'add-cart-flyer';
+    clone.src = source.currentSrc || source.src;
+    clone.alt = '';
+    clone.style.left = `${from.left}px`;
+    clone.style.top = `${from.top}px`;
+    clone.style.width = `${Math.min(from.width, 96)}px`;
+    clone.style.height = `${Math.min(from.height, 96)}px`;
+    document.body.appendChild(clone);
+    requestAnimationFrame(() => {
+      clone.style.transform = `translate(${to.left - from.left}px, ${to.top - from.top}px) scale(.28)`;
+      clone.style.opacity = '0';
+    });
+    setTimeout(() => clone.remove(), 680);
+  } catch (e) {
+    console.warn('Add-to-cart animation skipped:', e);
+  }
+}
+
+async function validateProductForCart(productId, variantKey, before) {
+  let productResponse = getCachedClientProduct(productId);
+  let fromCache = Boolean(productResponse);
+  if (!productResponse) {
+    productResponse = await api(`/api/products/${productId}`, { timeoutMs: 5000 });
+    fromCache = false;
+  }
+  if (productResponse?.error || !(productResponse?.id || productResponse?._id)) {
+    return { error: 'Product not found' };
+  }
+  productResponse = rememberClientProduct(productResponse);
+  const snapshot = getClientProductStock(productResponse, variantKey);
+  if (variantKey && !snapshot.variant) return { error: 'Selected variant is not available' };
+  if (String(snapshot.product.status || 'published') !== 'published') return { error: 'Product is not available' };
+  const existingQty = before
+    .filter(item => getCartItemKey(item.productId, item.variantId) === getCartItemKey(productId, variantKey))
+    .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  if (snapshot.stock <= 0) return { error: 'Out of stock' };
+  if (existingQty + 1 > snapshot.stock) return { error: `Only ${snapshot.stock} left in stock` };
+  return { product: productResponse, snapshot, fromCache };
+}
+
+function revalidateGuestCartAdd(productId, variantKey, before) {
+  api(`/api/products/${productId}`, { timeoutMs: 5000 }).then(serverProduct => {
+    if (serverProduct?.error || !(serverProduct?.id || serverProduct?._id)) throw new Error('Product could not be added. Please try again.');
+    rememberClientProduct(serverProduct);
+    const check = getClientProductStock(serverProduct, variantKey);
+    const localQty = readLocalCart()
       .filter(item => getCartItemKey(item.productId, item.variantId) === getCartItemKey(productId, variantKey))
       .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-    if (snapshot.stock <= 0) {
-      if (showToast) toast('Out of stock', 'error');
-      return false;
-    }
-    if (existingQty + 1 > snapshot.stock) {
-      if (showToast) toast(`Only ${snapshot.stock} left in stock`, 'error');
-      return false;
-    }
+    if (variantKey && !check.variant) throw new Error('Selected variant is not available');
+    if (String(check.product.status || 'published') !== 'published') throw new Error('Product is not available');
+    if (check.stock <= 0 || localQty > check.stock) throw new Error(`Only ${check.stock} left in stock`);
+  }).catch(error => {
+    writeLocalCart(before);
+    updateCartBadgeOptimistic(getCartQuantity(before));
+    if (location.pathname === '/cart' && typeof renderCart === 'function') renderCart();
+    toast(error.message || 'Product could not be added. Please try again.', 'error');
+  });
+}
+
+// Add to cart with instant optimistic UI; backend still validates stock and price.
+async function addToCart(productId, showToast = true, variantId = '', triggerEl = null) {
+  const before = readLocalCart();
+  const variantKey = String(variantId || '');
+  const cartKey = getCartItemKey(productId, variantKey);
+  const button = triggerEl || (typeof event !== 'undefined' ? event?.currentTarget : null);
+
+  if (pendingAddCartKeys.has(cartKey)) {
+    if (showToast) toast('Already adding this item...', 'info');
+    return false;
+  }
+  pendingAddCartKeys.add(cartKey);
+  setAddToCartButtonState(button, 'adding');
+
+  let validation;
+  try {
+    validation = await validateProductForCart(productId, variantKey, before);
+    if (validation.error) throw new Error(validation.error);
   } catch (e) {
     console.error('Stock check failed:', e);
-    if (showToast) toast('Could not check stock. Please try again.', 'error');
+    if (showToast) toast(e.message || 'Could not check stock. Please try again.', 'error');
+    setAddToCartButtonState(button, 'default');
+    pendingAddCartKeys.delete(cartKey);
     return false;
   }
 
   const optimistic = upsertLocalCart(productId, variantId, 1);
   updateCartBadgeOptimistic(getCartQuantity(optimistic));
+  animateAddToCart(productId, button);
   if (showToast) toast('Added to cart!', 'cart');
 
   if (!currentUser) {
+    setAddToCartButtonState(button, 'added');
+    pendingAddCartKeys.delete(cartKey);
+    if (validation.fromCache) revalidateGuestCartAdd(productId, variantKey, before);
     return true;
   }
   
@@ -1591,16 +1705,22 @@ async function addToCart(productId, showToast = true, variantId = '') {
       writeLocalCart(before);
       updateCartBadgeOptimistic(getCartQuantity(before));
       if (showToast) toast(r.error, 'error');
+      setAddToCartButtonState(button, 'default');
+      pendingAddCartKeys.delete(cartKey);
       return false;
     }
     updateCartBadgeOptimistic(Number(r.count) || getCartQuantity(readLocalCart()));
-    await updateCartCount();
+    updateCartCount();
+    setAddToCartButtonState(button, 'added');
+    pendingAddCartKeys.delete(cartKey);
     return true;
   } catch (e) {
     console.error('Add to cart error:', e);
     writeLocalCart(before);
     updateCartBadgeOptimistic(getCartQuantity(before));
     if (showToast) toast('Could not add to cart. Please try again.', 'error');
+    setAddToCartButtonState(button, 'default');
+    pendingAddCartKeys.delete(cartKey);
     return false;
   }
 }
@@ -2069,7 +2189,7 @@ function productRoutePath(product = {}) {
 
 // ── PRODUCT CARD ─────────────────────────────────────────
 function productCardHTML(p) {
-  const product = normalizeClientProduct(p);
+  const product = rememberClientProduct(p);
   const detailPath = productRoutePath(product);
   const safeDetailPath = escapeInlineJsString(detailPath);
   const productId = String(product.id || p.id || p._id || '');
@@ -2127,7 +2247,7 @@ function productCardHTML(p) {
       </div>` : ''}
       
       <div class="product-actions" style="margin-top:1rem;display:flex;gap:.5rem;flex-direction:column;">
-        <button class="btn-primary btn-sm" onclick="event.stopPropagation(); addToCart('${safeProductId}')" ${cardDisabledAttr} style="flex:1;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;font-weight:600;cursor:pointer;transition:transform .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;${cardDisabledStyle}" onmouseover="${cardOutOfStock ? '' : "this.style.transform='translateY(-2px)'"}" onmouseout="this.style.transform='translateY(0)'">
+        <button class="btn-primary btn-sm" onclick="event.stopPropagation(); addToCart('${safeProductId}', true, '', this)" ${cardDisabledAttr} style="flex:1;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#c9748f,#9b4065);color:#fff;font-weight:600;cursor:pointer;transition:transform .2s;display:flex;align-items:center;justify-content:center;gap:.5rem;${cardDisabledStyle}" onmouseover="${cardOutOfStock ? '' : "this.style.transform='translateY(-2px)'"}" onmouseout="this.style.transform='translateY(0)'">
           <i class="fas fa-shopping-bag"></i> ${cardOutOfStock ? 'Out of Stock' : 'Add to Cart'}
         </button>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;">

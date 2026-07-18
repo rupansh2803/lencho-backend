@@ -179,6 +179,8 @@ const cartSchema = new mongoose.Schema({
   }],
 }, { timestamps: true });
 
+cartSchema.index({ userId: 1, 'items.productId': 1, 'items.variantId': 1 });
+
 // ── WISHLIST ──────────────────────────────────────────────────
 const wishlistSchema = new mongoose.Schema({
   userId: { type: String, required: true, unique: true },
