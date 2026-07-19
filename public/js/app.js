@@ -1149,8 +1149,19 @@ function beginAuthOtpCountdown() {
   }, 1000);
 }
 
-function showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend = false, notice = '') {
-  beginAuthOtpCountdown();
+function setAuthOtpInputsEnabled(enabled) {
+  document.querySelectorAll('#otp-input-row .otp-box').forEach(box => {
+    box.disabled = !enabled;
+    box.classList.remove('error');
+  });
+  const verifyBtn = document.getElementById('verify-otp-btn');
+  if (verifyBtn) verifyBtn.disabled = true;
+}
+
+function showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend = false, notice = '', options = {}) {
+  const pending = Boolean(options.pending);
+  const failed = Boolean(options.failed);
+  if (!pending && !failed) beginAuthOtpCountdown();
 
   const currentForm = document.getElementById(currentFormId);
   const otpStep = document.getElementById('auth-otp-step');
@@ -1165,12 +1176,23 @@ function showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend = false, noti
   const otpInput = document.getElementById('auth-otp-input');
   if (otpInput) otpInput.value = '';
   const otpSuccess = document.getElementById('otp-success');
-  if (otpSuccess) otpSuccess.style.display = 'none';
+  if (otpSuccess) {
+    otpSuccess.style.display = (!pending && !failed && notice) ? 'block' : 'none';
+    if (!pending && !failed && notice) {
+      otpSuccess.innerHTML = '<i class="fas fa-check-circle"></i> Verification code sent to your email.';
+    }
+  }
 
   const otpTitle = document.getElementById('otp-title');
   if (otpTitle) otpTitle.textContent = 'Verify Your Email';
   const otpSubtitle = document.getElementById('otp-subtitle');
-  if (otpSubtitle) otpSubtitle.textContent = "We've sent a 6-digit verification code to your email";
+  if (otpSubtitle) {
+    otpSubtitle.textContent = pending
+      ? 'Sending verification code...'
+      : failed
+        ? 'We could not send the verification code yet.'
+        : "We've sent a 6-digit verification code to your email";
+  }
   const emailDisplay = document.getElementById('otp-target-email');
   if (emailDisplay) emailDisplay.textContent = cleanEmail;
 
@@ -1179,8 +1201,24 @@ function showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend = false, noti
     box.classList.remove('filled', 'error', 'success');
   });
   initOtpBoxes();
+  setAuthOtpInputsEnabled(!pending && !failed);
   const verifyBtn = document.getElementById('verify-otp-btn');
   if (verifyBtn) verifyBtn.onclick = () => verifyEmailOTP();
+  const resendBtn = document.getElementById('resend-otp-btn');
+  if (resendBtn && !pending && !failed) {
+    resendBtn.onclick = () => resendEmailOTP();
+  }
+  if (resendBtn && (pending || failed)) {
+    resendBtn.disabled = pending;
+    resendBtn.innerHTML = failed ? '<i class="fas fa-redo-alt"></i> Retry' : '<i class="fas fa-spinner fa-spin"></i> Sending...';
+    resendBtn.onclick = () => sendEmailOTPSafe(cleanEmail, currentFormId, errorIdForAuthForm(currentFormId), window.pendingAuth?.captchaAnswer || '');
+  }
+}
+
+function errorIdForAuthForm(currentFormId) {
+  if (currentFormId === 'auth-login-form') return 'login-error';
+  if (currentFormId === 'auth-signup-form') return 'signup-error';
+  return 'otp-error';
 }
 
 async function sendEmailOTPSafe(email, currentFormId, errorId, captchaAnswer = '') {
@@ -1194,7 +1232,7 @@ async function sendEmailOTPSafe(email, currentFormId, errorId, captchaAnswer = '
   if (err) err.textContent = '';
 
   if (authOtpRequestInFlight) {
-    toast('OTP request is already processing. Please wait.', 'success');
+    toast('OTP request is already processing. Please wait.', 'error');
     return;
   }
   if (!cleanEmail) {
@@ -1212,12 +1250,13 @@ async function sendEmailOTPSafe(email, currentFormId, errorId, captchaAnswer = '
     btn.disabled = true;
     btn.textContent = 'Sending OTP...';
   }
+  showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend, 'Sending verification code...', { pending: true });
 
   try {
     const resp = await api('/api/otp/send-email', {
       method: 'POST',
       body: { email: cleanEmail, captchaAnswer: String(captchaAnswer || '').trim(), resend: isResend },
-      timeoutMs: 12000,
+      timeoutMs: 25000,
       signal: authOtpAbortController.signal
     });
 
@@ -1227,8 +1266,8 @@ async function sendEmailOTPSafe(email, currentFormId, errorId, captchaAnswer = '
         err.textContent = '';
         err.classList.remove('otp-soft-notice');
       }
-      toast(resp.deliveryPending ? 'OTP email is on the way. Check inbox or spam.' : 'OTP sent successfully.', 'success');
-      showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend, resp.deliveryPending ? 'Email is taking a little longer. If it arrives, enter the code here.' : '');
+      toast('Verification code sent to your email.', 'success');
+      showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend, 'Verification code sent to your email.');
       if (resp.debugOTP || resp.devOtp) {
         const otpError = document.getElementById('otp-error');
         const devMsg = `DEV MODE: Your OTP is ${resp.debugOTP || resp.devOtp}. This will only show in development.`;
@@ -1241,37 +1280,25 @@ async function sendEmailOTPSafe(email, currentFormId, errorId, captchaAnswer = '
     if (resp.error) {
       const message = getEmailOtpErrorMessage(resp);
       if (resp.code === 'OTP_REQUEST_IN_PROGRESS') {
-        showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend, 'A previous OTP request is finishing. If the email arrives, enter the code here.');
-        toast(message, 'success');
+        showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend, message, { failed: true });
+        toast(message, 'error');
         return;
       }
-      const canEnterDelayedOtp = resp.deliveryPending
-        || resp.code === 'SMTP_TIMEOUT'
-        || resp.status === 504
-        || /timed out|taking longer|request timed out/i.test(message);
-      if (canEnterDelayedOtp) {
-        showAuthEmailOtpEntry(
-          cleanEmail,
-          currentFormId,
-          isResend,
-          'OTP email is taking longer. If it arrives, enter the code here. Resend opens in 60 seconds.'
-        );
-        toast('OTP email is on the way. Check inbox or spam.', 'success');
-        return;
-      }
+      showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend, message, { failed: true });
       if (err) err.textContent = message;
       toast(message, 'error');
-      if (!isResend) await loadAuthCaptcha();
+      const shouldRefreshCaptcha = !isResend && (resp.status === 400 || resp.code === 'OTP_RATE_LIMITED');
+      if (shouldRefreshCaptcha) await loadAuthCaptcha();
       return;
     }
 
     toast('OTP sent successfully.', 'success');
-    showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend, '');
+    showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend, 'Verification code sent to your email.');
   } catch (error) {
     const message = error?.name === 'AbortError' ? 'OTP request cancelled.' : 'Network error or timeout. Please try again.';
+    showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend, message, { failed: true });
     if (err) err.textContent = message;
     if (error?.name !== 'AbortError') toast(message, 'error');
-    if (!isResend) await loadAuthCaptcha();
   } finally {
     authOtpRequestInFlight = false;
     authOtpAbortController = null;

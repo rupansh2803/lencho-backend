@@ -214,10 +214,10 @@ function sanitizeFromName(name) {
 }
 
 const EMAIL_OTP_EXPIRY_MS = 10 * 60 * 1000;
-const SMTP_CONNECTION_TIMEOUT_MS = 10000;
-const SMTP_SOCKET_TIMEOUT_MS = 20000;
+const SMTP_CONNECTION_TIMEOUT_MS = 20000;
+const SMTP_SOCKET_TIMEOUT_MS = 30000;
 const SMTP_SEND_TIMEOUT_MS = 20000;
-const OTP_EMAIL_TOTAL_TIMEOUT_MS = 23000;
+const OTP_EMAIL_TOTAL_TIMEOUT_MS = 25000;
 const OTP_ACTIVE_REQUEST_TTL_MS = 30000;
 const SMTP_FORCE_IPV4 = parseBooleanEnv(process.env.SMTP_FORCE_IPV4, true);
 let cachedVerifiedSmtpTransporter = null;
@@ -386,7 +386,7 @@ function getSmtpConfigFromSettings(settings = null) {
   const envPass = pickSmtpPassValue(process.env.SMTP_PASS, process.env.EMAIL_PASS);
   return {
     host: cleanEnvValue(process.env.SMTP_HOST) || cleanEnvValue(resolved.smtpHost) || 'smtp.gmail.com',
-    port: Number(process.env.SMTP_PORT || resolved.smtpPort || 465),
+    port: 587,
     user: envUser || pickSmtpUserValue(resolved.smtpUser, DEFAULT_SMTP_USER),
     pass: envPass || pickSmtpPassValue(resolved.smtpPass, DEFAULT_SMTP_PASS),
     storeName: sanitizeFromName(resolved.storeName || DEFAULT_EMAIL_FROM_NAME) || DEFAULT_EMAIL_FROM_NAME,
@@ -404,12 +404,11 @@ async function createVerifiedSmtpTransporter(config) {
     throw error;
   }
 
-  const port = Number(config.port) || 465;
   const transporter = nodemailer.createTransport({
     host: config.host,
-    port,
-    secure: port === 465,
-    requireTLS: port === 587,
+    port: 587,
+    secure: false,
+    requireTLS: true,
     auth: { user: config.user, pass: config.pass },
     family: SMTP_FORCE_IPV4 ? 4 : undefined,
     dnsTimeout: SMTP_CONNECTION_TIMEOUT_MS,
@@ -465,14 +464,7 @@ function isRetryableSmtpNetworkError(error) {
 }
 
 function getSmtpDeliveryConfigs(config) {
-  const primaryPort = Number(config.port) || 465;
-  const configs = [{ ...config, port: primaryPort }];
-  const host = String(config.host || '').toLowerCase();
-  if (host.includes('gmail.com')) {
-    const fallbackPort = primaryPort === 465 ? 587 : 465;
-    configs.push({ ...config, port: fallbackPort });
-  }
-  return configs;
+  return [{ ...config, host: config.host || 'smtp.gmail.com', port: 587 }];
 }
 
 async function sendEmailWithSmtpFallback(smtpConfig, payload, attempts = 1) {
@@ -560,24 +552,12 @@ async function verifyGoogleIdToken(idToken) {
 
 async function warmupSmtpTransporter() {
   const smtpConfig = getSmtpConfigFromSettings();
-  const startupInfo = {
-    host: smtpConfig.host,
-    port: smtpConfig.port,
-    user: maskEmailForLog(smtpConfig.user),
-    credentialsLoaded: Boolean(smtpConfig.user && smtpConfig.pass)
-  };
   try {
     await getVerifiedSmtpTransporter(smtpConfig);
-    console.log('[SMTP] Startup verify success:', startupInfo);
-    console.log('✅ SMTP transporter verified on startup');
+    console.log('[SMTP] Gmail connection ready');
   } catch (error) {
     const classified = classifySmtpError(error);
-    console.warn('[SMTP] Startup verify failed:', {
-      ...startupInfo,
-      code: classified.code,
-      message: classified.message
-    });
-    console.warn('⚠️ SMTP transporter verification failed on startup:', error.message);
+    console.warn(`[SMTP] Gmail connection failed ${classified.code || error?.code || 'SMTP_ERROR'}`);
   }
 }
 
@@ -2655,25 +2635,20 @@ async function uploadSingleMedia(file, folder) {
 
 async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
   const cleanTargetEmail = normalizeEmailAddress(targetEmail);
-  if (isProduction) {
-    console.log(`[OTP] smtp send started ${type} ${maskEmailForLog(cleanTargetEmail)}`);
-  } else {
-  console.log(`[OTP] ──── SENDING OTP ────`);
-  console.log(`[OTP] Target: ${targetEmail} | Type: ${type} | OTP: ${otp}`);
+  if (!isProduction) {
+    console.log(`[OTP] ---- SENDING OTP ----`);
+    console.log(`[OTP] Target: ${targetEmail} | Type: ${type} | OTP: ${otp}`);
   }
   try {
-    console.log(`[OTP] Step 1: Loading SMTP config...`);
     const smtpConfig = getSmtpConfigFromSettings({
       smtpHost: await getMeaningfulSetting('smtpHost', 'smtp.gmail.com'),
-      smtpPort: await getMeaningfulSetting('smtpPort', 465),
+      smtpPort: await getMeaningfulSetting('smtpPort', 587),
       smtpUser: await getMeaningfulSetting('smtpUser', DEFAULT_SMTP_USER),
       smtpPass: await getMeaningfulSetting('smtpPass', DEFAULT_SMTP_PASS),
       storeName: await getMeaningfulSetting('storeName', DEFAULT_EMAIL_FROM_NAME),
     });
-    console.log(`[OTP] Step 2: SMTP Config loaded — Host: ${smtpConfig.host}:${smtpConfig.port} | User: ${smtpConfig.user ? smtpConfig.user.substring(0,5) + '***' : 'EMPTY'} | Pass: ${smtpConfig.pass ? '***SET***' : 'EMPTY'}`);
 
     if (!smtpConfig.user || !smtpConfig.pass) {
-      console.error(`[OTP] FATAL: SMTP credentials missing! User=${smtpConfig.user || 'EMPTY'} Pass=${smtpConfig.pass ? 'SET' : 'EMPTY'}`);
       const error = new Error('SMTP credentials not configured');
       error.code = 'SMTP_NOT_CONFIGURED';
       throw error;
@@ -2691,7 +2666,7 @@ async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
       'SMTP_TIMEOUT'
     );
 
-    console.log(`[OTP] smtp send success ${maskEmailForLog(cleanTargetEmail)} | messageId=${result.messageId || 'n/a'}`);
+    console.log(`[OTP] smtp send success`);
     return { sent: true, via: 'email', messageId: result.messageId };
   } catch (err) {
     const classified = classifySmtpError(err);
@@ -2699,9 +2674,6 @@ async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
     err.statusCode = classified.status;
     err.publicMessage = classified.message;
     console.error(`[OTP] smtp send failed ${classified.code}`);
-    console.error(`[OTP] FAILED - ${classified.code}: ${classified.message}`);
-    console.error(`[OTP] ❌ FAILED — ${err?.message || err}`);
-    console.error(`[OTP] Error Code: ${err?.code || 'N/A'} | Response: ${err?.response || 'N/A'}`);
     throw err;
   }
 }
@@ -2722,7 +2694,7 @@ async function sendAdminSecurityAlert({ email = '', reason = 'admin_login_failed
   try {
     const smtpConfig = getSmtpConfigFromSettings({
       smtpHost: await getMeaningfulSetting('smtpHost', 'smtp.gmail.com'),
-      smtpPort: await getMeaningfulSetting('smtpPort', 465),
+      smtpPort: await getMeaningfulSetting('smtpPort', 587),
       smtpUser: await getMeaningfulSetting('smtpUser', DEFAULT_SMTP_USER),
       smtpPass: await getMeaningfulSetting('smtpPass', DEFAULT_SMTP_PASS),
       storeName: await getMeaningfulSetting('storeName', DEFAULT_EMAIL_FROM_NAME),
@@ -3115,7 +3087,7 @@ app.post('/api/admin/test-smtp', requireAdmin, async (req, res) => {
     
     const smtpConfig = getSmtpConfigFromSettings({
       smtpHost: await getMeaningfulSetting('smtpHost', 'smtp.gmail.com'),
-      smtpPort: await getMeaningfulSetting('smtpPort', 465),
+      smtpPort: await getMeaningfulSetting('smtpPort', 587),
       smtpUser: await getMeaningfulSetting('smtpUser', DEFAULT_SMTP_USER),
       smtpPass: await getMeaningfulSetting('smtpPass', DEFAULT_SMTP_PASS),
       storeName: await getMeaningfulSetting('storeName', DEFAULT_EMAIL_FROM_NAME),
@@ -4261,7 +4233,7 @@ app.post('/api/otp/send-email', async (req, res) => {
     if (!email) return res.status(400).json({ error: 'Email required' });
     const cleanEmail = normalizeEmailAddress(email);
     const resendRequested = Boolean(resend);
-    console.log(`[OTP] request received ${maskEmailForLog(cleanEmail)}`);
+    console.log(`[OTP] request received`);
 
     if (!isValidEmailFormat(cleanEmail)) {
       return res.status(400).json({ error: 'Please enter a valid email address.' });
@@ -4279,7 +4251,6 @@ app.post('/api/otp/send-email', async (req, res) => {
     if (!canResendWithoutCaptcha && String(captchaAnswer).trim().toUpperCase() !== String(req.session.captcha || '').trim().toUpperCase()) {
       return res.status(400).json({ error: 'Invalid security code. Please try again.' });
     }
-    if (!canResendWithoutCaptcha) delete req.session.captcha; // one-time use
     console.log(`[OTP] captcha valid`);
 
     // ── Email format validation ──
@@ -4324,7 +4295,6 @@ app.post('/api/otp/send-email', async (req, res) => {
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + EMAIL_OTP_EXPIRY_MS);
-    console.log(`[auth] OTP request received for ${maskEmailForLog(cleanEmail)} from IP ${ip}`);
 
     let challengeId = '';
     if (useDB) {
@@ -4336,10 +4306,9 @@ app.post('/api/otp/send-email', async (req, res) => {
       challengeId = uuidv4();
     }
     try {
-      console.log(`[OTP] smtp send started`);
       const sendResult = await sendConfiguredEmailOTP(cleanEmail, otp, 'email_login');
-      console.log(`[auth] OTP email sent to ${maskEmailForLog(cleanEmail)} | messageId=${sendResult.messageId || 'n/a'}${isProduction ? '' : ` | OTP=${otp}`}`);
       if (req.session) req.session.pendingEmailOTPMeta = { email: cleanEmail, type: 'email_login', createdAt: new Date().toISOString() };
+      if (!canResendWithoutCaptcha && req.session) delete req.session.captcha;
       releaseEmailOtpRequestLock(emailOtpLock);
       emailOtpLock = null;
       console.log(`[OTP] response sent success`);
@@ -4356,27 +4325,8 @@ app.post('/api/otp/send-email', async (req, res) => {
         devOtp: sendResult.devOtp
       });
     } catch (smtpErr) {
-      console.error('[auth] OTP email send failed:', smtpErr.message);
       const errorMsg = toFriendlySmtpError(smtpErr);
       const classified = classifySmtpError(smtpErr);
-      console.error('[auth] Friendly error:', errorMsg);
-      if (classified.code === 'SMTP_TIMEOUT' || smtpErr.smtpCode === 'SMTP_TIMEOUT') {
-        if (req.session) {
-          req.session.pendingEmailOTPMeta = { email: cleanEmail, type: 'email_login', createdAt: new Date().toISOString() };
-        }
-        releaseEmailOtpRequestLock(emailOtpLock);
-        emailOtpLock = null;
-        console.log(`[OTP] response sent success`);
-        return res.status(200).json({
-          success: true,
-          code: 'OTP_SENT',
-          deliveryPending: true,
-          message: 'OTP request accepted. If the email arrives, enter it below.',
-          expiresIn: Math.floor(EMAIL_OTP_EXPIRY_MS / 1000),
-          resendAfter: 60,
-          provider: 'email'
-        });
-      }
       if (useDB) {
         await OTPLog.deleteMany({ target: cleanEmail, code: otp, type: 'email_login', used: false });
       } else if (req.session?.pendingEmailOTP?.email === cleanEmail) {
