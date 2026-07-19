@@ -13501,3 +13501,267 @@ body:not(.admin-mode) .footer {
     transform: rotate(180deg) !important;
   }
 }
+
+/* Final customer grid polish: centered, equal, premium cards without dead space. */
+body:not(.admin-mode) {
+  overflow-x: hidden !important;
+}
+
+body:not(.admin-mode) .home-bestseller-section .products-grid,
+body:not(.admin-mode) .home-new-arrivals-section .products-grid,
+body:not(.admin-mode) .products-page .products-grid,
+body:not(.admin-mode) .woollen-products-page .products-grid,
+body:not(.admin-mode) .woollen-products-grid,
+body:not(.admin-mode) .home-product-grid {
+  width: min(100% - 40px, 1240px) !important;
+  margin-inline: auto !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 360px)) !important;
+  justify-content: center !important;
+  align-items: stretch !important;
+  gap: clamp(1.15rem, 2.2vw, 1.8rem) !important;
+  padding-bottom: 0 !important;
+}
+
+body:not(.admin-mode) .home-collections-section .categories-grid,
+body:not(.admin-mode) .home-collections-section .collections-grid,
+body:not(.admin-mode) .home-woollen-collection-section .woollen-collections-grid,
+body:not(.admin-mode) .woollen-collections-grid,
+body:not(.admin-mode) .collections-grid,
+body:not(.admin-mode) .categories-grid,
+body:not(.admin-mode) .category-grid {
+  width: min(100% - 40px, 1240px) !important;
+  margin-inline: auto !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 360px)) !important;
+  justify-content: center !important;
+  align-items: stretch !important;
+  gap: clamp(1.15rem, 2.2vw, 1.8rem) !important;
+  padding-bottom: 0 !important;
+}
+
+body:not(.admin-mode) .product-card,
+body:not(.admin-mode) .woollen-product-card {
+  width: 100% !important;
+  max-width: 360px !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+body:not(.admin-mode) .product-card .product-img-wrap,
+body:not(.admin-mode) .product-card .product-image,
+body:not(.admin-mode) .woollen-product-card .product-img-wrap,
+body:not(.admin-mode) .woollen-product-card .product-image {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  aspect-ratio: 4 / 3 !important;
+  background: #fffaf8 !important;
+  overflow: hidden !important;
+  flex: 0 0 auto !important;
+}
+
+body:not(.admin-mode) .product-card .product-img-wrap img,
+body:not(.admin-mode) .product-card .product-image img,
+body:not(.admin-mode) .product-card img.product-img,
+body:not(.admin-mode) .woollen-product-card img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+body:not(.admin-mode) .product-card .product-body,
+body:not(.admin-mode) .woollen-product-card .product-body {
+  min-height: 186px !important;
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: .58rem !important;
+  padding-bottom: 1.05rem !important;
+}
+
+body:not(.admin-mode) .product-card .product-actions,
+body:not(.admin-mode) .woollen-product-card .product-actions {
+  margin-top: auto !important;
+}
+
+body:not(.admin-mode) .cat-card,
+body:not(.admin-mode) .category-card,
+body:not(.admin-mode) .collection-card,
+body:not(.admin-mode) .woollen-collection-card {
+  width: 100% !important;
+  max-width: 360px !important;
+  min-height: 0 !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+body:not(.admin-mode) .cat-card > img,
+body:not(.admin-mode) .category-card > img,
+body:not(.admin-mode) .collection-card > img,
+body:not(.admin-mode) .woollen-collection-card > img,
+body:not(.admin-mode) .cat-card .cat-img,
+body:not(.admin-mode) .category-card .category-img,
+body:not(.admin-mode) .collection-card .category-img,
+body:not(.admin-mode) .woollen-collection-card > div:first-child {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  aspect-ratio: 4 / 3 !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  flex: 0 0 auto !important;
+}
+
+body:not(.admin-mode) .cat-card img,
+body:not(.admin-mode) .category-card img,
+body:not(.admin-mode) .collection-card img,
+body:not(.admin-mode) .woollen-collection-card img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+}
+
+body:not(.admin-mode) .cat-card .cat-content,
+body:not(.admin-mode) .category-card .category-content,
+body:not(.admin-mode) .collection-card .collection-content,
+body:not(.admin-mode) .woollen-collection-card .collection-content {
+  min-height: 148px !important;
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-end !important;
+  gap: .75rem !important;
+  padding-bottom: 1.1rem !important;
+}
+
+body:not(.admin-mode) .home-bestseller-section,
+body:not(.admin-mode) .home-new-arrivals-section,
+body:not(.admin-mode) .home-collections-section,
+body:not(.admin-mode) .home-woollen-collection-section,
+body:not(.admin-mode) .woollen-band,
+body:not(.admin-mode) .woollen-page-section {
+  padding-bottom: clamp(2.4rem, 5vw, 4.5rem) !important;
+}
+
+@media (max-width: 1024px) {
+  body:not(.admin-mode) .home-bestseller-section .products-grid,
+  body:not(.admin-mode) .home-new-arrivals-section .products-grid,
+  body:not(.admin-mode) .products-page .products-grid,
+  body:not(.admin-mode) .woollen-products-page .products-grid,
+  body:not(.admin-mode) .woollen-products-grid,
+  body:not(.admin-mode) .home-product-grid,
+  body:not(.admin-mode) .home-collections-section .categories-grid,
+  body:not(.admin-mode) .home-collections-section .collections-grid,
+  body:not(.admin-mode) .home-woollen-collection-section .woollen-collections-grid,
+  body:not(.admin-mode) .woollen-collections-grid,
+  body:not(.admin-mode) .collections-grid,
+  body:not(.admin-mode) .categories-grid,
+  body:not(.admin-mode) .category-grid {
+    grid-template-columns: repeat(2, minmax(0, 360px)) !important;
+    width: min(100% - 32px, 780px) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  body:not(.admin-mode) .home-bestseller-section .products-grid,
+  body:not(.admin-mode) .home-new-arrivals-section .products-grid,
+  body:not(.admin-mode) .products-page .products-grid,
+  body:not(.admin-mode) .woollen-products-page .products-grid,
+  body:not(.admin-mode) .woollen-products-grid,
+  body:not(.admin-mode) .home-product-grid,
+  body:not(.admin-mode) .home-collections-section .categories-grid,
+  body:not(.admin-mode) .home-collections-section .collections-grid,
+  body:not(.admin-mode) .home-woollen-collection-section .woollen-collections-grid,
+  body:not(.admin-mode) .woollen-collections-grid,
+  body:not(.admin-mode) .collections-grid,
+  body:not(.admin-mode) .categories-grid,
+  body:not(.admin-mode) .category-grid {
+    grid-template-columns: minmax(0, min(100%, 360px)) !important;
+    width: min(100% - 28px, 390px) !important;
+    gap: 1.25rem !important;
+  }
+
+  body:not(.admin-mode) .product-card,
+  body:not(.admin-mode) .woollen-product-card,
+  body:not(.admin-mode) .cat-card,
+  body:not(.admin-mode) .category-card,
+  body:not(.admin-mode) .collection-card,
+  body:not(.admin-mode) .woollen-collection-card {
+    max-width: 360px !important;
+  }
+
+  body:not(.admin-mode) .product-card .product-body,
+  body:not(.admin-mode) .woollen-product-card .product-body {
+    min-height: 176px !important;
+  }
+}
+
+/* Woollen collection cards are rendered with inline child styles, so lock them here too. */
+body:not(.admin-mode) .woollen-collection-card > div:first-child {
+  height: clamp(242px, 20vw, 270px) !important;
+  min-height: 242px !important;
+  aspect-ratio: auto !important;
+  flex: 0 0 clamp(242px, 20vw, 270px) !important;
+}
+
+body:not(.admin-mode) .woollen-collection-card > div:nth-child(2) {
+  height: clamp(182px, 14vw, 190px) !important;
+  min-height: clamp(182px, 14vw, 190px) !important;
+  flex: 0 0 clamp(182px, 14vw, 190px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-end !important;
+  overflow: hidden !important;
+}
+
+body:not(.admin-mode) .woollen-collection-card {
+  height: clamp(424px, 34vw, 460px) !important;
+  min-height: clamp(424px, 34vw, 460px) !important;
+  max-height: clamp(424px, 34vw, 460px) !important;
+}
+
+body:not(.admin-mode) .woollen-card-name {
+  display: block !important;
+  min-height: 1.35em !important;
+}
+
+body:not(.admin-mode) .woollen-card-desc {
+  display: -webkit-box !important;
+  min-height: 2.75em !important;
+  overflow: hidden !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+}
+
+@media (max-width: 640px) {
+  body:not(.admin-mode) .woollen-collection-card {
+    height: 424px !important;
+    min-height: 424px !important;
+    max-height: 424px !important;
+  }
+
+  body:not(.admin-mode) .woollen-collection-card > div:first-child {
+    height: 242px !important;
+    min-height: 242px !important;
+    flex-basis: 242px !important;
+  }
+
+  body:not(.admin-mode) .woollen-collection-card > div:nth-child(2) {
+    height: 182px !important;
+    min-height: 182px !important;
+    flex-basis: 182px !important;
+  }
+}

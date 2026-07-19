@@ -999,9 +999,22 @@ function resetAuthModalState() {
 
   const resendBtn = document.getElementById('resend-otp-btn');
   if (resendBtn) {
+    resendBtn.disabled = false;
     resendBtn.textContent = 'Resend OTP';
     resendBtn.style.pointerEvents = '';
     resendBtn.style.opacity = '';
+  }
+
+  const loginBtn = document.getElementById('login-btn');
+  if (loginBtn) {
+    loginBtn.disabled = false;
+    loginBtn.innerHTML = loginBtn.dataset.defaultLabel || loginBtn.innerHTML || 'Sign In';
+  }
+
+  const signupBtn = document.getElementById('signup-btn');
+  if (signupBtn) {
+    signupBtn.disabled = false;
+    signupBtn.innerHTML = signupBtn.dataset.defaultLabel || signupBtn.innerHTML || 'Send OTP';
   }
 
   const otpInput = document.getElementById('auth-otp-input');
@@ -1176,6 +1189,7 @@ async function sendEmailOTPSafe(email, currentFormId, errorId, captchaAnswer = '
   const btnId = isResend ? 'resend-otp-btn' : (currentFormId === 'auth-login-form' ? 'login-btn' : 'signup-btn');
   const btn = document.getElementById(btnId);
   const originalButtonText = btn ? btn.innerHTML || btn.textContent : '';
+  if (btn && !btn.dataset.defaultLabel && originalButtonText) btn.dataset.defaultLabel = originalButtonText;
   const cleanEmail = String(email || '').trim().toLowerCase();
   if (err) err.textContent = '';
 
@@ -1203,14 +1217,31 @@ async function sendEmailOTPSafe(email, currentFormId, errorId, captchaAnswer = '
     const resp = await api('/api/otp/send-email', {
       method: 'POST',
       body: { email: cleanEmail, captchaAnswer: String(captchaAnswer || '').trim(), resend: isResend },
-      timeoutMs: 65000,
+      timeoutMs: 12000,
       signal: authOtpAbortController.signal
     });
+
+    const sentOk = resp && (resp.success === true || resp.code === 'OTP_SENT');
+    if (sentOk) {
+      if (err) {
+        err.textContent = '';
+        err.classList.remove('otp-soft-notice');
+      }
+      toast(resp.deliveryPending ? 'OTP email is on the way. Check inbox or spam.' : 'OTP sent successfully.', 'success');
+      showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend, resp.deliveryPending ? 'Email is taking a little longer. If it arrives, enter the code here.' : '');
+      if (resp.debugOTP || resp.devOtp) {
+        const otpError = document.getElementById('otp-error');
+        const devMsg = `DEV MODE: Your OTP is ${resp.debugOTP || resp.devOtp}. This will only show in development.`;
+        if (otpError) otpError.textContent = devMsg;
+        console.log(devMsg);
+      }
+      return;
+    }
 
     if (resp.error) {
       const message = getEmailOtpErrorMessage(resp);
       if (resp.code === 'OTP_REQUEST_IN_PROGRESS') {
-        showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend, `${message} If the email arrives, enter the code here.`);
+        showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend, 'A previous OTP request is finishing. If the email arrives, enter the code here.');
         toast(message, 'success');
         return;
       }
@@ -1236,13 +1267,6 @@ async function sendEmailOTPSafe(email, currentFormId, errorId, captchaAnswer = '
 
     toast('OTP sent successfully.', 'success');
     showAuthEmailOtpEntry(cleanEmail, currentFormId, isResend, '');
-
-    if (resp.debugOTP || resp.devOtp) {
-      const otpError = document.getElementById('otp-error');
-      const devMsg = `DEV MODE: Your OTP is ${resp.debugOTP || resp.devOtp}. This will only show in development.`;
-      if (otpError) otpError.textContent = devMsg;
-      console.log(devMsg);
-    }
   } catch (error) {
     const message = error?.name === 'AbortError' ? 'OTP request cancelled.' : 'Network error or timeout. Please try again.';
     if (err) err.textContent = message;
@@ -1253,7 +1277,8 @@ async function sendEmailOTPSafe(email, currentFormId, errorId, captchaAnswer = '
     authOtpAbortController = null;
     if (btn) {
       btn.disabled = false;
-      if (originalButtonText) btn.innerHTML = originalButtonText;
+      if (btn.dataset.defaultLabel) btn.innerHTML = btn.dataset.defaultLabel;
+      else if (originalButtonText) btn.innerHTML = originalButtonText;
       else btn.textContent = isResend ? 'Resend OTP' : (currentFormId === 'auth-login-form' ? 'Sign In' : 'Send OTP');
     }
   }

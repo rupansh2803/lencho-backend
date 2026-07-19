@@ -216,8 +216,8 @@ function sanitizeFromName(name) {
 const EMAIL_OTP_EXPIRY_MS = 10 * 60 * 1000;
 const SMTP_CONNECTION_TIMEOUT_MS = 10000;
 const SMTP_SOCKET_TIMEOUT_MS = 20000;
-const SMTP_SEND_TIMEOUT_MS = 25000;
-const OTP_EMAIL_TOTAL_TIMEOUT_MS = 28000;
+const SMTP_SEND_TIMEOUT_MS = 20000;
+const OTP_EMAIL_TOTAL_TIMEOUT_MS = 23000;
 const OTP_ACTIVE_REQUEST_TTL_MS = 30000;
 const SMTP_FORCE_IPV4 = parseBooleanEnv(process.env.SMTP_FORCE_IPV4, true);
 let cachedVerifiedSmtpTransporter = null;
@@ -2656,7 +2656,7 @@ async function uploadSingleMedia(file, folder) {
 async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
   const cleanTargetEmail = normalizeEmailAddress(targetEmail);
   if (isProduction) {
-    console.log(`[OTP] Sending ${type} OTP to ${maskEmailForLog(cleanTargetEmail)}`);
+    console.log(`[OTP] smtp send started ${type} ${maskEmailForLog(cleanTargetEmail)}`);
   } else {
   console.log(`[OTP] ──── SENDING OTP ────`);
   console.log(`[OTP] Target: ${targetEmail} | Type: ${type} | OTP: ${otp}`);
@@ -2679,7 +2679,7 @@ async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
       throw error;
     }
 
-    console.log(`[OTP] Step 3: Verifying SMTP and sending email...`);
+    console.log(`[OTP] smtp send started`);
     const result = await withTimeout(
       sendEmailWithSmtpFallback(smtpConfig, {
         from: `"${smtpConfig.storeName}" <${smtpConfig.user}>`,
@@ -2691,13 +2691,14 @@ async function sendConfiguredEmailOTP(targetEmail, otp, type = 'admin_login') {
       'SMTP_TIMEOUT'
     );
 
-    console.log(`[OTP] SUCCESS - Email OTP sent to ${maskEmailForLog(cleanTargetEmail)} | MessageID: ${result.messageId || 'n/a'}`);
+    console.log(`[OTP] smtp send success ${maskEmailForLog(cleanTargetEmail)} | messageId=${result.messageId || 'n/a'}`);
     return { sent: true, via: 'email', messageId: result.messageId };
   } catch (err) {
     const classified = classifySmtpError(err);
     err.smtpCode = classified.code;
     err.statusCode = classified.status;
     err.publicMessage = classified.message;
+    console.error(`[OTP] smtp send failed ${classified.code}`);
     console.error(`[OTP] FAILED - ${classified.code}: ${classified.message}`);
     console.error(`[OTP] ❌ FAILED — ${err?.message || err}`);
     console.error(`[OTP] Error Code: ${err?.code || 'N/A'} | Response: ${err?.response || 'N/A'}`);
@@ -4260,6 +4261,7 @@ app.post('/api/otp/send-email', async (req, res) => {
     if (!email) return res.status(400).json({ error: 'Email required' });
     const cleanEmail = normalizeEmailAddress(email);
     const resendRequested = Boolean(resend);
+    console.log(`[OTP] request received ${maskEmailForLog(cleanEmail)}`);
 
     if (!isValidEmailFormat(cleanEmail)) {
       return res.status(400).json({ error: 'Please enter a valid email address.' });
@@ -4278,6 +4280,7 @@ app.post('/api/otp/send-email', async (req, res) => {
       return res.status(400).json({ error: 'Invalid security code. Please try again.' });
     }
     if (!canResendWithoutCaptcha) delete req.session.captcha; // one-time use
+    console.log(`[OTP] captcha valid`);
 
     // ── Email format validation ──
     if (!isValidEmailFormat(cleanEmail)) {
@@ -4321,7 +4324,7 @@ app.post('/api/otp/send-email', async (req, res) => {
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + EMAIL_OTP_EXPIRY_MS);
-    console.log(`[auth] OTP request received for ${cleanEmail} from IP ${ip}`);
+    console.log(`[auth] OTP request received for ${maskEmailForLog(cleanEmail)} from IP ${ip}`);
 
     let challengeId = '';
     if (useDB) {
@@ -4333,11 +4336,13 @@ app.post('/api/otp/send-email', async (req, res) => {
       challengeId = uuidv4();
     }
     try {
+      console.log(`[OTP] smtp send started`);
       const sendResult = await sendConfiguredEmailOTP(cleanEmail, otp, 'email_login');
       console.log(`[auth] OTP email sent to ${maskEmailForLog(cleanEmail)} | messageId=${sendResult.messageId || 'n/a'}${isProduction ? '' : ` | OTP=${otp}`}`);
       if (req.session) req.session.pendingEmailOTPMeta = { email: cleanEmail, type: 'email_login', createdAt: new Date().toISOString() };
       releaseEmailOtpRequestLock(emailOtpLock);
       emailOtpLock = null;
+      console.log(`[OTP] response sent success`);
       return res.json({
         success: true,
         code: 'OTP_SENT',
@@ -4361,11 +4366,12 @@ app.post('/api/otp/send-email', async (req, res) => {
         }
         releaseEmailOtpRequestLock(emailOtpLock);
         emailOtpLock = null;
-        return res.status(504).json({
-          success: false,
-          code: 'SMTP_TIMEOUT',
+        console.log(`[OTP] response sent success`);
+        return res.status(200).json({
+          success: true,
+          code: 'OTP_SENT',
           deliveryPending: true,
-          error: 'Email OTP is taking longer than expected. If the email arrives, enter it below.',
+          message: 'OTP request accepted. If the email arrives, enter it below.',
           expiresIn: Math.floor(EMAIL_OTP_EXPIRY_MS / 1000),
           resendAfter: 60,
           provider: 'email'
@@ -4388,12 +4394,15 @@ app.post('/api/otp/send-email', async (req, res) => {
     }
   } catch (e) {
     releaseEmailOtpRequestLock(emailOtpLock);
+    emailOtpLock = null;
     const classified = classifySmtpError(e);
     res.status(e.statusCode || classified.status || 500).json({
       success: false,
       code: e.smtpCode || classified.code || 'OTP_SEND_FAILED',
       error: e.publicMessage || toFriendlySmtpError(e)
     });
+  } finally {
+    releaseEmailOtpRequestLock(emailOtpLock);
   }
 });
 
