@@ -13765,3 +13765,225 @@ body:not(.admin-mode) .woollen-card-desc {
     flex-basis: 182px !important;
   }
 }
+
+/* Final visible polish: stable cards, centered grids, compact admin rows. */
+body:not(.admin-mode) .products-grid,
+body:not(.admin-mode) .home-product-grid,
+body:not(.admin-mode) .woollen-products-grid,
+body:not(.admin-mode) .categories-grid,
+body:not(.admin-mode) .collections-grid,
+body:not(.admin-mode) .woollen-collections-grid,
+body:not(.admin-mode) .category-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(280px, 380px)) !important;
+  justify-content: center !important;
+  align-items: stretch !important;
+  gap: clamp(1.35rem, 2.4vw, 2rem) !important;
+  width: min(100% - 48px, 1280px) !important;
+  max-width: 1280px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+body:not(.admin-mode) .product-card,
+body:not(.admin-mode) .woollen-product-card,
+body:not(.admin-mode) .lencho-stable-card {
+  width: 100% !important;
+  max-width: 380px !important;
+  min-height: 0 !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  border-radius: 18px !important;
+  transform: none !important;
+  box-shadow: 0 18px 42px rgba(61, 43, 53, .09) !important;
+}
+
+body:not(.admin-mode) .product-card:hover,
+body:not(.admin-mode) .woollen-product-card:hover,
+body:not(.admin-mode) .lencho-stable-card:hover {
+  transform: none !important;
+  border-color: rgba(201, 106, 138, .24) !important;
+  box-shadow: 0 20px 48px rgba(61, 43, 53, .13) !important;
+}
+
+body:not(.admin-mode) .product-card .product-img-wrap,
+body:not(.admin-mode) .woollen-product-card .product-img-wrap {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  aspect-ratio: 4 / 3 !important;
+  flex: 0 0 auto !important;
+  background: #fffaf8 !important;
+}
+
+body:not(.admin-mode) .product-card .product-img,
+body:not(.admin-mode) .woollen-product-card .product-img,
+body:not(.admin-mode) .product-card .img-hover,
+body:not(.admin-mode) .woollen-product-card .img-hover {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  background: #fffaf8 !important;
+}
+
+body:not(.admin-mode) .product-card .product-body,
+body:not(.admin-mode) .woollen-product-card .product-body {
+  min-height: 220px !important;
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 1.05rem 1.05rem 1.15rem !important;
+}
+
+body:not(.admin-mode) .product-card .product-name,
+body:not(.admin-mode) .woollen-product-card .product-name {
+  min-height: 2.75em !important;
+  display: -webkit-box !important;
+  overflow: hidden !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+}
+
+body:not(.admin-mode) .product-card .product-actions,
+body:not(.admin-mode) .woollen-product-card .product-actions {
+  margin-top: auto !important;
+}
+
+body:not(.admin-mode) .cat-card,
+body:not(.admin-mode) .category-card,
+body:not(.admin-mode) .collection-card,
+body:not(.admin-mode) .woollen-collection-card {
+  max-width: 380px !important;
+  min-height: 0 !important;
+  height: auto !important;
+  border-radius: 18px !important;
+  transform: none !important;
+  box-shadow: 0 18px 42px rgba(61, 43, 53, .08) !important;
+}
+
+body:not(.admin-mode) .cat-card:hover,
+body:not(.admin-mode) .category-card:hover,
+body:not(.admin-mode) .collection-card:hover,
+body:not(.admin-mode) .woollen-collection-card:hover {
+  transform: none !important;
+}
+
+body:not(.admin-mode) .cat-card > img,
+body:not(.admin-mode) .category-card > img,
+body:not(.admin-mode) .collection-card > img,
+body:not(.admin-mode) .woollen-collection-card > img,
+body:not(.admin-mode) .cat-card .cat-img,
+body:not(.admin-mode) .category-card .category-img,
+body:not(.admin-mode) .collection-card .category-img,
+body:not(.admin-mode) .woollen-collection-card > div:first-child {
+  aspect-ratio: 4 / 3 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  flex: 0 0 auto !important;
+  background: #fffaf8 !important;
+}
+
+body:not(.admin-mode) .woollen-collection-card > div:nth-child(2) {
+  height: auto !important;
+  min-height: 156px !important;
+  flex: 1 1 auto !important;
+  justify-content: flex-end !important;
+}
+
+body:not(.admin-mode) .home-bestseller-section,
+body:not(.admin-mode) .home-new-arrivals-section,
+body:not(.admin-mode) .home-collections-section,
+body:not(.admin-mode) .home-woollen-collection-section,
+body:not(.admin-mode) .woollen-band,
+body:not(.admin-mode) .woollen-page-section {
+  padding-top: clamp(3rem, 6vw, 5.25rem) !important;
+  padding-bottom: clamp(3rem, 6vw, 5.25rem) !important;
+}
+
+.admin-table-wrap table {
+  width: 100% !important;
+}
+
+.admin-collection-row td {
+  vertical-align: middle !important;
+}
+
+.admin-collection-thumb {
+  width: 52px !important;
+  height: 52px !important;
+  border-radius: 10px !important;
+  object-fit: cover !important;
+}
+
+.admin-collection-name-cell {
+  min-width: 260px !important;
+}
+
+.admin-collection-title,
+.admin-menu-item,
+.admin-sidebar a {
+  white-space: nowrap !important;
+}
+
+.admin-collection-desc {
+  display: -webkit-box !important;
+  max-width: 760px !important;
+  overflow: hidden !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+}
+
+.admin-stock-pill,
+.admin-stock-note {
+  white-space: nowrap !important;
+}
+
+.admin-row-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: .45rem !important;
+  min-width: 160px !important;
+}
+
+@media (max-width: 1024px) {
+  body:not(.admin-mode) .products-grid,
+  body:not(.admin-mode) .home-product-grid,
+  body:not(.admin-mode) .woollen-products-grid,
+  body:not(.admin-mode) .categories-grid,
+  body:not(.admin-mode) .collections-grid,
+  body:not(.admin-mode) .woollen-collections-grid,
+  body:not(.admin-mode) .category-grid {
+    grid-template-columns: repeat(2, minmax(260px, 360px)) !important;
+    width: min(100% - 36px, 780px) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  body:not(.admin-mode) .products-grid,
+  body:not(.admin-mode) .home-product-grid,
+  body:not(.admin-mode) .woollen-products-grid,
+  body:not(.admin-mode) .categories-grid,
+  body:not(.admin-mode) .collections-grid,
+  body:not(.admin-mode) .woollen-collections-grid,
+  body:not(.admin-mode) .category-grid {
+    grid-template-columns: minmax(0, min(100%, 356px)) !important;
+    width: min(100% - 24px, 380px) !important;
+    gap: 1.25rem !important;
+  }
+
+  body:not(.admin-mode) .product-card .product-body,
+  body:not(.admin-mode) .woollen-product-card .product-body {
+    min-height: 206px !important;
+  }
+
+  body:not(.admin-mode) .woollen-collection-card {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+}

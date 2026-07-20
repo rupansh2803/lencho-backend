@@ -3528,16 +3528,16 @@ async function adminCollections(storeType = 'main') {
     const stockLabel = summary.totalStock > 0 ? `${summary.totalStock} qty` : 'No stock';
     const stockColor = summary.totalStock > 0 ? '#166534' : '#b91c1c';
     return `
-      <tr>
-        <td><img src="${safeImageUrl(collection.image, slug)}" ${imageFallbackAttr(slug, collection.image)} style="width:44px;height:44px;border-radius:8px;object-fit:cover;background:#f8f3f6;border:1px solid #eee;"/></td>
-        <td>
-          <div style="font-weight:800;color:var(--dark);">${adminProductManagerEscape(collection.name || 'Collection')}</div>
-          <small style="color:var(--gray);">${adminProductManagerEscape(collection.description || `${storeLabel} collection`)}</small>
+      <tr class="admin-collection-row">
+        <td><img class="admin-collection-thumb" src="${safeImageUrl(collection.image, slug)}" ${imageFallbackAttr(slug, collection.image)} style="width:52px;height:52px;border-radius:10px;object-fit:cover;background:#f8f3f6;border:1px solid #eee;"/></td>
+        <td class="admin-collection-name-cell">
+          <div class="admin-collection-title" style="font-weight:800;color:var(--dark);">${adminProductManagerEscape(collection.name || 'Collection')}</div>
+          <small class="admin-collection-desc" style="color:var(--gray);">${adminProductManagerEscape(collection.description || `${storeLabel} collection`)}</small>
         </td>
         <td><code>${adminProductManagerEscape(slug)}</code></td>
         <td><span style="background:var(--rose-light);color:var(--rose-dark);padding:4px 9px;border-radius:999px;font-weight:800;">${summary.items.length}</span></td>
-        <td><span style="background:${summary.totalStock > 0 ? '#dcfce7' : '#fee2e2'};color:${stockColor};padding:4px 9px;border-radius:999px;font-weight:800;">${stockLabel}</span>${summary.outOfStock ? `<small style="display:block;color:#b91c1c;margin-top:.35rem;">${summary.outOfStock} out of stock</small>` : ''}</td>
-        <td>
+        <td><span class="admin-stock-pill" style="background:${summary.totalStock > 0 ? '#dcfce7' : '#fee2e2'};color:${stockColor};padding:4px 9px;border-radius:999px;font-weight:800;">${stockLabel}</span>${summary.outOfStock ? `<small class="admin-stock-note" style="display:block;color:#b91c1c;margin-top:.35rem;">${summary.outOfStock} out of stock</small>` : ''}</td>
+        <td class="admin-row-actions">
           <button class="btn-sm btn-outline" onclick="viewCategoryProducts('${slug}', '${normalizedStore}')"><i class="fas fa-boxes"></i> Products</button>
           <button class="btn-sm btn-outline" onclick="editCategoryById('${id}')"><i class="fas fa-pen"></i> Edit</button>
           <button class="btn-sm" onclick="deleteCategory('${id}', '${normalizedStore}')" style="background:#fee2e2;color:#ef4444;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;"><i class="fas fa-trash"></i></button>
