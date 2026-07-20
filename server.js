@@ -739,12 +739,12 @@ const DEFAULT_FALLBACK_SETTINGS = {
   hsn: '7117',
   storeName: 'Lencho',
   storeEmail: PRIMARY_LENCHO_EMAIL,
-  storePhone: '+91 7404217625',
+  storePhone: '+91 8168817625',
   storeAddress: '197 Sarakpur, Barara, Ambala, Haryana',
   legalBusinessName: 'Lencho',
   legalBusinessAddress: '197 Sarakpur, Barara, Ambala, Haryana',
   legalSupportEmail: PRIMARY_LENCHO_EMAIL,
-  legalSupportPhone: '+91 7404217625',
+  legalSupportPhone: '+91 8168817625',
   grievanceOfficerName: '',
   grievanceOfficerEmail: PRIMARY_LENCHO_EMAIL,
   refundTimeline: '',
@@ -785,9 +785,9 @@ const DEFAULT_FALLBACK_SETTINGS = {
   otpSubject: DEFAULT_OTP_SUBJECT,
   otpBody: DEFAULT_OTP_BODY,
   footerAddress: '197 Sarakpur, Barara, Ambala, Haryana',
-  footerPhone: '+91 7404217625',
+  footerPhone: '+91 8168817625',
   footerEmail: PRIMARY_LENCHO_EMAIL,
-  bulkOrderWhatsappNumber: '917404217625',
+  bulkOrderWhatsappNumber: '918168817625',
   publicCatalogCacheSeconds: 300,
   publicCatalogEdgeCacheSeconds: 900,
   publicSettingsCacheSeconds: 300,
@@ -806,7 +806,7 @@ const DEFAULT_FALLBACK_SETTINGS = {
   socialFacebookUrl: 'https://facebook.com/lencho_official',
   socialYoutubeUrl: 'https://youtube.com/lencho_official',
   socialWhatsappUrl: '',
-  schemaPhone: '+91 7404217625',
+  schemaPhone: '+91 8168817625',
   schemaEmail: PRIMARY_LENCHO_EMAIL,
   schemaAddress: '197 Sarakpur, Barara, Ambala, Haryana',
   aiChatEnabled: true,
@@ -2078,7 +2078,7 @@ async function seedSettings() {
       { key: 'showProductCardRatings', value: false, label: 'Show Product Card Ratings' },
       { key: 'showProductCardDeliveryBox', value: false, label: 'Show Product Card Delivery Mini Box' },
       { key: 'footerAddress', value: '197 Sarakpur, Barara, Ambala, Haryana', label: 'Footer Address' },
-      { key: 'footerPhone', value: '+91 7404217625', label: 'Footer Phone' },
+      { key: 'footerPhone', value: '+91 8168817625', label: 'Footer Phone' },
       { key: 'footerEmail', value: PRIMARY_LENCHO_EMAIL, label: 'Footer Email' },
       { key: 'seoTitleDefault', value: DEFAULT_FALLBACK_SETTINGS.seoTitleDefault, label: 'Default SEO Title' },
       { key: 'seoDescriptionDefault', value: DEFAULT_FALLBACK_SETTINGS.seoDescriptionDefault, label: 'Default SEO Description' },
@@ -2126,7 +2126,7 @@ async function seedSettings() {
       { key: 'siteVisitorCount', value: 0, label: 'Website Visitor Count' },
       { key: 'storeVisitorCount', value: 0, label: 'Store Visitor Count' },
       { key: 'footerAddress', value: '197 Sarakpur, Barara, Ambala, Haryana', label: 'Footer Address' },
-      { key: 'footerPhone', value: '+91 7404217625', label: 'Footer Phone' },
+      { key: 'footerPhone', value: '+91 8168817625', label: 'Footer Phone' },
       { key: 'footerEmail', value: PRIMARY_LENCHO_EMAIL, label: 'Footer Email' },
       { key: 'saleEndDate', value: new Date(Date.now() + 86400000).toISOString(), label: 'Sale End Date (ISO)' },
       { key: 'otpSubject', value: DEFAULT_OTP_SUBJECT, label: 'OTP Email Subject' },
@@ -2512,7 +2512,7 @@ function buildInquiryAutoReplyHtml({ name = 'Customer' } = {}) {
         <div style="font-size:22px;font-weight:800;color:#7a3e5b;margin-bottom:16px;">Lencho</div>
         <p style="margin:0 0 14px;">Hi ${escapeEmailHtml(name || 'there')},</p>
         <p style="line-height:1.7;margin:0 0 14px;">Thank you for contacting Lencho. We received your message and our team will reply as soon as possible.</p>
-        <p style="line-height:1.7;margin:0 0 14px;">For urgent order or product questions, you can also message us on WhatsApp at <b>+91 7404217625</b>.</p>
+        <p style="line-height:1.7;margin:0 0 14px;">For urgent order or product questions, you can also message us on WhatsApp at <b>+91 8168817625</b>.</p>
         <p style="margin-top:24px;color:#6b4a5d;">Regards,<br><b>Lencho Team</b></p>
       </div>
     </div>`;
@@ -4655,7 +4655,7 @@ app.post('/api/admin/login/request-otp', async (req, res) => {
         otpSent = { via: 'console', message: 'Email OTP failed. Under dev mode, OTP printed to console.' };
       } else {
         try {
-          await sendSMSOTP(email.replace(/@.*/, '7404217625'), otp);
+          await sendSMSOTP(email.replace(/@.*/, '8168817625'), otp);
           otpSent = { via: 'sms', message: 'OTP sent via SMS. Valid for 5 minutes.' };
         } catch (smsErr) {
           console.log('⚠️  SMS also failed, showing console OTP:', smsErr.message);

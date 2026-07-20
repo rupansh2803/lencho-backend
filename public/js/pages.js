@@ -1422,7 +1422,7 @@ function renderContact() {
           <div style="width:40px;height:40px;background:#e0f2fe;color:#0284c7;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;"><i class="fas fa-phone-alt"></i></div>
           <div>
             <h4 style="font-size:1.05rem;margin-bottom:.25rem;">Call Us</h4>
-            <p style="color:var(--gray);font-size:.9rem;">+91 7404217625<br/>Mon-Sat: 10:00 AM - 7:00 PM</p>
+            <p style="color:var(--gray);font-size:.9rem;">+91 8168817625<br/>Mon-Sat: 10:00 AM - 7:00 PM</p>
           </div>
         </div>
       </div>

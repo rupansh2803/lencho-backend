@@ -288,7 +288,7 @@ Expected delivery: [date]
 
 Track here: [tracking link]
 
-Questions? Reply to this email or WhatsApp 7404217625
+Questions? Reply to this email or WhatsApp 8168817625
 
 Thanks for choosing Lencho! 💎
 ```

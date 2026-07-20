@@ -488,7 +488,7 @@ The site is **mobile-first responsive**. Test on:
 
 For issues or features:
 - 📧 Email: **lencho.official01@gmail.com**
-- 📱 WhatsApp: **+91 7404217625**
+- 📱 WhatsApp: **+91 8168817625**
 - 🌐 Website: **Coming Soon**
 - 📍 Address: 197 Sarakpur, Barara, Ambala, Haryana
 

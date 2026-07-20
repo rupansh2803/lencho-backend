@@ -2907,7 +2907,7 @@ async function adminSiteManager() {
   <div class="admin-form" style="margin-bottom:2rem;">
     <h3 style="margin-bottom:1rem;color:var(--rose-dark);"><i class="fas fa-shoe-prints"></i> Footer Details</h3>
     <div class="form-grid">
-      <div class="form-group"><label>Phone</label><input id="cms-footerPhone" value="${g('footerPhone')}" placeholder="+91 7404217625"/></div>
+      <div class="form-group"><label>Phone</label><input id="cms-footerPhone" value="${g('footerPhone')}" placeholder="+91 8168817625"/></div>
       <div class="form-group"><label>Email</label><input id="cms-footerEmail" value="${g('footerEmail')}" placeholder="lencho.official001@gmail.com"/></div>
     </div>
     <div class="form-group"><label>Address</label><input id="cms-footerAddress" value="${g('footerAddress')}" placeholder="197 Sarakpur, Barara, Ambala"/></div>

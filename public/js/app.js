@@ -377,7 +377,7 @@ function upsertJsonLd(id, payload) {
 }
 
 function syncFooterDetails(settings = {}) {
-  const phone = settings.footerPhone || settings.storePhone || '+91 7404217625';
+  const phone = settings.footerPhone || settings.storePhone || '+91 8168817625';
   const email = settings.footerEmail || settings.storeEmail || 'lencho.official01@gmail.com';
   const address = settings.footerAddress || settings.storeAddress || '197 Sarakpur, Barara, Ambala, Haryana';
 
@@ -648,10 +648,10 @@ function normalizedWhatsappNumber(value = '') {
 
 function openBulkOrderWhatsApp(source = 'home') {
   const settings = readCachedPublicSettings();
-  const rawNumber = settings.bulkOrderWhatsappNumber || settings.whatsappNumber || settings.aiHandoffWhatsappNumber || settings.storePhone || settings.footerPhone || '+91 7404217625';
+  const rawNumber = settings.bulkOrderWhatsappNumber || settings.whatsappNumber || settings.aiHandoffWhatsappNumber || settings.storePhone || settings.footerPhone || '+91 8168817625';
   const number = normalizedWhatsappNumber(rawNumber);
   const text = encodeURIComponent('Hi Lencho, I want to place a bulk order. Please share catalogue, price, MOQ, customization options, and delivery time.');
-  const url = number ? `https://wa.me/${number}?text=${text}` : `https://wa.me/917404217625?text=${text}`;
+  const url = number ? `https://wa.me/${number}?text=${text}` : `https://wa.me/918168817625?text=${text}`;
   window.open(url, '_blank', 'noopener,noreferrer');
   try { localStorage.setItem('lencho_last_bulk_order_source', source); } catch {}
 }
@@ -3065,9 +3065,9 @@ function renderContact() {
         </div>
         <div class="contact-info-card">
           <div class="contact-icon-circle" style="background:#e0f2fe;color:#0284c7;"><i class="fas fa-phone"></i></div>
-          <div><h4>Contact Support</h4><p style="color:var(--gray);font-size:.9rem;">+91 7404217625<br/>Support available 10AM - 7PM</p></div>
+          <div><h4>Contact Support</h4><p style="color:var(--gray);font-size:.9rem;">+91 8168817625<br/>Support available 10AM - 7PM</p></div>
         </div>
-        <div class="contact-info-card" onclick="window.open('https://wa.me/917404217625')" style="cursor:pointer;">
+        <div class="contact-info-card" onclick="window.open('https://wa.me/918168817625')" style="cursor:pointer;">
           <div class="contact-icon-circle" style="background:var(--gold-light);color:var(--gold-dark);"><i class="fab fa-whatsapp"></i></div>
           <div><h4>WhatsApp Support</h4><p style="color:var(--rose-dark);font-weight:600;font-size:.9rem;">Immediate Response ↗</p></div>
         </div>

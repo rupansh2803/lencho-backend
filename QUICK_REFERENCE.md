@@ -10,7 +10,7 @@
 📍 Website: https://lencho.in (after custom domain)
 🔧 Admin Panel: https://lencho.in/admin
 📧 Email: lencho.official01@gmail.com
-📱 WhatsApp: +91 7404217625
+📱 WhatsApp: +91 8168817625
 📦 GitHub: github.com/rupansh2803/lencho-backend
 ```
 

@@ -304,7 +304,7 @@ async function adminStoreSettings() {
       </div>
       <div class="form-group">
         <label>Store Phone</label>
-        <input type="tel" id="s-phone" value="${s.storePhone || ''}" placeholder="+91-7404217625"/>
+        <input type="tel" id="s-phone" value="${s.storePhone || ''}" placeholder="+91-8168817625"/>
       </div>
       <div class="form-group">
         <label>WhatsApp Number</label>
@@ -312,7 +312,7 @@ async function adminStoreSettings() {
       </div>
       <div class="form-group">
         <label>Bulk Order WhatsApp Number</label>
-        <input type="tel" id="s-bulk-whatsapp" value="${s.bulkOrderWhatsappNumber || s.whatsappNumber || ''}" placeholder="917404217625"/>
+        <input type="tel" id="s-bulk-whatsapp" value="${s.bulkOrderWhatsappNumber || s.whatsappNumber || ''}" placeholder="918168817625"/>
       </div>
       <div class="form-group">
         <label>Store Address</label>
